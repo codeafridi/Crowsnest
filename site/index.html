@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crowsnest. A focused process HUD for Linux, macOS and Windows</title>
-    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 31-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, fully open source." />
+    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 32-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, fully open source." />
     <meta name="theme-color" content="#f4f5f8" />
     <link rel="icon" href="logo.png" type="image/png" />
     <link rel="apple-touch-icon" href="logo.png" />
@@ -30,7 +30,7 @@
           <a href="#install">Install</a>
         </nav>
         <div class="nav-right">
-          <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.11.0" rel="noopener" title="Release notes for 0.11.0">v0.11.0</a>
+          <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.11.2" rel="noopener" title="Release notes for 0.11.2">v0.11.2</a>
           <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle colour theme">
             <svg class="sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.7 17.7l1.41 1.41M2 12h2M20 12h2M6.34 17.7l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             <svg class="moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
@@ -46,7 +46,7 @@
     <main id="top">
       <section class="hero">
         <div class="wrap">
-          <p class="eyebrow">Linux, macOS, Windows. C++20 with Qt 6. Version 0.11.0.</p>
+          <p class="eyebrow">Linux, macOS, Windows. C++20 with Qt 6. Version 0.11.2.</p>
           <h1>The HUD that follows the app you are using.</h1>
           <p class="lede">
             Pick any window and Crowsnest puts that app's CPU, memory, threads, file descriptors, disk and network throughput in a small panel that floats over your desktop. Click once and the same binary opens a full console for the whole machine: host, disks, GPU, sensors, containers, Kubernetes, databases, traces and what the cloud is billing you.
@@ -202,7 +202,7 @@
           <div class="notes">
             <h3 id="screenshot-notes">Notes on these captures</h3>
             <p>
-              These are live captures of Crowsnest 0.11.0 on one machine &mdash; not mock-ups and not a designer's render. The OTLP traces, DogStatsD metrics and synthetic checks are real receiver traffic from small local test clients pointed at the HUD, and the cluster panels are a real single-node Kubernetes cluster with metrics-server. There is no cloud account behind this laptop, so the <b>Cloud</b> panel is a live capture against a <em>local AWS emulator</em>: the identity comes from <code>[cloud] identity=</code> (no instance metadata service exists there, and the card says so), and the instances, the rates and the Terraform diff are the emulator's real API responses decoded by the shipping code. The <b>Billed spend</b> close-up is the one panel rendered from the application's screenshot fixtures &mdash; a three-hour-old emulator account has one day of cost, which makes for an empty chart &mdash; so treat its numbers as a layout reference and the release notes for what is proven where.
+              These are live captures of Crowsnest 0.11.2 on one machine &mdash; not mock-ups and not a designer's render. The OTLP traces, DogStatsD metrics and synthetic checks are real receiver traffic from small local test clients pointed at the HUD, and the cluster panels are a real single-node Kubernetes cluster with metrics-server. There is no cloud account behind this laptop, so the <b>Cloud</b> panel is a live capture against a <em>local AWS emulator</em>: the identity comes from <code>[cloud] identity=</code> (no instance metadata service exists there, and the card says so), and the instances, the rates and the Terraform diff are the emulator's real API responses decoded by the shipping code. The <b>Billed spend</b> close-up is the one panel rendered from the application's screenshot fixtures &mdash; a three-hour-old emulator account has one day of cost, which makes for an empty chart &mdash; so treat its numbers as a layout reference and the release notes for what is proven where.
             </p>
           </div>
         </div>
@@ -267,7 +267,7 @@
 
     <footer class="site-footer">
       <div class="wrap footer-inner">
-        <span>Crowsnest 0.11.0. MIT license.</span>
+        <span>Crowsnest 0.11.2. MIT license.</span>
         <span class="footer-links">
           <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">GitHub</a>
           <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases</a>
