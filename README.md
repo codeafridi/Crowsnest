@@ -109,7 +109,7 @@ steps and the clean room package gate are in [docs/build.md](docs/build.md).
 * [docs/cloud.md](docs/cloud.md): cloud identity, rates and billed spend
 * [docs/fleet.md](docs/fleet.md): several machines in one console
 * [docs/remote.md](docs/remote.md): the relay reporter and its privacy rules
-* [site/index.html](site/index.html): the project page
+
 
 ## License
 
