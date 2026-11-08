@@ -534,10 +534,16 @@ void RemoteRunner::poll() {
             } else {
                 const int ladder = remoteBackoffMs(m_state.consecutiveFailures,
                                                    options.intervalMs);
+                // A Retry-After is a floor, not a suggestion. Clamping it down
+                // to the report interval was how a client configured faster
+                // than the relay's cadence (5 s against a 15 s window) retried
+                // inside the closed window, collected another 429 and one more
+                // spool record every time. The header parser already caps the
+                // value at five minutes, so the relay's own wait is used as-is.
                 m_state.nextRetryMs =
                     result.classification == RemoteClass::Throttled
                         && result.retryAfterMs > 0
-                    ? int(qMin<qint64>(result.retryAfterMs, options.intervalMs))
+                    ? int(qMin<qint64>(result.retryAfterMs, kRemoteIntervalMaxMs))
                     : ladder;
             }
         }

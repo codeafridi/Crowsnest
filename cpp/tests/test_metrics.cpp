@@ -8264,6 +8264,25 @@ int main(int argc, char *argv[]) {
               "remote runner: Retry-After wins over the 4s ladder step");
         stopRunner(throttleThread);
 
+        // A Retry-After LONGER than the report interval is the relay's window
+        // talking, and it must not be clamped down: a client configured at 200
+        // ms against a 3 s ask retried at 200 ms in the field, collected the
+        // same 429 and grew the spool for nothing.
+        RelayStub slowThrottle;
+        slowThrottle.statusLine =
+            QByteArrayLiteral("HTTP/1.1 429 Too Many Requests");
+        slowThrottle.headers = QByteArrayLiteral("Retry-After: 3\r\n");
+        slowThrottle.begin();
+        QThread *slowThrottleThread = runRunner(slowThrottle, 200, 2000);
+        check(pumpUntil(slowThrottle.connections, 1, 4000),
+              "remote runner: a 429 with a long Retry-After is tried once");
+        pumpFor(1400);
+        check(slowThrottle.connections.load() == 1,
+              "remote runner: Retry-After is not clamped down to the interval");
+        check(pumpUntil(slowThrottle.connections, 2, 3000),
+              "remote runner: the retry arrives after the relay's Retry-After");
+        stopRunner(slowThrottleThread);
+
         RemoteRunner passive;
         RemoteReportOptions passiveOptions;
         passiveOptions.enabled = true;
