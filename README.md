@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo-256.png" width="128" height="128" alt="Crowsnest" />
+<img src="site/logo.svg" width="128" height="128" alt="Crowsnest" />
 
 # Crowsnest
 
