@@ -1064,9 +1064,10 @@ RemoteInfo remoteInfoFor(const RemoteOptions &options,
     }
 
     if (state.stopped) {
-        info.lastLine = QStringLiteral("refused: %1")
-                            .arg(remoteClassText(state.lastClass,
-                                                 state.lastStatus));
+        info.lastLine = state.note.isEmpty()
+            ? QStringLiteral("refused: %1")
+                  .arg(remoteClassText(state.lastClass, state.lastStatus))
+            : state.note;
     } else if (state.lastClass == RemoteClass::None) {
         info.lastLine =
             state.spooled > 0
@@ -1077,6 +1078,8 @@ RemoteInfo remoteInfoFor(const RemoteOptions &options,
                             .arg(state.lastLatencyMs)
                             .arg(QDateTime::fromMSecsSinceEpoch(state.lastOkMs)
                                      .toString(QStringLiteral("HH:mm:ss")));
+    } else if (!state.note.isEmpty()) {
+        info.lastLine = state.note;
     } else {
         info.lastLine = QStringLiteral("not delivered: %1")
                             .arg(remoteClassText(state.lastClass,

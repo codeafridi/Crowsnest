@@ -583,10 +583,15 @@ void RemoteRunner::poll() {
     if (remoteClassIsTerminal(result.classification)) {
         // Auth/NotFound: the address or the token is wrong. Stop sending, and
         // leave the spool exactly as it is - those reports are still valid.
-        logOnce(QStringLiteral("remote: stopped - %1")
-                    .arg(remoteClassText(result.classification,
-                                         result.httpStatus)));
-        publish(QString());
+        // The relay's own words ride along: a plan limit and a revoked token
+        // both answer 403, and only the body says which it was.
+        QString text = remoteClassText(result.classification, result.httpStatus);
+        if (!result.body.trimmed().isEmpty()) {
+            text += QStringLiteral(" - relay says: ")
+                + remoteAnswerReason(result.body);
+        }
+        logOnce(QStringLiteral("remote: stopped - %1").arg(text));
+        publish(text);
         return;
     }
     publish(QString());

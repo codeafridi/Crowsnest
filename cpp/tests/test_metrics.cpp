@@ -8728,6 +8728,27 @@ int main(int argc, char *argv[]) {
               "team: chunked answers are decoded, plain ones are untouched");
     }
 
+    // --- M156: a refusal names the relay's own words, not just a status.
+    {
+        RemoteOptions options;
+        options.enabled = true;
+        options.url = QStringLiteral("https://relay.example.test");
+        options.token = QStringLiteral("tok-123");
+        RemoteReportState state;
+        state.stopped = true;
+        state.lastClass = RemoteClass::Auth;
+        state.lastStatus = 403;
+        state.note = QStringLiteral(
+            "remote: stopped - 403 - the relay refused this token - relay says: "
+            "{\"error\":\"limit\",\"limit\":\"machines\",\"used\":100,"
+            "\"cap\":100,\"detail\":\"the plan allows 100 machines\"}");
+        const RemoteInfo info = remoteInfoFor(options, state,
+                                              QDateTime::currentMSecsSinceEpoch(),
+                                              RemoteIdentity{});
+        check(info.lastLine.contains(QStringLiteral("the plan allows 100 machines")),
+              "remote: the card carries the relay's refusal, not just the code");
+    }
+
     // --- M152: the incident queue, the three verbs and their gates.
     {
         const QByteArray queue = R"({"schema":1,"asOfMs":1760000000000,"count":3,
