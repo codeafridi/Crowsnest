@@ -1,9 +1,12 @@
 #include "FleetSource.h"
 
+#include "RemoteSource.h"
+
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QMutexLocker>
+#include <QSslConfiguration>
 #include <QSslSocket>
 #include <QTcpSocket>
 #include <QTimer>
@@ -98,7 +101,7 @@ void pollOne(FleetPeer &peer, const QByteArray &token, int timeoutMs,
 } // namespace
 
 FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
-                              int timeoutMs) {
+                              int timeoutMs, const QString &caFile) {
     FleetFetchResult result;
     const QUrl target(url);
     if (!target.isValid() || target.host().isEmpty()) {
@@ -121,6 +124,18 @@ FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
     if (tls) {
         secure = std::make_unique<QSslSocket>();
         socket = secure.get();
+        // A relay behind a private CA is trusted by naming the CA, never by
+        // turning verification off (M100b's rule, shared with the reporter).
+        if (!caFile.isEmpty()) {
+            QString sslError;
+            const QSslConfiguration config =
+                remoteSslConfiguration(caFile, &sslError);
+            if (!sslError.isEmpty()) {
+                result.error = sslError;
+                return result;
+            }
+            secure->setSslConfiguration(config);
+        }
     }
 
     QString hostHeader = target.host();
@@ -128,7 +143,12 @@ FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
         hostHeader += QLatin1Char(':') + QString::number(port);
     }
 
-    QByteArray request = QByteArrayLiteral("GET ") + target.path().toUtf8()
+    QByteArray targetPath = target.path().toUtf8();
+    if (!target.query().isEmpty()) {
+        targetPath += '?';
+        targetPath += target.query(QUrl::FullyEncoded).toUtf8();
+    }
+    QByteArray request = QByteArrayLiteral("GET ") + targetPath
         + QByteArrayLiteral(" HTTP/1.1\r\nHost: ") + hostHeader.toUtf8()
         + QByteArrayLiteral("\r\nAccept: application/json\r\n");
     if (!token.isEmpty()) {
@@ -205,6 +225,7 @@ FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
     result.httpStatus = status;
 
     QByteArray body = raw.mid(headerEnd + 4);
+    bool chunked = false;
     for (const QByteArray &line : lines) {
         const QByteArray lower = line.trimmed().toLower();
         if (lower.startsWith("content-length:")) {
@@ -213,7 +234,13 @@ FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
             if (okLength && length >= 0 && body.size() > length) {
                 body.truncate(length);
             }
+        } else if (lower.startsWith("transfer-encoding:")
+                   && lower.contains("chunked")) {
+            chunked = true;
         }
+    }
+    if (chunked) {
+        body = fleetDechunk(body);
     }
     result.body = body;
     if (status != 200) {
@@ -222,6 +249,36 @@ FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
     }
     result.ok = true;
     return result;
+}
+
+QByteArray fleetDechunk(const QByteArray &body) {
+    QByteArray out;
+    int pos = 0;
+    while (pos < body.size()) {
+        const int lineEnd = body.indexOf("\r\n", pos);
+        if (lineEnd < 0) {
+            return body; // no framing we understand: hand the caller the bytes
+        }
+        bool ok = false;
+        const int size =
+            body.mid(pos, lineEnd - pos).trimmed().toInt(&ok, 16);
+        if (!ok || size < 0) {
+            return body;
+        }
+        pos = lineEnd + 2;
+        if (size == 0) {
+            break;
+        }
+        if (pos + size > body.size()) {
+            return body;
+        }
+        out += body.mid(pos, size);
+        pos += size;
+        if (body.mid(pos, 2) == "\r\n") {
+            pos += 2;
+        }
+    }
+    return out;
 }
 
 FleetStatus probeFleet(const FleetPollOptions &options, qint64 nowMs) {

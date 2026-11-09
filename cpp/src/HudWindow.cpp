@@ -363,6 +363,12 @@ void HudWindow::setFleetSnapshot(const FleetStatus &status) {
     m_panel->setFleetSnapshot(fleetWithSelf(status, self));
 }
 
+void HudWindow::setTeamStatus(const TeamStatus &status) {
+    if (m_panel != nullptr) {
+        m_panel->setTeamStatus(status);
+    }
+}
+
 void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
     m_lastSnapshot = snapshot;
     m_exportRows.append(

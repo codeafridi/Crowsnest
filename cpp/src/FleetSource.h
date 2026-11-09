@@ -34,7 +34,14 @@ struct FleetFetchResult {
 };
 
 FleetFetchResult fleetHttpGet(const QString &url, const QByteArray &token,
-                              int timeoutMs);
+                              int timeoutMs,
+                              const QString &caFile = QString());
+
+// A chunked body carries its own framing; this is the decoder used for any
+// answer whose headers say `Transfer-Encoding: chunked` (the relay's JSON is
+// large enough that Go streams it). A body that is not chunked is returned
+// unchanged, so a wrong guess cannot corrupt a Content-Length answer.
+QByteArray fleetDechunk(const QByteArray &body);
 
 struct FleetPollOptions {
     bool enabled = false;

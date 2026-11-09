@@ -2194,13 +2194,14 @@ int main(int argc, char *argv[]) {
 
         auto *rail = hud.findChild<QListWidget *>(QStringLiteral("ddRail"));
         if (rail != nullptr) {
-            constexpr int kRailCount = 33;
+            constexpr int kRailCount = 34;
             bool allPagesReachable = rail->count() == kRailCount;
             const int settingsRow = kRailCount - 1;
             allPagesReachable = allPagesReachable
-                && rail->item(kRailCount - 4)->text() == QStringLiteral("Cost")
-                && rail->item(kRailCount - 3)->text() == QStringLiteral("Cloud")
-                && rail->item(kRailCount - 2)->text() == QStringLiteral("Fleet")
+                && rail->item(kRailCount - 5)->text() == QStringLiteral("Cost")
+                && rail->item(kRailCount - 4)->text() == QStringLiteral("Cloud")
+                && rail->item(kRailCount - 3)->text() == QStringLiteral("Fleet")
+                && rail->item(kRailCount - 2)->text() == QStringLiteral("Team")
                 && rail->item(settingsRow)->text() == QStringLiteral("Settings");
             rail->setCurrentRow(settingsRow);
             const auto *stack =
@@ -2221,11 +2222,12 @@ int main(int argc, char *argv[]) {
             allPagesReachable = allPagesReachable && stack != nullptr
                 && stack->currentIndex() == kRailCount - 2
                 && hud.findChild<QLabel *>(
-                       QStringLiteral("ddFleetTilePeers"))
+                       QStringLiteral("ddTeamTileMachines"))
                        != nullptr;
             rail->setCurrentRow(0);
             check(allPagesReachable,
-                  "rail switches pages and Settings view carries info");
+                  "rail switches pages and Settings view carries info, with "
+                  "Team between Fleet and Settings");
         } else {
             check(false, "rail exists");
         }
@@ -2309,6 +2311,109 @@ int main(int argc, char *argv[]) {
                       && fleetSummary->text().contains(
                           QStringLiteral("2 peer")),
                   "fleet summary states what is polled");
+        }
+
+        {
+            // M151: the relay's fleet on the Team page. Self sits first and is
+            // not counted; a silent machine shows dashes and its age, never a
+            // last reading presented as current.
+            const qint64 teamNow = QDateTime::currentMSecsSinceEpoch();
+            TeamStatus team;
+            team.enabled = true;
+            team.configured = true;
+            team.tokenConfigured = true;
+            team.url = QStringLiteral("https://relay.example.test");
+            team.selfId = QStringLiteral("m-self");
+            team.actor = QStringLiteral("kay");
+            team.answered = true;
+            team.asOfMs = teamNow;
+            team.fetchedAtMs = teamNow - 1000;
+            TeamMachine here;
+            here.id = QStringLiteral("m-self");
+            here.name = QStringLiteral("workstation");
+            here.state = QStringLiteral("reporting");
+            here.lastSeenMs = teamNow - 1000;
+            here.intervalMs = 15000;
+            here.latest.present = true;
+            here.latest.tsMs = teamNow - 1000;
+            here.latest.cpu = 12.5;
+            here.latest.memAvailableKb = 4194304;
+            here.latest.load1 = 0.42;
+            TeamMachine quiet;
+            quiet.id = QStringLiteral("m-quiet");
+            quiet.name = QStringLiteral("gate-02");
+            quiet.state = QStringLiteral("silent");
+            quiet.lastSeenMs = teamNow - 240000;
+            quiet.intervalMs = 15000;
+            quiet.latest.present = true;
+            quiet.latest.tsMs = teamNow - 240000;
+            quiet.latest.cpu = 99.0;
+            quiet.latest.memAvailableKb = 1024;
+            quiet.latest.load1 = 9.99;
+            team.machines = {here, quiet};
+            hud.setTeamStatus(team);
+
+            auto *teamTable =
+                hud.findChild<QTreeWidget *>(QStringLiteral("ddTeamTable"));
+            auto *teamMachines =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamTileMachines"));
+            auto *teamSilent =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamTileSilent"));
+            check(teamTable != nullptr && teamTable->topLevelItemCount() == 2
+                      && teamTable->topLevelItem(0)->text(0)
+                             == QStringLiteral("* workstation")
+                      && teamTable->topLevelItem(1)->text(0)
+                             == QStringLiteral("gate-02"),
+                  "team table leads with this machine, marked and named");
+            check(teamMachines != nullptr
+                      && teamMachines->text() == QStringLiteral("1")
+                      && teamSilent != nullptr
+                      && teamSilent->text() == QStringLiteral("1"),
+                  "team tiles count the relay's fleet without this machine");
+            check(teamTable->topLevelItem(1)->text(1)
+                          .contains(QStringLiteral("silent"))
+                      && teamTable->topLevelItem(1)->text(2)
+                             == QStringLiteral("--")
+                      && teamTable->topLevelItem(1)->text(3)
+                             == QStringLiteral("--")
+                      && teamTable->topLevelItem(1)->text(4)
+                             == QStringLiteral("--"),
+                  "a silent machine shows dashes in every value column");
+            auto *teamSummary =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamSummary"));
+            check(teamSummary != nullptr
+                      && teamSummary->text().contains(
+                          QStringLiteral("1 machine(s)")),
+                  "team summary states the fleet the relay reported");
+
+            // Not linked: the page names both switches instead of an empty
+            // table, and a 404 has its own sentence.
+            TeamStatus unlinked;
+            hud.setTeamStatus(unlinked);
+            check(teamSummary != nullptr
+                      && teamSummary->text().contains(
+                          QStringLiteral("[remote] enabled"))
+                      && teamSummary->text().contains(QStringLiteral("token")),
+                  "team page names [remote] enabled and token when unlinked");
+            TeamStatus missing;
+            missing.enabled = true;
+            missing.tokenConfigured = false;
+            missing.configured = false;
+            missing.url = QStringLiteral("https://relay.example.test");
+            hud.setTeamStatus(missing);
+            check(teamSummary->text().contains(QStringLiteral("[remote] token=")),
+                  "team page names the missing token");
+            TeamStatus refusal;
+            refusal.enabled = true;
+            refusal.configured = true;
+            refusal.tokenConfigured = true;
+            refusal.url = QStringLiteral("https://relay.example.test");
+            refusal.httpStatus = 404;
+            hud.setTeamStatus(refusal);
+            check(teamSummary->text()
+                      == QStringLiteral(
+                          "relay does not recognise this token (404)"),
+                  "team page states a 404 in the exact relay words");
         }
 
         SettingsInfo info;

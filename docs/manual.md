@@ -4,7 +4,7 @@
 
 # Crowsnest manual
 
-### A local-first HUD that follows the app you're focused on — and a 33-view Datadog-style console for everything your kernel, containers and apps are doing.
+### A local-first HUD that follows the app you're focused on — and a 34-view Datadog-style console for everything your kernel, containers and apps are doing.
 
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational?style=flat-square&logo=linux&logoColor=white)](#compatibility)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?style=flat-square&logo=cplusplus&logoColor=white)](#install)
@@ -38,12 +38,12 @@ telemetry** — nothing leaves your machine unless you point a scraper at it.
   control, inotify/pid limits, scheduler run-queue state, CPU steal %.
 - **cgroup memory pressure** — peak memory, OOM events/kills, pid limits for
   the focused app's unit.
-- **33-view console**, in rail order — Overview, Metrics (DogStatsD), Alerts,
+- **34-view console**, in rail order — Overview, Metrics (DogStatsD), Alerts,
   Incidents, SLO, Processes, Memory, Disks, GPU, Sensors, Host, Network,
   Network Path, Containers, Kubernetes, Services, Logs, Errors, Dependencies,
   Software, Endpoints, Synthetic checks, Instrumentation, Traces (OTLP),
   Profiles, Databases (PostgreSQL), Security, History, Timeline, Cost, Cloud,
-  Fleet, Settings.
+  Fleet, Team, Settings.
 - **Alerts & incidents** — local thresholds (CPU, memory, FD-table, steal,
   failed services, journal errors) shown on the Alerts page with an incident
   timeline. No desktop popups, by design — a HUD that steals focus is worse
@@ -587,6 +587,42 @@ a freshly started HUD never reads `0 peers`.
 
 Nothing is sent anywhere: a peer only answers a machine you listed in `peers`,
 and the whole feature is two switches away from off.
+
+## Team — the relay's fleet, from the desktop
+
+`[fleet]` polls machines you named on your own network. The Team page is the
+other direction: it reads the fleet the **relay** already holds, with the token
+the machine reports under, so the desktop and the browser dashboard answer the
+same question from the same rows.
+
+```ini
+[remote]
+enabled = true
+url = https://relay.example.com
+token = the-machine-ingest-token
+```
+
+The page shows MACHINES / REPORTING / SILENT / RELAY tiles, then the relay's own
+rows: name, state, CPU %, memory available, load, last seen and source, with
+this machine first and marked `*`. It is a reader of the relay, so the counters
+leave it out exactly like the Fleet page does.
+
+Three causes stay three sentences, because collapsing them is how a dashboard
+lies:
+
+- **relay unreachable** — the table keeps the last answer and the summary dates
+  it (`showing the answer from 4m ago`), never a blank page that reads as "all
+  quiet";
+- **the relay says nothing yet** — the read worked and no machine has reported;
+- **a machine is silent** — the row shows `silent 4m` and `--` in every value
+  column. A reading past `max(3 × interval, 90s)` (measured on the relay's
+  clock, so a wrong local clock cannot invent one) is a guess, and a guess is
+  worse than a dash.
+
+A `404` from an old relay, a `401` from a revoked token and a transport failure
+each name their own fix; `[remote] enabled` and `[remote] token` are named in the
+unlinked state. The page never writes unless `[remote] actions=true`, which is
+the next section.
 
 ## Advanced (optional)
 

@@ -1587,6 +1587,61 @@ int main(int argc, char *argv[]) {
         app.processEvents();
     };
 
+    auto driveTeam = [&app, &panel]() {
+        // M151: the relay's fleet on the Team page. This machine is first and
+        // marked, one member is silent, and one is suspect - the three states
+        // the page distinguishes without ever showing a stale reading as now.
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        auto makeMachine = [now](const QString &id, const QString &name,
+                                 const QString &state, qint64 lastSeenAgoMs,
+                                 int intervalMs, double cpu, qint64 memKb,
+                                 double load1) {
+            TeamMachine machine;
+            machine.id = id;
+            machine.name = name;
+            machine.platform = QStringLiteral("linux");
+            machine.version = QStringLiteral("0.12.0");
+            machine.state = state;
+            machine.lastSeenMs = now - lastSeenAgoMs;
+            machine.intervalMs = intervalMs;
+            machine.latest.present = true;
+            machine.latest.tsMs = machine.lastSeenMs;
+            machine.latest.cpu = cpu;
+            machine.latest.memAvailableKb = memKb;
+            machine.latest.load1 = load1;
+            return machine;
+        };
+
+        TeamStatus team;
+        team.enabled = true;
+        team.configured = true;
+        team.tokenConfigured = true;
+        team.url = QStringLiteral("https://relay.crowsnest.example");
+        team.selfId = QStringLiteral("m-self");
+        team.actor = QStringLiteral("kay");
+        team.answered = true;
+        team.asOfMs = now;
+        team.fetchedAtMs = now - 1200;
+        team.pollMs = 15000;
+        team.timeoutMs = 3000;
+        team.machines = {
+            makeMachine(QStringLiteral("m-self"), QStringLiteral("workstation"),
+                        QStringLiteral("reporting"), 1200, 15000, 12.5,
+                        4194304, 0.42),
+            makeMachine(QStringLiteral("m-db"), QStringLiteral("db-01"),
+                        QStringLiteral("reporting"), 4000, 15000, 34.0,
+                        2097152, 0.82),
+            makeMachine(QStringLiteral("m-edge"), QStringLiteral("edge-01"),
+                        QStringLiteral("suspect"), 41000, 15000, 71.0,
+                        1441792, 3.41),
+            makeMachine(QStringLiteral("m-ci"), QStringLiteral("ci-runner-7"),
+                        QStringLiteral("silent"), 420000, 15000, 88.0,
+                        524288, 9.9),
+        };
+        panel.setTeamStatus(team);
+        app.processEvents();
+    };
+
     panel.resize(1020, 1040);
     panel.show();
     app.processEvents();
@@ -1620,6 +1675,8 @@ int main(int argc, char *argv[]) {
     driveHistoryLog();
     tracePhase("drive fleet");
     driveFleet();
+    tracePhase("drive team");
+    driveTeam();
     tracePhase("grab");
     QScrollArea *grabScroll = nullptr;
     if (argc > 4

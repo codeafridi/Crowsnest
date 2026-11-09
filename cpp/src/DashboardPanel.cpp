@@ -479,6 +479,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
                       QStringLiteral("Cost"),
                       QStringLiteral("Cloud"),
                       QStringLiteral("Fleet"),
+                      QStringLiteral("Team"),
                       QStringLiteral("Settings")});
     m_rail->setCurrentRow(0);
     for (int i = 0; i < m_rail->count(); ++i) {
@@ -521,6 +522,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     m_views->addWidget(buildCostView());
     m_views->addWidget(buildCloudView());
     m_views->addWidget(buildFleetView());
+    m_views->addWidget(buildTeamView());
     m_views->addWidget(buildSettingsView());
 
     connect(m_rail, &QListWidget::currentRowChanged, m_views,
@@ -697,7 +699,9 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddSettingsTileMonitors, #ddSettingsTileSilenced { color: %TEXT%; }"
         "#ddCloudTileProvider, #ddCloudTileAge, #ddCloudTileAccrued,"
         " #ddCloudTileMonthly, #ddFleetTilePeers, #ddFleetTileCpu,"
-        " #ddFleetTileMem, #ddFleetTileDown { color: %TEXT%; }"
+        " #ddFleetTileMem, #ddFleetTileDown,"
+        " #ddTeamTileMachines, #ddTeamTileOnline, #ddTeamTileSilent,"
+        " #ddTeamTileRelay { color: %TEXT%; }"
         "#ddCloudSummary, #ddCloudDetail, #ddCloudCost, #ddCloudApp,"
         " #ddCloudFleetSummary, #ddCloudFleetNote, #ddCloudFootprint,"
         " #ddCloudSpendSummary, #ddCloudSpendDetail, #ddCloudSpendNote,"
@@ -705,6 +709,7 @@ QString DashboardPanel::consoleStyleSheet() const {
         " { color: %MUTED%; }"
         "#ddCloudShare { color: %DIM%; }"
         "#ddFleetSummary, #ddFleetNote, #ddFleetDetail { color: %MUTED%; }"
+        "#ddTeamSummary, #ddTeamNote, #ddTeamDetail { color: %MUTED%; }"
         "#ddFleetShare { color: %DIM%; }"
         "#ddDeprecations { color: %MUTED%; }"
         "#ddHostInfoSummary { color: %DIM%; }"
@@ -5255,6 +5260,118 @@ QWidget *DashboardPanel::buildFleetView() {
     return view;
 }
 
+QWidget *DashboardPanel::buildTeamView() {
+    auto *view = new QWidget(this);
+    auto *content = new QWidget(view);
+    content->setObjectName(QStringLiteral("ddScrollContent"));
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(12, 12, 12, 8);
+    layout->setSpacing(8);
+
+    // --- The four numbers the browser dashboard leads with, computed with this
+    // machine removed: the window is not a member of the fleet it watches.
+    m_teamTileMachines = new QLabel(QStringLiteral("--"), view);
+    m_teamTileMachines->setObjectName(QStringLiteral("ddTeamTileMachines"));
+    m_teamTileOnline = new QLabel(QStringLiteral("--"), view);
+    m_teamTileOnline->setObjectName(QStringLiteral("ddTeamTileOnline"));
+    m_teamTileSilent = new QLabel(QStringLiteral("--"), view);
+    m_teamTileSilent->setObjectName(QStringLiteral("ddTeamTileSilent"));
+    m_teamTileRelay = new QLabel(QStringLiteral("--"), view);
+    m_teamTileRelay->setObjectName(QStringLiteral("ddTeamTileRelay"));
+
+    auto *tiles = new QHBoxLayout();
+    tiles->setSpacing(10);
+    tiles->addWidget(makeTile(QStringLiteral("MACHINES"), m_teamTileMachines,
+                              nullptr, view), 1);
+    tiles->addWidget(makeTile(QStringLiteral("REPORTING"), m_teamTileOnline,
+                              nullptr, view), 1);
+    tiles->addWidget(makeTile(QStringLiteral("SILENT"), m_teamTileSilent,
+                              nullptr, view), 1);
+    tiles->addWidget(makeTile(QStringLiteral("RELAY"), m_teamTileRelay,
+                              nullptr, view), 1);
+    layout->addLayout(tiles);
+
+    // --- The verdict and the read this page makes, in the two shapes the rest
+    // of the console already uses.
+    m_teamSummary = new QLabel(teamLinkText(m_team, 0), view);
+    m_teamSummary->setObjectName(QStringLiteral("ddTeamSummary"));
+    m_teamSummary->setFont(monoFont(11));
+    m_teamSummary->setWordWrap(true);
+    m_teamSummary->setMinimumWidth(1);
+
+    m_teamNote = new QLabel(teamNoteText(m_team), view);
+    m_teamNote->setObjectName(QStringLiteral("ddTeamNote"));
+    m_teamNote->setFont(monoFont(10));
+    m_teamNote->setWordWrap(true);
+    m_teamNote->setMinimumWidth(1);
+
+    layout->addWidget(makeBanner(QStringLiteral("TEAM"),
+                                 ui_theme::accent(), view));
+    auto *summaryRow = new QHBoxLayout;
+    summaryRow->setSpacing(10);
+    summaryRow->addWidget(
+        makeCard(QStringLiteral("summary"), m_teamSummary, view), 1);
+    summaryRow->addWidget(
+        makeCard(QStringLiteral("what is read"), m_teamNote, view), 1);
+    layout->addLayout(summaryRow);
+
+    // --- Every machine the relay lists, this one first and marked, exactly
+    // like the Fleet page (netdata's mirrored_hosts includes itself).
+    m_teamTable = new QTreeWidget(view);
+    m_teamTable->setObjectName(QStringLiteral("ddTeamTable"));
+    m_teamTable->setColumnCount(7);
+    m_teamTable->setHeaderLabels({QStringLiteral("NAME"),
+                                  QStringLiteral("STATE"),
+                                  QStringLiteral("CPU %"),
+                                  QStringLiteral("MEM AVL"),
+                                  QStringLiteral("LOAD"),
+                                  QStringLiteral("LAST SEEN"),
+                                  QStringLiteral("SOURCE")});
+    m_teamTable->setRootIsDecorated(false);
+    m_teamTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_teamTable->setFocusPolicy(Qt::NoFocus);
+    m_teamTable->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    for (int column = 1; column < 7; ++column) {
+        m_teamTable->header()->setSectionResizeMode(
+            column, QHeaderView::ResizeToContents);
+    }
+    connect(m_teamTable, &QTreeWidget::currentItemChanged, this,
+            [this](QTreeWidgetItem *current, QTreeWidgetItem *) {
+                if (current == nullptr) {
+                    return;
+                }
+                m_teamSelectedId = current->data(0, Qt::UserRole).toString();
+                updateTeamDetail();
+            });
+
+    m_teamDetail = new QLabel(QStringLiteral("--"), view);
+    m_teamDetail->setObjectName(QStringLiteral("ddTeamDetail"));
+    m_teamDetail->setFont(monoFont(10));
+    m_teamDetail->setWordWrap(true);
+    m_teamDetail->setMinimumWidth(1);
+
+    layout->addWidget(makeBanner(QStringLiteral("MACHINES"),
+                                 ui_theme::banner(), view));
+    layout->addWidget(makeCard(QStringLiteral("the relay's fleet"),
+                               m_teamTable, view));
+    layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail,
+                               view));
+
+    auto *scroll = new QScrollArea(view);
+    scroll->setObjectName(QStringLiteral("ddScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setWidget(content);
+    content->setAttribute(Qt::WA_StyledBackground, true);
+    auto *outer = new QVBoxLayout(view);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    outer->addWidget(scroll);
+    return view;
+}
+
 QWidget *DashboardPanel::buildCostView() {
     auto *view = new QWidget(this);
     auto *content = new QWidget(view);
@@ -7912,6 +8029,116 @@ void DashboardPanel::setAlerts(const QList<Alert> &alerts) {
 void DashboardPanel::setFleetSnapshot(const FleetStatus &status) {
     m_fleet = status;
     updateFleetPanel();
+}
+
+void DashboardPanel::setTeamStatus(const TeamStatus &status) {
+    m_team = status;
+    if (m_teamTable == nullptr) {
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const TeamCounts counts = teamOwnCounts(status);
+
+    m_teamTileMachines->setText(
+        status.answered ? QString::number(counts.total) : QStringLiteral("--"));
+    m_teamTileOnline->setText(
+        status.answered ? QString::number(counts.reporting)
+                        : QStringLiteral("--"));
+    m_teamTileSilent->setText(
+        status.answered ? QString::number(counts.silent) : QStringLiteral("--"));
+    m_teamTileSilent->setStyleSheet(
+        status.answered && counts.silent > 0
+            ? QStringLiteral("color: %1;").arg(ui_theme::crit())
+            : QString());
+    if (!status.configured) {
+        m_teamTileRelay->setText(QStringLiteral("--"));
+    } else if (!status.error.isEmpty()) {
+        m_teamTileRelay->setText(QStringLiteral("down"));
+    } else if (status.answered && status.fetchedAtMs >= 0) {
+        m_teamTileRelay->setText(
+            timelineAgeText(qMax<qint64>(0, now - status.fetchedAtMs)));
+    } else {
+        m_teamTileRelay->setText(QStringLiteral("--"));
+    }
+    m_teamTileRelay->setStyleSheet(
+        !status.error.isEmpty() && status.configured
+            ? QStringLiteral("color: %1;").arg(ui_theme::crit())
+            : QString());
+
+    m_teamSummary->setText(teamSummaryText(status, now));
+    m_teamNote->setText(teamNoteText(status));
+
+    // Self first, then the relay's own order: the star marks the window, and
+    // the counters above already left it out.
+    QList<TeamMachine> rows;
+    const int self = teamSelfIndex(status);
+    if (self >= 0) {
+        rows.append(status.machines.at(self));
+    }
+    for (int i = 0; i < status.machines.size(); ++i) {
+        if (i != self) {
+            rows.append(status.machines.at(i));
+        }
+    }
+
+    const QString keep = m_teamSelectedId;
+    m_teamTable->blockSignals(true);
+    m_teamTable->clear();
+    for (const TeamMachine &machine : rows) {
+        auto *item = new QTreeWidgetItem(m_teamTable);
+        item->setData(0, Qt::UserRole, machine.id);
+        item->setText(0, teamRowName(status, machine));
+        item->setText(1, teamStateCell(status, machine));
+        item->setText(2, teamCellCpu(status, machine));
+        item->setText(3, teamCellMem(status, machine));
+        item->setText(4, teamCellLoad(status, machine));
+        item->setText(5, teamCellLastSeen(status, machine));
+        item->setText(6, teamCellSource(status, machine));
+        for (int column = 2; column <= 5; ++column) {
+            item->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
+        }
+        QColor nameColor(ui_theme::text());
+        if (!status.selfId.isEmpty() && machine.id == status.selfId) {
+            nameColor = QColor(ui_theme::accent());
+        } else if (machine.duplicate) {
+            nameColor = QColor(ui_theme::warn());
+        }
+        item->setForeground(0, nameColor);
+        QColor stateColor(ui_theme::ok());
+        if (!status.selfId.isEmpty() && machine.id == status.selfId) {
+            stateColor = QColor(ui_theme::muted());
+        } else if (teamMachineSilent(status, machine)) {
+            stateColor = QColor(ui_theme::crit());
+        } else if (machine.state == QLatin1String("suspect")
+                   || machine.state == QLatin1String("registered")) {
+            stateColor = QColor(ui_theme::warn());
+        }
+        item->setForeground(1, stateColor);
+    }
+    if (!keep.isEmpty()) {
+        for (int i = 0; i < m_teamTable->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *item = m_teamTable->topLevelItem(i);
+            if (item->data(0, Qt::UserRole).toString() == keep) {
+                m_teamTable->setCurrentItem(item);
+                break;
+            }
+        }
+    }
+    m_teamTable->blockSignals(false);
+    updateTeamDetail();
+}
+
+void DashboardPanel::updateTeamDetail() {
+    if (m_teamDetail == nullptr) {
+        return;
+    }
+    for (const TeamMachine &machine : m_team.machines) {
+        if (machine.id == m_teamSelectedId) {
+            m_teamDetail->setText(teamMachineDetailText(m_team, machine));
+            return;
+        }
+    }
+    m_teamDetail->setText(QStringLiteral("--"));
 }
 
 void DashboardPanel::updateFleetPanel() {

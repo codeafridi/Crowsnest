@@ -19,6 +19,7 @@
 #include "MetricsEndpoint.h"
 #include "FleetSource.h"
 #include "RemoteSource.h"
+#include "TeamSource.h"
 #include "RemoteStatus.h"
 #include "FleetStatus.h"
 #include "DumpReport.h"
@@ -923,6 +924,36 @@ int main(int argc, char *argv[]) {
         logLine(QStringLiteral("remote: reporting to %1 every %2 ms")
                     .arg(reportOptions.url)
                     .arg(reportOptions.intervalMs));
+    }
+
+    // M151: the Team page reads the relay's own fleet with the same [remote]
+    // credential, on a thread that exists only when the link does. A desktop
+    // with [remote] enabled=false shows the switch, never a socket.
+    TeamOptions teamOptions;
+    teamOptions.enabled = config.remote.enabled;
+    teamOptions.baseUrl = config.remote.url;
+    teamOptions.token = config.remote.token;
+    teamOptions.caFile = config.remote.caFile;
+    teamOptions.selfId = config.remote.machineId;
+    teamOptions.actor = config.remote.name.trimmed();
+    teamOptions.pollMs = config.remote.intervalMs;
+    teamOptions.timeoutMs = config.remote.timeoutMs;
+    hud.setTeamStatus(teamStatusFromOptions(teamOptions));
+    if (config.remote.enabled) {
+        qRegisterMetaType<TeamStatus>("TeamStatus");
+        auto *teamThread = new QThread;
+        auto *teamRunner = new TeamRunner;
+        teamRunner->moveToThread(teamThread);
+        teamRunner->setOptions(teamOptions);
+        QObject::connect(teamThread, &QThread::started, teamRunner,
+                         &TeamRunner::start);
+        QObject::connect(teamThread, &QThread::finished, teamRunner,
+                         &TeamRunner::deleteLater);
+        QObject::connect(teamRunner, &TeamRunner::teamUpdated, &hud,
+                         &HudWindow::setTeamStatus);
+        teamThread->start();
+        logLine(QStringLiteral("team: reading the relay fleet every %1 ms")
+                    .arg(teamOptions.pollMs));
     }
 
     quint64 lastSequence = 0;

@@ -68,11 +68,11 @@ Everything else works without it.
 
 ## Capabilities
 
-The console has 33 pages, in rail order: Overview, Metrics, Alerts, Incidents,
+The console has 34 pages, in rail order: Overview, Metrics, Alerts, Incidents,
 SLO, Processes, Memory, Disks, GPU, Sensors, Host, Network, Network Path,
 Containers, Kubernetes, Services, Logs, Errors, Dependencies, Software,
 Endpoints, Synthetic, Instrumentation, Traces, Profiles, Databases, Security,
-History, Timeline, Cost, Cloud, Fleet, Settings.
+History, Timeline, Cost, Cloud, Fleet, Team, Settings.
 
 <table>
 <tr><th align="left">Area</th><th align="left">What it shows</th><th align="left">Linux</th><th align="left">macOS</th><th align="left">Windows</th></tr>
@@ -91,6 +91,7 @@ History, Timeline, Cost, Cloud, Fleet, Settings.
 <tr><td><b>History and timeline</b></td><td>A bounded ring you can rewind, one stream of every change, CSV and JSON export</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Cost and cloud</b></td><td>Cluster cost model and right sizing, cloud identity, billed spend, account inventory</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Fleet</b></td><td>Several machines polling each other, shown in one console</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><b>Team</b></td><td>The relay's fleet and incident queue, read with the machine's own token, with acknowledge and close from the HUD</td><td>yes</td><td>yes</td><td>yes</td></tr>
 </table>
 
 Live means the card is real on that platform. Partial means some collectors or

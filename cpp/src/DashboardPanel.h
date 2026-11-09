@@ -25,6 +25,7 @@
 #include "IncidentStatus.h"
 #include "FimStatus.h"
 #include "FleetStatus.h"
+#include "TeamStatus.h"
 #include "RemoteStatus.h"
 
 #include <QHash>
@@ -151,6 +152,8 @@ public:
     void setFimSnapshot(const FimSnapshot &snapshot);
     // M94: the peer summaries polled from the machines in [fleet] peers=.
     void setFleetSnapshot(const FleetStatus &status);
+    // M151: the relay's own fleet, read with the [remote] credential.
+    void setTeamStatus(const TeamStatus &status);
 
     void setSettingsInfo(const SettingsInfo &info);
     void setHistoryView(const HistoryViewInfo &view);
@@ -230,6 +233,8 @@ private:
     QWidget *buildCostView();
     QWidget *buildCloudView();
     QWidget *buildFleetView();
+    QWidget *buildTeamView();
+    void updateTeamDetail();
     QWidget *buildDisksView();
     QWidget *buildGpuView();
     QWidget *buildSensorsView();
@@ -360,6 +365,17 @@ private:
     TimeseriesChart *m_chartFleet = nullptr;
     FleetStatus m_fleet;
     int m_fleetSelected = 0;
+
+    QLabel *m_teamTileMachines = nullptr;
+    QLabel *m_teamTileOnline = nullptr;
+    QLabel *m_teamTileSilent = nullptr;
+    QLabel *m_teamTileRelay = nullptr;
+    QLabel *m_teamSummary = nullptr;
+    QLabel *m_teamNote = nullptr;
+    QLabel *m_teamDetail = nullptr;
+    QTreeWidget *m_teamTable = nullptr;
+    TeamStatus m_team;
+    QString m_teamSelectedId;
     QLabel *m_diskSummary = nullptr;
     QLabel *m_diskTopNote = nullptr;
     QLabel *m_diskTop = nullptr;

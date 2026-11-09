@@ -230,6 +230,8 @@ add_library(crowsnest_core STATIC
     src/RemoteSpool.cpp
     src/RemoteSpool.h
     src/FleetSource.cpp
+    src/TeamStatus.cpp
+    src/TeamSource.cpp
     src/FleetSource.h
     src/OverlayStatus.cpp
     src/OverlayStatus.h

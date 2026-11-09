@@ -54,6 +54,8 @@
 #include "RemoteSource.h"
 #include "RemoteSpool.h"
 #include "FleetSource.h"
+#include "TeamStatus.h"
+#include "TeamSource.h"
 #include "TickBudget.h"
 #include "QtCompat.h"
 #include "ServicesSource.h"
@@ -8538,6 +8540,188 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // --- M151: the Team page parses the relay's own fleet read.
+    {
+        const qint64 asOf = 1760000000000LL;
+        QByteArray fleet = R"({
+          "schema":1,"asOfMs":1760000000000,"total":5,
+          "counts":{"registered":0,"reporting":3,"suspect":1,"silent":1,"pruned":0,"total":5,"online":4},
+          "machines":[
+            {"id":"m-self","name":"workstation","platform":"linux","version":"0.12.0",
+             "state":"reporting","firstSeenMs":1759900000000,"lastSeenMs":1759999997000,
+             "intervalMs":15000,"duplicate":false,
+             "latest":{"tsMs":1759999997000,"cpu":12.5,"memAvailableKb":4194304,"load1":0.42}},
+            {"id":"m-db","name":"db-01","platform":"linux","version":"0.12.0",
+             "state":"reporting","lastSeenMs":1759999996000,"intervalMs":15000,
+             "latest":{"tsMs":1759999996000,"cpu":34.0,"memAvailableKb":2097152,"load1":0.82}},
+            {"id":"m-quiet","name":"gate-02","platform":"windows","version":"0.11.2",
+             "state":"silent","lastSeenMs":1759999760000,"intervalMs":15000,
+             "duplicate":true,"duplicateName":"gate-01",
+             "latest":{"tsMs":1759999760000,"cpu":99.0,"memAvailableKb":1024,"load1":9.99}},
+            {"id":"m-late","name":"late-01","platform":"linux",
+             "state":"reporting","lastSeenMs":1759999700000,"intervalMs":15000,
+             "latest":{"tsMs":1759999700000,"cpu":44.0,"memAvailableKb":1048576,"load1":4.0}},
+            {"id":"m-susp","name":"susp-01","platform":"linux",
+             "state":"suspect","lastSeenMs":1759999980000,"intervalMs":60000,
+             "latest":{"tsMs":1759999980000,"cpu":4.0,"memAvailableKb":524288,"load1":0.1}}
+          ]})";
+        TeamStatus team;
+        team.enabled = true;
+        team.configured = true;
+        team.tokenConfigured = true;
+        team.url = QStringLiteral("https://relay.example.test");
+        team.selfId = QStringLiteral("m-self");
+        team.fetchedAtMs = asOf - 3000;
+        QString error;
+        check(teamParseFleetJson(fleet, &team, &error),
+              "team: a real fleet answer parses");
+        check(error.isEmpty() && team.answered && team.asOfMs == asOf
+                  && team.machines.size() == 5,
+              "team: envelope fields land");
+        check(team.machines.at(1).latest.cpu == 34.0
+                  && team.machines.at(1).latest.memAvailableKb == 2097152
+                  && team.machines.at(1).latest.load1 == 0.82,
+              "team: the newest sample is parsed");
+        check(teamSelfIndex(team) == 0, "team: self is found by id");
+        check(teamWithoutSelf(team).size() == 4, "team: self leaves the list");
+        const TeamCounts own = teamOwnCounts(team);
+        check(own.total == 4 && own.reporting == 1 && own.suspect == 1
+                  && own.silent == 2,
+              "team: counts exclude self and agree with the age rule");
+        check(teamRowName(team, team.machines.at(0))
+                      == QStringLiteral("* workstation")
+                  && teamCellSource(team, team.machines.at(0))
+                         == QStringLiteral("relay (you)"),
+              "team: the self row is marked and named as the reader");
+        check(teamCellCpu(team, team.machines.at(1)) == QStringLiteral("34.0")
+                  && teamCellMem(team, team.machines.at(1)) == QStringLiteral("2.0 GB")
+                  && teamCellLoad(team, team.machines.at(1)) == QStringLiteral("0.82"),
+              "team: a fresh reporting row carries its values");
+        check(teamCellCpu(team, team.machines.at(2)) == QStringLiteral("--")
+                  && teamCellMem(team, team.machines.at(2)) == QStringLiteral("--")
+                  && teamCellLoad(team, team.machines.at(2)) == QStringLiteral("--"),
+              "team: a silent machine shows a dash in every value column");
+        check(teamStateCell(team, team.machines.at(2)) == QStringLiteral("silent 4m"),
+              "team: the state cell carries the age");
+        check(teamCellCpu(team, team.machines.at(3)) == QStringLiteral("--")
+                  && teamStateCell(team, team.machines.at(3)) == QStringLiteral("silent 5m"),
+              "team: a stale reporting row is silenced by the relay clock");
+        check(teamStateCell(team, team.machines.at(4)) == QStringLiteral("suspect 20s"),
+              "team: a suspect row names its gap");
+        check(teamMachineDetailText(team, team.machines.at(2))
+                      .contains(QStringLiteral("duplicate of gate-01"))
+                  && teamMachineDetailText(team, team.machines.at(2))
+                         .contains(QStringLiteral("values withheld")),
+              "team: the detail says why the values are withheld");
+        check(teamSummaryText(team, asOf).contains(QStringLiteral("4 machine(s)"))
+                  && teamSummaryText(team, asOf).contains(QStringLiteral("2 silent")),
+              "team: the summary counts the fleet without this machine");
+        check(teamNoteText(team).contains(QStringLiteral("/api/v1/machines"))
+                  && teamNoteText(team).contains(QStringLiteral("never your process list")),
+              "team: the note names the read and what it leaves behind");
+
+        // A newer fleet schema is refused, never half-parsed.
+        QByteArray newer = fleet;
+        newer.replace("\"schema\":1", "\"schema\":2");
+        TeamStatus parsed = team;
+        check(!teamParseFleetJson(newer, &parsed, &error)
+                  && error.contains(QStringLiteral("update Crowsnest")),
+              "team: a newer schema names the fix");
+        check(!teamParseFleetJson("{\"schema\":1}", &parsed, &error)
+                  && error.contains(QStringLiteral("no machines array")),
+              "team: a fleet without machines is refused");
+        check(!teamParseFleetJson("not json", &parsed, &error),
+              "team: a non-JSON answer is refused");
+
+        // The three causes never collapse into one line.
+        TeamStatus unlinked;
+        check(teamLinkText(unlinked, 0).contains(QStringLiteral("[remote] enabled"))
+                  && teamLinkText(unlinked, 0).contains(QStringLiteral("token")),
+              "team: not linked names both switches");
+        TeamStatus down;
+        down.enabled = true;
+        down.configured = true;
+        down.tokenConfigured = true;
+        down.url = QStringLiteral("https://relay.example.test");
+        down.error = QStringLiteral("Connection refused");
+        check(teamUnreachableText(down, 1000)
+                      .contains(QStringLiteral("relay unreachable"))
+                  && !teamUnreachableText(down, 1000)
+                          .contains(QStringLiteral("no machine")),
+              "team: unreachable is its own sentence");
+        check(teamNoMachinesText().contains(QStringLiteral("says nothing yet"))
+                  && teamNoMachinesText() != teamUnreachableText(down, 1000),
+              "team: an empty relay is not an unreachable relay");
+        check(teamRefusalText(404, QString())
+                      == QStringLiteral("relay does not recognise this token (404)"),
+              "team: the 404 sentence is exact");
+        check(teamRefusalText(401, QStringLiteral("token revoked"))
+                      .contains(QStringLiteral("token revoked")),
+              "team: a 401 carries the relay's detail");
+        down.answered = true;
+        down.fetchedAtMs = 1000;
+        down.error = QStringLiteral("Connection refused");
+        check(teamSummaryText(down, 61000)
+                      .contains(QStringLiteral("showing the answer from 1m ago")),
+              "team: a failed poll keeps the rows and dates them");
+
+        // Live: a chunked answer over a real socket, with the query intact.
+        {
+            QTcpServer server;
+            QByteArray seen;
+            QObject::connect(&server, &QTcpServer::newConnection, [&server, &seen]() {
+                QTcpSocket *socket = server.nextPendingConnection();
+                QObject::connect(socket, &QTcpSocket::readyRead, [socket, &seen]() {
+                    seen = socket->readAll();
+                    const QByteArray chunk = QByteArrayLiteral(
+                        "{\"schema\":1,\"asOfMs\":1760000000000,\"counts\":{},\"machines\":[]}");
+                    QByteArray reply = QByteArrayLiteral(
+                        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+                        "Connection: close\r\n\r\n");
+                    reply += QByteArray::number(chunk.size(), 16)
+                        + QByteArrayLiteral("\r\n") + chunk
+                        + QByteArrayLiteral("\r\n0\r\n\r\n");
+                    socket->write(reply);
+                    socket->flush();
+                    socket->disconnectFromHost();
+                });
+            });
+            check(server.listen(QHostAddress::LocalHost, 0),
+                  "team live: stub relay listens");
+            TeamOptions options;
+            options.enabled = true;
+            options.token = QStringLiteral("tok-123");
+            options.timeoutMs = 2000;
+            options.baseUrl =
+                QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
+            TeamStatus live;
+            std::atomic<bool> done{false};
+            std::thread worker([&]() {
+                live = probeTeam(options, 1760000000000LL);
+                done.store(true);
+            });
+            QElapsedTimer wait;
+            wait.start();
+            while (!done.load() && wait.elapsed() < 6000) {
+                QThread::msleep(10);
+                app.processEvents();
+            }
+            worker.join();
+            check(live.answered && live.machines.isEmpty()
+                      && live.error.isEmpty(),
+                  "team live: a chunked answer decodes into a fleet");
+            check(seen.contains("/api/v1/machines?limit=1000")
+                      && seen.contains("Authorization: Bearer tok-123"),
+                  "team live: the read carries the query and the bearer");
+        }
+
+        // The relay streams JSON past Go's buffer, so the transport dechunks.
+        check(fleetDechunk("5\r\nhello\r\n0\r\n\r\n") == QByteArray("hello")
+                  && fleetDechunk(QByteArray("plain body")) == QByteArray("plain body"),
+              "team: chunked answers are decoded, plain ones are untouched");
+    }
+
     std::printf("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
+
 }

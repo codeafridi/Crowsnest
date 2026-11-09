@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplaySnapshot.h"
+#include "TeamStatus.h"
 #include "HistoryLog.h"
 #include "DockerStatus.h"
 #include "WallpaperArt.h"
@@ -63,6 +64,7 @@ public:
     // here, from the last snapshot this window rendered, so the table always
     // lists this machine first (netdata's mirrored_hosts includes itself).
     void setFleetSnapshot(const FleetStatus &status);
+    void setTeamStatus(const TeamStatus &status);
 
     void setServicesSnapshot(const ServicesSnapshot &snapshot);
 
