@@ -1,11 +1,15 @@
 #include "TeamSource.h"
 
 #include "FleetSource.h"
+#include "RemoteSource.h"
 #include "RemoteStatus.h"
 
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMutexLocker>
 #include <QTimer>
+#include <QUrl>
 
 namespace {
 
@@ -14,6 +18,7 @@ constexpr int kTeamMinPollMs = 5000;
 TeamStatus linkStatus(const TeamOptions &options) {
     TeamStatus status;
     status.enabled = options.enabled;
+    status.actions = options.actions;
     status.configured = options.enabled && !options.token.isEmpty()
         && !remoteNormalizeUrl(options.baseUrl, nullptr).isEmpty();
     status.url = remoteNormalizeUrl(options.baseUrl, nullptr);
@@ -89,7 +94,103 @@ TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs) {
         return status;
     }
     status.error.clear();
+
+    // The queue is a second read on the same credential. Its failure is its
+    // own sentence: a fleet answer is still worth showing when incidents are
+    // unreachable (or refused by an older relay).
+    const TeamFetchResult queue =
+        teamHttpGet(options, QStringLiteral("/api/v1/incidents?state=open&limit=100"));
+    if (!queue.ok) {
+        status.incidentsError = queue.error;
+    } else {
+        QString queueFailure;
+        if (!teamParseIncidentsJson(queue.body, &status, &queueFailure)) {
+            status.incidentsError = queueFailure;
+        }
+    }
     return status;
+}
+
+TeamActionOutcome teamPerformAction(const TeamOptions &options,
+                                    TeamAction action,
+                                    const TeamIncident &incident,
+                                    int silenceMinutes, qint64 nowMs) {
+    TeamActionOutcome outcome;
+    if (!options.enabled) {
+        outcome.detail = QStringLiteral(
+            "[remote] enabled=false - nothing is written while the link is off");
+        return outcome;
+    }
+    if (!options.actions) {
+        outcome.detail = QStringLiteral(
+            "actions are off - set [remote] actions=true to acknowledge, close "
+            "or silence from the desktop");
+        return outcome;
+    }
+    if (options.token.isEmpty()) {
+        outcome.detail = QStringLiteral("no [remote] token= - the relay would "
+                                        "answer 401");
+        return outcome;
+    }
+    QString error;
+    const QString base = remoteNormalizeUrl(options.baseUrl, &error);
+    if (base.isEmpty()) {
+        outcome.detail = error.isEmpty() ? QStringLiteral("no relay address")
+                                         : error;
+        return outcome;
+    }
+
+    QString path;
+    QByteArray body;
+    switch (action) {
+    case TeamAction::Ack: {
+        QJsonObject object;
+        object.insert(QStringLiteral("user"), options.actor);
+        body = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        path = QStringLiteral("/api/v1/incidents/%1/ack")
+                   .arg(QString::fromLatin1(
+                       QUrl::toPercentEncoding(incident.id)));
+        break;
+    }
+    case TeamAction::Close: {
+        QJsonObject object;
+        object.insert(QStringLiteral("user"), options.actor);
+        body = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        path = QStringLiteral("/api/v1/incidents/%1/close")
+                   .arg(QString::fromLatin1(
+                       QUrl::toPercentEncoding(incident.id)));
+        break;
+    }
+    case TeamAction::Silence:
+        body = teamSilenceBody(incident, options.actor, silenceMinutes,
+                               nowMs > 0 ? nowMs
+                                         : QDateTime::currentMSecsSinceEpoch());
+        if (body.isEmpty()) {
+            outcome.detail = QStringLiteral(
+                "this incident names no machine or rule - a silence with no "
+                "target would mute the workspace");
+            return outcome;
+        }
+        path = QStringLiteral("/api/v1/silences");
+        break;
+    }
+
+    const RemotePostResult post =
+        remoteHttpPost(base + path, options.token, body, options.timeoutMs,
+                       options.caFile);
+    outcome.httpStatus = post.httpStatus;
+    if (post.httpStatus >= 200 && post.httpStatus < 300) {
+        outcome.ok = true;
+        return outcome;
+    }
+    outcome.detail = teamErrorDetail(post.body);
+    if (outcome.detail.isEmpty()) {
+        outcome.detail = post.error;
+    }
+    if (outcome.detail.isEmpty()) {
+        outcome.detail = QStringLiteral("HTTP %1").arg(post.httpStatus);
+    }
+    return outcome;
 }
 
 TeamRunner::TeamRunner(QObject *parent) : QObject(parent) {}
@@ -171,10 +272,55 @@ void TeamRunner::poll() {
             status.error.clear();
         }
     }
+
+    // The incident queue rides the same poll. A failed queue read never throws
+    // away the rows already shown; it says why it could not refresh them.
+    if (status.error.isEmpty()) {
+        const TeamFetchResult queue = teamHttpGet(
+            current, QStringLiteral("/api/v1/incidents?state=open&limit=100"));
+        status.incidentsError.clear();
+        if (!queue.ok) {
+            status.incidentsError = queue.error;
+            status.incidentsAnswered = previous.incidentsAnswered;
+            status.incidents = previous.incidents;
+        } else {
+            QString queueFailure;
+            if (!teamParseIncidentsJson(queue.body, &status, &queueFailure)) {
+                status.incidentsError = queueFailure;
+                status.incidentsAnswered = previous.incidentsAnswered;
+                status.incidents = previous.incidents;
+            }
+        }
+    } else {
+        status.incidentsAnswered = previous.incidentsAnswered;
+        status.incidents = previous.incidents;
+        status.incidentsError = previous.incidentsError;
+    }
     publish(status);
 }
 
 void TeamRunner::publish(const TeamStatus &status) {
     m_last = status;
     emit teamUpdated(status);
+}
+
+void TeamRunner::acknowledge(const TeamIncident &incident) {
+    const TeamActionOutcome outcome =
+        teamPerformAction(options(), TeamAction::Ack, incident, 0);
+    emit actionFinished(TeamAction::Ack, incident.id, outcome.ok,
+                        outcome.httpStatus, outcome.detail);
+}
+
+void TeamRunner::closeIncident(const TeamIncident &incident) {
+    const TeamActionOutcome outcome =
+        teamPerformAction(options(), TeamAction::Close, incident, 0);
+    emit actionFinished(TeamAction::Close, incident.id, outcome.ok,
+                        outcome.httpStatus, outcome.detail);
+}
+
+void TeamRunner::silenceIncident(const TeamIncident &incident, int minutes) {
+    const TeamActionOutcome outcome =
+        teamPerformAction(options(), TeamAction::Silence, incident, minutes);
+    emit actionFinished(TeamAction::Silence, incident.id, outcome.ok,
+                        outcome.httpStatus, outcome.detail);
 }

@@ -881,7 +881,8 @@ int main(int argc, char *argv[]) {
               "timeline: an absurd ring and window clamp to their ceilings");
     }
 
-    check(!defaults.remote.enabled && defaults.remote.url.isEmpty()
+    check(!defaults.remote.enabled && !defaults.remote.actions
+              && defaults.remote.url.isEmpty()
               && defaults.remote.token.isEmpty()
               && defaults.remote.intervalMs == 15000
               && defaults.remote.timeoutMs == 3000 && defaults.remote.spoolMb == 8,
@@ -899,10 +900,12 @@ int main(int argc, char *argv[]) {
                                    "interval_ms = 60000\n"
                                    "timeout_ms = 5000\n"
                                    "spool_mb = 32\n"
+                                   "actions = true\n"
                                    "ca_file = /etc/ssl/corp-ca.pem\n"));
         QString error;
         const Config c = loadConfig(path, &error);
-        check(c.remote.enabled && c.remote.url == QStringLiteral("https://relay.example.test/")
+        check(c.remote.enabled && c.remote.actions
+                  && c.remote.url == QStringLiteral("https://relay.example.test/")
                   && c.remote.token == QStringLiteral("tok-123")
                   && c.remote.name == QStringLiteral("build-box")
                   && c.remote.machineId == QStringLiteral("mid-1")

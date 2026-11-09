@@ -69,6 +69,32 @@ bool parseMachine(const QJsonObject &object, TeamMachine *machine,
     return true;
 }
 
+bool schemaOk(const QJsonObject &root, QString *error) {
+    if (!root.contains(QStringLiteral("schema"))) {
+        if (error != nullptr) {
+            *error = QStringLiteral(
+                "relay answer has no schema - it is not a Crowsnest relay");
+        }
+        return false;
+    }
+    const int schema = int(msValue(root.value(QStringLiteral("schema")), -1));
+    if (schema == kTeamSchemaVersion) {
+        return true;
+    }
+    if (error != nullptr) {
+        *error = schema > kTeamSchemaVersion
+            ? QStringLiteral("relay speaks schema %1, this client reads %2 - "
+                             "update Crowsnest")
+                  .arg(schema)
+                  .arg(kTeamSchemaVersion)
+            : QStringLiteral("relay speaks schema %1, this client reads %2 - "
+                             "update the relay")
+                  .arg(schema)
+                  .arg(kTeamSchemaVersion);
+    }
+    return false;
+}
+
 } // namespace
 
 bool teamParseFleetJson(const QByteArray &body, TeamStatus *status,
@@ -92,26 +118,7 @@ bool teamParseFleetJson(const QByteArray &body, TeamStatus *status,
         return false;
     }
     const QJsonObject root = document.object();
-    if (!root.contains(QStringLiteral("schema"))) {
-        if (error != nullptr) {
-            *error = QStringLiteral(
-                "relay answer has no schema - it is not a Crowsnest relay");
-        }
-        return false;
-    }
-    const int schema = int(msValue(root.value(QStringLiteral("schema")), -1));
-    if (schema != kTeamSchemaVersion) {
-        if (error != nullptr) {
-            *error = schema > kTeamSchemaVersion
-                ? QStringLiteral("relay speaks fleet schema %1, this client "
-                                 "reads %2 - update Crowsnest")
-                      .arg(schema)
-                      .arg(kTeamSchemaVersion)
-                : QStringLiteral("relay speaks fleet schema %1, this client "
-                                 "reads %2 - update the relay")
-                      .arg(schema)
-                      .arg(kTeamSchemaVersion);
-        }
+    if (!schemaOk(root, error)) {
         return false;
     }
     const QJsonValue machines = root.value(QStringLiteral("machines"));
@@ -489,4 +496,241 @@ QString teamMachineDetailText(const TeamStatus &status,
                                 "threshold is a guess");
     }
     return parts.join(QStringLiteral(" - "));
+}
+
+// ---------------------------------------------------------------------------
+// M152: the incident queue and the action gates.
+// ---------------------------------------------------------------------------
+
+bool teamParseIncidentsJson(const QByteArray &body, TeamStatus *status,
+                            QString *error) {
+    if (error != nullptr) {
+        error->clear();
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer is not JSON: %1")
+                         .arg(parseError.errorString());
+        }
+        return false;
+    }
+    if (!document.isObject()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer is not an incident document");
+        }
+        return false;
+    }
+    const QJsonObject root = document.object();
+    if (!schemaOk(root, error)) {
+        return false;
+    }
+    const QJsonValue rows = root.value(QStringLiteral("incidents"));
+    if (!rows.isArray()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer has no incidents array");
+        }
+        return false;
+    }
+
+    QList<TeamIncident> parsed;
+    const QJsonArray array = rows.toArray();
+    parsed.reserve(array.size());
+    for (const QJsonValue &row : array) {
+        if (!row.isObject()) {
+            if (error != nullptr) {
+                *error = QStringLiteral("an incident row is not an object");
+            }
+            return false;
+        }
+        const QJsonObject object = row.toObject();
+        TeamIncident incident;
+        incident.id = object.value(QStringLiteral("id")).toString().trimmed();
+        if (incident.id.isEmpty()) {
+            if (error != nullptr) {
+                *error = QStringLiteral("an incident row has no id");
+            }
+            return false;
+        }
+        incident.groupKey = object.value(QStringLiteral("groupKey")).toString();
+        incident.ruleId = object.value(QStringLiteral("ruleId")).toString();
+        incident.machineId =
+            object.value(QStringLiteral("machineId")).toString();
+        incident.severity =
+            object.value(QStringLiteral("severity")).toString();
+        incident.title = object.value(QStringLiteral("title")).toString();
+        incident.state = object.value(QStringLiteral("state")).toString();
+        incident.owner = object.value(QStringLiteral("owner")).toString();
+        incident.acknowledgedBy =
+            object.value(QStringLiteral("acknowledgedBy")).toString();
+        incident.closedBy =
+            object.value(QStringLiteral("closedBy")).toString();
+        incident.openedAtMs =
+            msValue(object.value(QStringLiteral("openedAtMs")), -1);
+        incident.acknowledgedAtMs =
+            msValue(object.value(QStringLiteral("acknowledgedAtMs")), -1);
+        incident.resolvedAtMs =
+            msValue(object.value(QStringLiteral("resolvedAtMs")), -1);
+        incident.refires =
+            int(msValue(object.value(QStringLiteral("refires")), 0));
+        incident.flapping =
+            object.value(QStringLiteral("flapping")).toBool(false);
+        for (const QJsonValue &machine :
+             object.value(QStringLiteral("machines")).toArray()) {
+            if (machine.isString()) {
+                incident.machines.append(machine.toString());
+            }
+        }
+        parsed.append(incident);
+    }
+    if (status != nullptr) {
+        status->incidentsAnswered = true;
+        status->incidents = parsed;
+    }
+    return true;
+}
+
+QList<TeamIncident> teamActiveIncidents(const TeamStatus &status) {
+    QList<TeamIncident> out;
+    for (const TeamIncident &incident : status.incidents) {
+        if (incident.state != QLatin1String("resolved")) {
+            out.append(incident);
+        }
+    }
+    return out;
+}
+
+QString teamIncidentStateCell(const TeamStatus &status,
+                              const TeamIncident &incident) {
+    if (incident.state == QLatin1String("resolved")) {
+        if (incident.closedBy.isEmpty()) {
+            return QStringLiteral("resolved");
+        }
+        return incident.closedBy == status.actor
+            ? QStringLiteral("closed by you")
+            : QStringLiteral("closed by %1").arg(incident.closedBy);
+    }
+    if (incident.state == QLatin1String("acknowledged")) {
+        if (incident.acknowledgedBy.isEmpty()) {
+            return QStringLiteral("acknowledged");
+        }
+        return incident.acknowledgedBy == status.actor
+            ? QStringLiteral("ack by you")
+            : QStringLiteral("ack by %1").arg(incident.acknowledgedBy);
+    }
+    return QStringLiteral("open");
+}
+
+QString teamIncidentMachineName(const TeamStatus &status,
+                                const QString &machineId) {
+    if (machineId.isEmpty()) {
+        return QStringLiteral("--");
+    }
+    for (const TeamMachine &machine : status.machines) {
+        if (machine.id == machineId) {
+            return machine.name.isEmpty() ? machine.id : machine.name;
+        }
+    }
+    return machineId;
+}
+
+QString teamIncidentSummaryText(const TeamStatus &status) {
+    if (!status.incidentsAnswered) {
+        return QStringLiteral("the relay's incident queue has not answered yet");
+    }
+    int open = 0;
+    int acked = 0;
+    for (const TeamIncident &incident : teamActiveIncidents(status)) {
+        if (incident.state == QLatin1String("acknowledged")) {
+            ++acked;
+        } else {
+            ++open;
+        }
+    }
+    if (open == 0 && acked == 0) {
+        return QStringLiteral("no open incidents on the relay");
+    }
+    QStringList parts;
+    parts << QStringLiteral("%1 open").arg(open);
+    parts << QStringLiteral("%1 acknowledged").arg(acked);
+    return QStringLiteral("%1 - newest first").arg(parts.join(QStringLiteral(", ")));
+}
+
+QString teamIncidentDetailText(const TeamStatus &status,
+                               const TeamIncident &incident) {
+    QStringList parts;
+    parts << QStringLiteral("%1 [%2]").arg(incident.title, incident.severity);
+    parts << QStringLiteral("machine %1")
+                 .arg(teamIncidentMachineName(status, incident.machineId));
+    parts << QStringLiteral("rule %1").arg(incident.ruleId);
+    parts << teamIncidentStateCell(status, incident);
+    if (incident.openedAtMs > 0) {
+        parts << QStringLiteral("opened %1 ago")
+                     .arg(timelineAgeText(
+                         qMax<qint64>(0, status.asOfMs - incident.openedAtMs)));
+    }
+    if (incident.refires > 0) {
+        parts << QStringLiteral("%1 re-fire(s)").arg(incident.refires);
+    }
+    if (incident.flapping) {
+        parts << QStringLiteral("[FLAPPING]");
+    }
+    if (incident.machines.size() > 1) {
+        parts << QStringLiteral("folded over %1 machine(s)")
+                     .arg(incident.machines.size());
+    }
+    if (!incident.owner.isEmpty()
+        && incident.owner != incident.acknowledgedBy) {
+        parts << QStringLiteral("owner %1").arg(incident.owner);
+    }
+    return parts.join(QStringLiteral(" - "));
+}
+
+QString teamActionsGateText(const TeamStatus &status) {
+    // The switches come first: "token is read-only" is not the answer to a
+    // question asked with the feature turned off.
+    if (!status.enabled) {
+        return QStringLiteral(
+            "actions need [remote] enabled=true - this page reads nothing and "
+            "writes nothing while the link is off");
+    }
+    if (!status.actions) {
+        return QStringLiteral(
+            "actions are off - set [remote] actions=true to acknowledge, close "
+            "or silence from this page");
+    }
+    if (!status.actionsBlocked.isEmpty()) {
+        return QStringLiteral("actions disabled: %1").arg(status.actionsBlocked);
+    }
+    return QStringLiteral(
+        "actions on - acknowledge, close and silence post with the [remote] "
+        "token; the next read replaces what this page showed");
+}
+
+QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,
+                           int minutes, qint64 nowMs) {
+    QString matcher;
+    QString scope;
+    if (!incident.machineId.isEmpty()) {
+        matcher = incident.machineId;
+        scope = QStringLiteral("machine");
+    } else if (!incident.ruleId.isEmpty()) {
+        matcher = incident.ruleId;
+        scope = QStringLiteral("rule");
+    } else {
+        // A silence with no target would mute the whole workspace; refusing is
+        // the only honest answer.
+        return QByteArray();
+    }
+    const qint64 endsAt = nowMs + qint64(qMax(1, minutes)) * 60000;
+    QJsonObject body;
+    body.insert(QStringLiteral("matcher"), matcher);
+    body.insert(QStringLiteral("scope"), scope);
+    body.insert(QStringLiteral("startsAtMs"), double(nowMs));
+    body.insert(QStringLiteral("endsAtMs"), double(endsAt));
+    body.insert(QStringLiteral("createdBy"), actor);
+    body.insert(QStringLiteral("comment"),
+                QStringLiteral("muted from the HUD: %1").arg(incident.title));
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }

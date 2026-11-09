@@ -65,6 +65,8 @@ public:
     // lists this machine first (netdata's mirrored_hosts includes itself).
     void setFleetSnapshot(const FleetStatus &status);
     void setTeamStatus(const TeamStatus &status);
+    void setTeamActionStatus(TeamAction action, const QString &incidentId,
+                             bool ok, int httpStatus, const QString &detail);
 
     void setServicesSnapshot(const ServicesSnapshot &snapshot);
 
@@ -97,6 +99,9 @@ signals:
     void idleContainersChanged(int count);
     void serviceRestartRequested(const QString &unit);
     void containerActionRequested(const QString &id, const QString &verb);
+    void teamAckRequested(const TeamIncident &incident);
+    void teamCloseRequested(const TeamIncident &incident);
+    void teamSilenceRequested(const TeamIncident &incident, int minutes);
     // M97: one report's worth of bytes. Emitted with the sample id already
     // fixed, so a retry of the same envelope cannot mint a second report.
     void remoteEnvelopeReady(const RemoteEnvelope &envelope);

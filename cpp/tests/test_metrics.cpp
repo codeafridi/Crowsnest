@@ -8669,10 +8669,17 @@ int main(int argc, char *argv[]) {
         {
             QTcpServer server;
             QByteArray seen;
-            QObject::connect(&server, &QTcpServer::newConnection, [&server, &seen]() {
+            auto replied = std::make_shared<bool>(false);
+            QObject::connect(&server, &QTcpServer::newConnection,
+                             [&server, &seen, replied]() {
                 QTcpSocket *socket = server.nextPendingConnection();
-                QObject::connect(socket, &QTcpSocket::readyRead, [socket, &seen]() {
-                    seen = socket->readAll();
+                QObject::connect(socket, &QTcpSocket::readyRead,
+                                 [socket, &seen, replied]() {
+                    seen += socket->readAll();
+                    if (*replied || !seen.contains("\r\n\r\n")) {
+                        return;
+                    }
+                    *replied = true;
                     const QByteArray chunk = QByteArrayLiteral(
                         "{\"schema\":1,\"asOfMs\":1760000000000,\"counts\":{},\"machines\":[]}");
                     QByteArray reply = QByteArrayLiteral(
@@ -8719,6 +8726,164 @@ int main(int argc, char *argv[]) {
         check(fleetDechunk("5\r\nhello\r\n0\r\n\r\n") == QByteArray("hello")
                   && fleetDechunk(QByteArray("plain body")) == QByteArray("plain body"),
               "team: chunked answers are decoded, plain ones are untouched");
+    }
+
+    // --- M152: the incident queue, the three verbs and their gates.
+    {
+        const QByteArray queue = R"({"schema":1,"asOfMs":1760000000000,"count":3,
+          "incidents":[
+            {"id":"11111111-1111-4111-8111-111111111111","ruleId":"app_cpu",
+             "machineId":"m-db","severity":"critical","title":"cpu high",
+             "state":"open","openedAtMs":1759999900000},
+            {"id":"22222222-2222-4222-8222-222222222222","ruleId":"disk_full",
+             "machineId":"m-edge","severity":"warning","title":"disk low",
+             "state":"acknowledged","acknowledgedBy":"kay","owner":"kay",
+             "openedAtMs":1759999000000},
+            {"id":"33333333-3333-4333-8333-333333333333","ruleId":"old_rule",
+             "severity":"info","title":"old","state":"resolved",
+             "closedBy":"bo","openedAtMs":1759998000000}]})";
+        TeamStatus team;
+        team.enabled = true;
+        team.configured = true;
+        team.actions = true;
+        team.actor = QStringLiteral("kay");
+        team.asOfMs = 1760000000000LL;
+        QString error;
+        check(teamParseIncidentsJson(queue, &team, &error),
+              "team incidents: the relay's queue parses");
+        check(team.incidents.size() == 3 && team.incidentsAnswered,
+              "team incidents: every row lands");
+        check(teamActiveIncidents(team).size() == 2,
+              "team incidents: resolved rows leave the queue");
+        check(teamIncidentStateCell(team, team.incidents.at(0))
+                      == QStringLiteral("open")
+                  && teamIncidentStateCell(team, team.incidents.at(1))
+                         == QStringLiteral("ack by you")
+                  && teamIncidentStateCell(team, team.incidents.at(2))
+                         == QStringLiteral("closed by bo"),
+              "team incidents: the state cell names who holds it");
+        team.actor = QStringLiteral("ana");
+        check(teamIncidentStateCell(team, team.incidents.at(1))
+                      == QStringLiteral("ack by kay"),
+              "team incidents: the server's holder wins over the reader");
+        team.actor = QStringLiteral("kay");
+        check(teamIncidentSummaryText(team).contains(QStringLiteral("1 open"))
+                  && teamIncidentSummaryText(team).contains(
+                      QStringLiteral("1 acknowledged")),
+              "team incidents: the summary counts the active queue");
+        check(teamIncidentDetailText(team, team.incidents.at(0))
+                      .contains(QStringLiteral("rule app_cpu"))
+                  && teamIncidentDetailText(team, team.incidents.at(1))
+                         .contains(QStringLiteral("ack by you")),
+              "team incidents: the detail names the rule and the holder");
+
+        TeamStatus noActions;
+        noActions.enabled = true;
+        check(teamActionsGateText(noActions).contains(
+                  QStringLiteral("[remote] actions=true")),
+              "team actions: the switch is named when they are off");
+        TeamStatus blocked;
+        blocked.enabled = true;
+        blocked.actions = true;
+        blocked.actionsBlocked = QStringLiteral("token is read-only");
+        check(teamActionsGateText(blocked).contains(
+                  QStringLiteral("token is read-only")),
+              "team actions: a read-only token is the exact reason");
+
+        const QByteArray silence = teamSilenceBody(team.incidents.at(0),
+                                                   QStringLiteral("kay"), 30,
+                                                   1760000000000LL);
+        const QJsonObject body = QJsonDocument::fromJson(silence).object();
+        check(body.value(QStringLiteral("matcher")).toString()
+                      == QStringLiteral("m-db")
+                  && body.value(QStringLiteral("scope")).toString()
+                         == QStringLiteral("machine")
+                  && qint64(body.value(QStringLiteral("endsAtMs")).toDouble())
+                         == 1760000000000LL + 30 * 60000
+                  && body.value(QStringLiteral("createdBy")).toString()
+                         == QStringLiteral("kay")
+                  && body.value(QStringLiteral("comment"))
+                         .toString()
+                         .contains(QStringLiteral("cpu high")),
+              "team actions: a silence carries its target, window and author");
+        TeamIncident untargeted;
+        check(teamSilenceBody(untargeted, QStringLiteral("kay"), 30,
+                              1760000000000LL)
+                      .isEmpty(),
+              "team actions: a silence with no target is refused, not widened");
+
+        // The gates refuse before any socket opens, and a permitted ack is one
+        // POST with the bearer and the actor. The stub counts connections, so
+        // "no write when the link is off" is observed on the wire.
+        QTcpServer server;
+        std::atomic<int> connections{0};
+        QByteArray seen;
+        auto replied = std::make_shared<bool>(false);
+        QObject::connect(&server, &QTcpServer::newConnection,
+                         [&server, &seen, &connections, replied]() {
+            ++connections;
+            QTcpSocket *socket = server.nextPendingConnection();
+            QObject::connect(socket, &QTcpSocket::readyRead,
+                             [socket, &seen, replied]() {
+                seen += socket->readAll();
+                if (*replied || !seen.contains("\r\n\r\n")) {
+                    return;
+                }
+                *replied = true;
+                const QByteArray body = QByteArrayLiteral("{}");
+                socket->write(QByteArrayLiteral(
+                                  "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+                                  "Connection: close\r\n\r\n")
+                              + body);
+                socket->flush();
+                socket->disconnectFromHost();
+            });
+        });
+        check(server.listen(QHostAddress::LocalHost, 0),
+              "team actions: stub relay listens");
+        TeamOptions options;
+        options.enabled = false;
+        options.actions = true;
+        options.token = QStringLiteral("tok-1");
+        options.actor = QStringLiteral("kay");
+        options.timeoutMs = 1500;
+        options.baseUrl =
+            QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
+        TeamActionOutcome gated;
+        std::atomic<bool> done{false};
+        std::thread worker([&]() {
+            gated = teamPerformAction(options, TeamAction::Ack,
+                                      team.incidents.at(0), 0);
+            options.enabled = true;
+            options.actions = false;
+            const TeamActionOutcome noActions = teamPerformAction(
+                options, TeamAction::Ack, team.incidents.at(0), 0);
+            options.actions = true;
+            const TeamActionOutcome sent = teamPerformAction(
+                options, TeamAction::Ack, team.incidents.at(0), 0);
+            gated.detail += QLatin1Char('\n') + noActions.detail;
+            gated.ok = gated.ok || noActions.ok || sent.ok;
+            gated.httpStatus = sent.httpStatus;
+            done.store(true);
+        });
+        QElapsedTimer wait;
+        wait.start();
+        while (!done.load() && wait.elapsed() < 8000) {
+            QThread::msleep(10);
+            app.processEvents();
+        }
+        worker.join();
+        check(connections.load() == 1,
+              "team actions: no write leaves the machine while the link or the "
+              "switch is off");
+        check(gated.ok && gated.httpStatus == 200
+                  && seen.contains(
+                      "/api/v1/incidents/11111111-1111-4111-8111-111111111111/ack")
+                  && seen.contains("Authorization: Bearer tok-1")
+                  && seen.contains("\"user\":\"kay\""),
+              "team actions: a permitted ack posts once with the actor");
+        check(gated.detail.contains(QStringLiteral("[remote] actions=true")),
+              "team actions: the off switch is the refusal's own words");
     }
 
     std::printf("%d failure(s)\n", failures);

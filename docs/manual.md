@@ -600,6 +600,7 @@ same question from the same rows.
 enabled = true
 url = https://relay.example.com
 token = the-machine-ingest-token
+actions = false         ; the HUD may read; let it act only on purpose
 ```
 
 The page shows MACHINES / REPORTING / SILENT / RELAY tiles, then the relay's own
@@ -621,8 +622,27 @@ lies:
 
 A `404` from an old relay, a `401` from a revoked token and a transport failure
 each name their own fix; `[remote] enabled` and `[remote] token` are named in the
-unlinked state. The page never writes unless `[remote] actions=true`, which is
-the next section.
+unlinked state.
+
+Below the fleet is the relay's incident queue: severity, title, machine, who
+holds it, age and owner. Three verbs act on the selected row, and none of them
+is sent unless `[remote] actions=true`:
+
+- **ACK** posts once and shows `ack by you (pending)` until the next read; if
+  the relay says somebody else acknowledged it, that read wins and the row
+  says who. There is no unacknowledge, deliberately — the relay has no verb
+  for it.
+- **CLOSE** takes two presses: the first names the target (`PRESS AGAIN:
+  <title>`), the second posts. Closing is a statement of fact, not a mute — a
+  condition that is still true opens a new incident.
+- **SILENCE 30M** mutes the incident's machine (or its rule when the incident
+  has no machine) on the relay, with the window, author and comment it posted.
+
+A write the relay refuses is shown, not swallowed: the row reverts and the line
+reads `not applied: <reason>`. A read-only API key answers `403 token is
+read-only` and disables the verbs with that exact reason; an ingest token
+answers `401` and the line says it can only report, so actions need a write API
+key. Turning `[remote] actions` off disables the verbs and names the switch.
 
 ## Advanced (optional)
 

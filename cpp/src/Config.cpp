@@ -657,6 +657,10 @@ Config loadConfig(const QString &path, QString *errorMessage) {
             config.remote.enabled =
                 settings.value(QStringLiteral("enabled")).toBool();
         }
+        if (settings.contains(QStringLiteral("actions"))) {
+            config.remote.actions =
+                settings.value(QStringLiteral("actions")).toBool();
+        }
         config.remote.url =
             settings.value(QStringLiteral("url")).toString().trimmed();
         config.remote.token =

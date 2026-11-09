@@ -931,16 +931,21 @@ int main(int argc, char *argv[]) {
     // with [remote] enabled=false shows the switch, never a socket.
     TeamOptions teamOptions;
     teamOptions.enabled = config.remote.enabled;
+    teamOptions.actions = config.remote.actions;
     teamOptions.baseUrl = config.remote.url;
     teamOptions.token = config.remote.token;
     teamOptions.caFile = config.remote.caFile;
     teamOptions.selfId = config.remote.machineId;
-    teamOptions.actor = config.remote.name.trimmed();
+    teamOptions.actor = config.remote.name.trimmed().isEmpty()
+        ? remoteShortHostname()
+        : config.remote.name.trimmed();
     teamOptions.pollMs = config.remote.intervalMs;
     teamOptions.timeoutMs = config.remote.timeoutMs;
     hud.setTeamStatus(teamStatusFromOptions(teamOptions));
     if (config.remote.enabled) {
         qRegisterMetaType<TeamStatus>("TeamStatus");
+        qRegisterMetaType<TeamIncident>("TeamIncident");
+        qRegisterMetaType<TeamAction>("TeamAction");
         auto *teamThread = new QThread;
         auto *teamRunner = new TeamRunner;
         teamRunner->moveToThread(teamThread);
@@ -951,6 +956,14 @@ int main(int argc, char *argv[]) {
                          &TeamRunner::deleteLater);
         QObject::connect(teamRunner, &TeamRunner::teamUpdated, &hud,
                          &HudWindow::setTeamStatus);
+        QObject::connect(&hud, &HudWindow::teamAckRequested, teamRunner,
+                         &TeamRunner::acknowledge);
+        QObject::connect(&hud, &HudWindow::teamCloseRequested, teamRunner,
+                         &TeamRunner::closeIncident);
+        QObject::connect(&hud, &HudWindow::teamSilenceRequested, teamRunner,
+                         &TeamRunner::silenceIncident);
+        QObject::connect(teamRunner, &TeamRunner::actionFinished, &hud,
+                         &HudWindow::setTeamActionStatus);
         teamThread->start();
         logLine(QStringLiteral("team: reading the relay fleet every %1 ms")
                     .arg(teamOptions.pollMs));

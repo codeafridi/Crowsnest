@@ -315,6 +315,12 @@ HudWindow::HudWindow(QWidget *parent)
             &HudWindow::serviceRestartRequested);
     connect(m_panel, &DashboardPanel::containerActionRequested, this,
             &HudWindow::containerActionRequested);
+    connect(m_panel, &DashboardPanel::teamAckRequested, this,
+            &HudWindow::teamAckRequested);
+    connect(m_panel, &DashboardPanel::teamCloseRequested, this,
+            &HudWindow::teamCloseRequested);
+    connect(m_panel, &DashboardPanel::teamSilenceRequested, this,
+            &HudWindow::teamSilenceRequested);
     connect(m_panel, &DashboardPanel::timelineFocusRequested, this,
             &HudWindow::focusTimeline);
     connect(m_panel, &DashboardPanel::timelineFocusCleared, this, [this]() {
@@ -366,6 +372,15 @@ void HudWindow::setFleetSnapshot(const FleetStatus &status) {
 void HudWindow::setTeamStatus(const TeamStatus &status) {
     if (m_panel != nullptr) {
         m_panel->setTeamStatus(status);
+    }
+}
+
+void HudWindow::setTeamActionStatus(TeamAction action, const QString &incidentId,
+                                    bool ok, int httpStatus,
+                                    const QString &detail) {
+    if (m_panel != nullptr) {
+        m_panel->setTeamActionStatus(action, incidentId, ok, httpStatus,
+                                     detail);
     }
 }
 

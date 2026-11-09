@@ -37,6 +37,7 @@ class QListWidget;
 class QStackedWidget;
 class QTreeWidget;
 class QSlider;
+class QTimer;
 class QPushButton;
 class QDoubleSpinBox;
 class QSpinBox;
@@ -154,6 +155,10 @@ public:
     void setFleetSnapshot(const FleetStatus &status);
     // M151: the relay's own fleet, read with the [remote] credential.
     void setTeamStatus(const TeamStatus &status);
+    // M152: what the relay answered a write with. The panel owns the optimistic
+    // row, so this either clears it (ok) or reverts it and says why.
+    void setTeamActionStatus(TeamAction action, const QString &incidentId,
+                             bool ok, int httpStatus, const QString &detail);
 
     void setSettingsInfo(const SettingsInfo &info);
     void setHistoryView(const HistoryViewInfo &view);
@@ -192,6 +197,9 @@ signals:
     void timelineFocusCleared();
     void collapseRequested();
     void monitorChanged(const AlertRule &rule);
+    void teamAckRequested(const TeamIncident &incident);
+    void teamCloseRequested(const TeamIncident &incident);
+    void teamSilenceRequested(const TeamIncident &incident, int minutes);
     void monitorsResetRequested();
     void historyExportRequested(const QString &format);
     void historySeekRequested(int index);
@@ -376,6 +384,25 @@ private:
     QTreeWidget *m_teamTable = nullptr;
     TeamStatus m_team;
     QString m_teamSelectedId;
+    QLabel *m_teamIncidentSummary = nullptr;
+    QLabel *m_teamIncidentDetail = nullptr;
+    QLabel *m_teamActionStatus = nullptr;
+    QTreeWidget *m_teamIncidentTable = nullptr;
+    QPushButton *m_teamAck = nullptr;
+    QPushButton *m_teamClose = nullptr;
+    QPushButton *m_teamSilence = nullptr;
+    QTimer *m_teamCloseTimer = nullptr;
+    QString m_teamSelectedIncidentId;
+    QString m_teamCloseArmedId;
+    QHash<QString, QString> m_teamPending;
+    QString m_teamBlocked;
+
+    void renderTeamIncidents();
+    void updateTeamActions();
+    const TeamIncident *teamIncidentById(const QString &id) const;
+    bool teamActionsAllowed() const;
+    void armTeamClose(const TeamIncident &incident);
+    void clearTeamClose();
     QLabel *m_diskSummary = nullptr;
     QLabel *m_diskTopNote = nullptr;
     QLabel *m_diskTop = nullptr;

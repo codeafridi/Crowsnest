@@ -107,6 +107,11 @@ struct RemoteOptions {
     // [remote] enabled: off by default. Turning it on is the whole upgrade -
     // there is no licence check, and the local console never depends on it.
     bool enabled = false;
+    // [remote] actions: whether the Team page may acknowledge, close and
+    // silence from the HUD. Separate from `enabled` on purpose - reading the
+    // relay's fleet is harmless, and a HUD that can end someone's incident
+    // with one click has to be asked for twice.
+    bool actions = false;
     // [remote] url: the relay base. A bare host means https (hosted relay); a
     // self-hosted relay states http:// explicitly.
     QString url;

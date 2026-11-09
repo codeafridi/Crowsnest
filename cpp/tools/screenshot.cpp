@@ -16,6 +16,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStackedWidget>
+#include <QTreeWidget>
 #include <QStringList>
 
 #include <cmath>
@@ -1638,7 +1639,48 @@ int main(int argc, char *argv[]) {
                         QStringLiteral("silent"), 420000, 15000, 88.0,
                         524288, 9.9),
         };
+        TeamIncident cpu;
+        cpu.id = QStringLiteral("11111111-1111-4111-8111-111111111111");
+        cpu.ruleId = QStringLiteral("app_cpu");
+        cpu.machineId = QStringLiteral("m-db");
+        cpu.severity = QStringLiteral("critical");
+        cpu.title = QStringLiteral("focused app CPU above 90%");
+        cpu.state = QStringLiteral("open");
+        cpu.openedAtMs = now - 240000;
+        TeamIncident silent;
+        silent.id = QStringLiteral("22222222-2222-4222-8222-222222222222");
+        silent.ruleId = QStringLiteral("machine_silent");
+        silent.machineId = QStringLiteral("m-ci");
+        silent.severity = QStringLiteral("warning");
+        silent.title = QStringLiteral("ci-runner-7 went quiet");
+        silent.state = QStringLiteral("acknowledged");
+        silent.acknowledgedBy = QStringLiteral("kay");
+        silent.owner = QStringLiteral("kay");
+        silent.openedAtMs = now - 420000;
+        TeamIncident disk;
+        disk.id = QStringLiteral("33333333-3333-4333-8333-333333333333");
+        disk.ruleId = QStringLiteral("disk_free");
+        disk.machineId = QStringLiteral("m-edge");
+        disk.severity = QStringLiteral("warning");
+        disk.title = QStringLiteral("edge-01 disk free below 8%");
+        disk.state = QStringLiteral("open");
+        disk.openedAtMs = now - 60000;
+        team.incidents = {cpu, silent, disk};
+        team.incidentsAnswered = true;
+        team.actions = true;
         panel.setTeamStatus(team);
+        if (auto *table = panel.findChild<QTreeWidget *>(
+                QStringLiteral("ddTeamTable"))) {
+            if (table->topLevelItemCount() > 1) {
+                table->setCurrentItem(table->topLevelItem(1));
+            }
+        }
+        if (auto *queue = panel.findChild<QTreeWidget *>(
+                QStringLiteral("ddTeamIncidentTable"))) {
+            if (queue->topLevelItemCount() > 0) {
+                queue->setCurrentItem(queue->topLevelItem(0));
+            }
+        }
         app.processEvents();
     };
 

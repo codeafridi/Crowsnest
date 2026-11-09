@@ -2416,6 +2416,128 @@ int main(int argc, char *argv[]) {
                   "team page states a 404 in the exact relay words");
         }
 
+        {
+            // M152: the incident queue and the three verbs. Two presses for a
+            // close, one for an ack, and the switch is the reason a button is
+            // dead - never a quiet no-op.
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            TeamStatus team;
+            team.enabled = true;
+            team.configured = true;
+            team.actions = true;
+            team.tokenConfigured = true;
+            team.url = QStringLiteral("https://relay.example.test");
+            team.selfId = QStringLiteral("m-self");
+            team.actor = QStringLiteral("kay");
+            team.answered = true;
+            team.asOfMs = now;
+            team.fetchedAtMs = now - 1000;
+            TeamIncident open;
+            open.id = QStringLiteral("11111111-1111-4111-8111-111111111111");
+            open.ruleId = QStringLiteral("app_cpu");
+            open.machineId = QStringLiteral("m-self");
+            open.severity = QStringLiteral("critical");
+            open.title = QStringLiteral("focused app CPU high");
+            open.state = QStringLiteral("open");
+            open.openedAtMs = now - 120000;
+            TeamIncident acked = open;
+            acked.id = QStringLiteral("22222222-2222-4222-8222-222222222222");
+            acked.title = QStringLiteral("disk almost full");
+            acked.severity = QStringLiteral("warning");
+            acked.state = QStringLiteral("acknowledged");
+            acked.acknowledgedBy = QStringLiteral("ana");
+            acked.owner = QStringLiteral("ana");
+            team.incidents = {open, acked};
+            team.incidentsAnswered = true;
+            hud.setTeamStatus(team);
+
+            auto *incidentTable = hud.findChild<QTreeWidget *>(
+                QStringLiteral("ddTeamIncidentTable"));
+            auto *ackButton =
+                hud.findChild<QPushButton *>(QStringLiteral("ddTeamAck"));
+            auto *closeButton =
+                hud.findChild<QPushButton *>(QStringLiteral("ddTeamClose"));
+            auto *actionStatus = hud.findChild<QLabel *>(
+                QStringLiteral("ddTeamActionStatus"));
+            check(incidentTable != nullptr
+                      && incidentTable->topLevelItemCount() == 2
+                      && incidentTable->topLevelItem(1)->text(3)
+                             == QStringLiteral("ack by ana"),
+                  "team incidents: the relay's holder is shown, not assumed");
+            int ackCount = 0;
+            QString ackedId;
+            QObject::connect(&hud, &HudWindow::teamAckRequested,
+                             [&ackCount, &ackedId](const TeamIncident &incident) {
+                                 ++ackCount;
+                                 ackedId = incident.id;
+                             });
+            int closeCount = 0;
+            QObject::connect(&hud, &HudWindow::teamCloseRequested,
+                             [&closeCount](const TeamIncident &) { ++closeCount; });
+
+            incidentTable->setCurrentItem(incidentTable->topLevelItem(0));
+            check(ackButton != nullptr && ackButton->isEnabled(),
+                  "team actions: ack is live when the switch, token and "
+                  "selection allow it");
+            ackButton->click();
+            check(ackCount == 1 && ackedId == open.id,
+                  "team actions: ack posts once for the selected incident");
+            check(incidentTable->topLevelItem(0)->text(3)
+                      == QStringLiteral("ack by you (pending)"),
+                  "team actions: the ack row is optimistic until the read");
+            ackButton->click();
+            check(ackCount == 1, "team actions: a pending ack is not sent twice");
+
+            // The server says somebody else has it: the next read wins.
+            acked.acknowledgedBy = QStringLiteral("ana");
+            TeamStatus ackedByOther = team;
+            ackedByOther.incidents = {acked};
+            hud.setTeamStatus(ackedByOther);
+            check(incidentTable->topLevelItem(0)->text(3)
+                      == QStringLiteral("ack by ana"),
+                  "team actions: server truth replaces the optimistic row");
+
+            hud.setTeamStatus(team);
+            incidentTable->setCurrentItem(incidentTable->topLevelItem(0));
+            closeButton->click();
+            check(closeCount == 0
+                      && closeButton->text().startsWith(
+                          QStringLiteral("PRESS AGAIN:")),
+                  "team actions: close names its target before it acts");
+            closeButton->click();
+            check(closeCount == 1,
+                  "team actions: the second press closes exactly once");
+            check(incidentTable->topLevelItem(0)->text(3)
+                      == QStringLiteral("closed by you (pending)"),
+                  "team actions: the close row is optimistic until the read");
+
+            // A refusal reverts the row and keeps the relay's words.
+            hud.setTeamActionStatus(TeamAction::Ack, open.id, false, 403,
+                                    QStringLiteral("token is read-only"));
+            check(actionStatus != nullptr
+                      && actionStatus->text().startsWith(
+                          QStringLiteral("not applied:"))
+                      && actionStatus->text().contains(
+                          QStringLiteral("token is read-only"))
+                      && !ackButton->isEnabled(),
+                  "team actions: a read-only refusal disables the verbs with the "
+                  "exact reason");
+
+            // The switch is named when actions are off, and a press does
+            // nothing at all.
+            TeamStatus switchedOff = team;
+            switchedOff.actions = false;
+            switchedOff.actionsBlocked.clear();
+            hud.setTeamStatus(switchedOff);
+            const int before = ackCount;
+            incidentTable->setCurrentItem(incidentTable->topLevelItem(0));
+            ackButton->click();
+            check(!ackButton->isEnabled() && ackCount == before
+                      && actionStatus->text().contains(
+                          QStringLiteral("[remote] actions=true")),
+                  "team actions: the off switch is named and no verb is sent");
+        }
+
         SettingsInfo info;
         info.version = QStringLiteral("9.9.9-test");
         info.configPath = QStringLiteral("/tmp/crowsnest.conf");

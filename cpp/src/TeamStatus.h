@@ -59,10 +59,47 @@ struct TeamCounts {
     int pruned = 0;
 };
 
+// ---------------------------------------------------------------------------
+// M152: the relay's incident work queue and the three verbs the HUD may send.
+// PagerDuty's model is the one the relay already speaks: triggered/acknowledged/
+// resolved, an acknowledgement list with who and when, and `assignments` empty
+// once resolved. The HUD never invents an owner: the row prints whoever the
+// relay says holds it.
+// ---------------------------------------------------------------------------
+
+enum class TeamAction { Ack, Close, Silence };
+
+struct TeamIncident {
+    QString id;
+    QString groupKey;
+    QString ruleId;
+    QString machineId;
+    QString severity; // critical | warning | info
+    QString title;
+    QString state; // open | acknowledged | resolved
+    QString owner;
+    QString acknowledgedBy;
+    QString closedBy;
+    qint64 openedAtMs = -1;
+    qint64 acknowledgedAtMs = -1;
+    qint64 resolvedAtMs = -1;
+    int refires = 0;
+    bool flapping = false;
+    QStringList machines;
+};
+
+// The POST body for POST /api/v1/silences. Empty when the incident carries
+// neither a machine nor a rule, because a silence with no target is a silence
+// of everything.
+QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,
+                           int minutes, qint64 nowMs);
+
 struct TeamStatus {
     // The link, read from [remote].
     bool enabled = false;
     bool configured = false; // enabled + a parseable url + a token
+    bool actions = false;    // [remote] actions
+    QString actionsBlocked;  // the relay's refusal, once a write was refused
     QString url;             // normalized base, no path
     bool tokenConfigured = false;
     QString selfId;   // this machine's relay id ([remote] machine_id)
@@ -79,7 +116,31 @@ struct TeamStatus {
     qint64 fetchedAtMs = -1; // the local clock the answer arrived
     TeamCounts counts;      // as the relay computed them (includes self)
     QList<TeamMachine> machines;
+
+    // The incident queue the page acknowledges from.
+    bool incidentsAnswered = false;
+    QString incidentsError;
+    QList<TeamIncident> incidents;
 };
+
+// Parses GET /api/v1/incidents. Same schema integer as the fleet read; a newer
+// answer is refused with the fix named.
+bool teamParseIncidentsJson(const QByteArray &body, TeamStatus *status,
+                            QString *error);
+
+QList<TeamIncident> teamActiveIncidents(const TeamStatus &status);
+QString teamIncidentStateCell(const TeamStatus &status,
+                              const TeamIncident &incident);
+QString teamIncidentMachineName(const TeamStatus &status,
+                                const QString &machineId);
+QString teamIncidentSummaryText(const TeamStatus &status);
+QString teamIncidentDetailText(const TeamStatus &status,
+                               const TeamIncident &incident);
+
+// The gate the action line prints: the switch when actions are off, the
+// relay's own refusal once it has answered a write with one.
+QString teamActionsGateText(const TeamStatus &status);
+
 
 // Parses GET /api/v1/machines. Returns false and sets error for something that
 // is not a fleet document, including a newer schema.
@@ -122,3 +183,4 @@ QString teamRefusalText(int httpStatus, const QString &detail);
 QString teamErrorDetail(const QByteArray &body);
 
 Q_DECLARE_METATYPE(TeamStatus);
+Q_DECLARE_METATYPE(TeamIncident);

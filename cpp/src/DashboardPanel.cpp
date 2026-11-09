@@ -709,7 +709,8 @@ QString DashboardPanel::consoleStyleSheet() const {
         " { color: %MUTED%; }"
         "#ddCloudShare { color: %DIM%; }"
         "#ddFleetSummary, #ddFleetNote, #ddFleetDetail { color: %MUTED%; }"
-        "#ddTeamSummary, #ddTeamNote, #ddTeamDetail { color: %MUTED%; }"
+        "#ddTeamSummary, #ddTeamNote, #ddTeamDetail, #ddTeamIncidentSummary,"
+        " #ddTeamIncidentDetail, #ddTeamActionStatus { color: %MUTED%; }"
         "#ddFleetShare { color: %DIM%; }"
         "#ddDeprecations { color: %MUTED%; }"
         "#ddHostInfoSummary { color: %DIM%; }"
@@ -723,13 +724,18 @@ QString DashboardPanel::consoleStyleSheet() const {
         "#ddKubeDiagnosis, #ddKubeTimeline { color: %DIM%; }"
         "#ddSettingsLabel { color: %DIM%; }"
         "#ddSettingsPath { color: %MUTED%; font-size: 9px; }"
-        "#ddCopy, #ddSilenceAdd, #ddSilenceExpire { color: %DIM%;"
+        "#ddCopy, #ddSilenceAdd, #ddSilenceExpire, #ddTeamAck, #ddTeamClose,"
+        " #ddTeamSilence { color: %DIM%;"
         "  background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px;"
         "  padding: 2px 10px; font-size: 9px; }"
-        "#ddCopy:hover, #ddSilenceAdd:hover, #ddSilenceExpire:hover {"
+        "#ddCopy:hover, #ddSilenceAdd:hover, #ddSilenceExpire:hover,"
+        " #ddTeamAck:hover, #ddTeamClose:hover, #ddTeamSilence:hover {"
         "  color: %TEXT%; border-color: %MUTED%; }"
-        "#ddSilenceAdd { color: %ACCENT%; }"
+        "#ddSilenceAdd, #ddTeamAck { color: %ACCENT%; }"
+        "#ddTeamAck, #ddTeamClose, #ddTeamSilence { background-color:"
+        "  transparent; border: 1px solid %BORDER%; border-radius: 2px;"
+        "  padding: 3px 12px; font-size: 9px; }"
         "QComboBox, QSpinBox, QDoubleSpinBox { color: %TEXT%;"
         "  background-color: %SURFACE%; border: 1px solid %BORDER%;"
         "  border-radius: 2px; padding: 2px 5px; font-size: 10px; }"
@@ -5357,6 +5363,141 @@ QWidget *DashboardPanel::buildTeamView() {
     layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail,
                                view));
 
+    // --- M152: the relay's incident queue, the three verbs, and the sentence
+    // that says why a verb is unavailable. The buttons are never disabled with
+    // silence as the explanation.
+    layout->addWidget(makeBanner(QStringLiteral("INCIDENTS"),
+                                 ui_theme::accent(), view));
+    auto *incidentBox = new QWidget(view);
+    auto *incidentLayout = new QVBoxLayout(incidentBox);
+    incidentLayout->setContentsMargins(0, 0, 0, 0);
+    incidentLayout->setSpacing(6);
+
+    m_teamIncidentSummary =
+        new QLabel(teamIncidentSummaryText(m_team), incidentBox);
+    m_teamIncidentSummary->setObjectName(
+        QStringLiteral("ddTeamIncidentSummary"));
+    m_teamIncidentSummary->setFont(monoFont(10));
+    m_teamIncidentSummary->setWordWrap(true);
+    m_teamIncidentSummary->setMinimumWidth(1);
+    incidentLayout->addWidget(m_teamIncidentSummary);
+
+    m_teamIncidentTable = new QTreeWidget(incidentBox);
+    m_teamIncidentTable->setObjectName(QStringLiteral("ddTeamIncidentTable"));
+    m_teamIncidentTable->setColumnCount(6);
+    m_teamIncidentTable->setHeaderLabels(
+        {QStringLiteral("SEVERITY"), QStringLiteral("TITLE"),
+         QStringLiteral("MACHINE"), QStringLiteral("STATE"),
+         QStringLiteral("AGE"), QStringLiteral("OWNER")});
+    m_teamIncidentTable->setRootIsDecorated(false);
+    m_teamIncidentTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_teamIncidentTable->setFocusPolicy(Qt::NoFocus);
+    m_teamIncidentTable->header()->setSectionResizeMode(1,
+                                                        QHeaderView::Stretch);
+    for (int column = 0; column < 6; ++column) {
+        if (column != 1) {
+            m_teamIncidentTable->header()->setSectionResizeMode(
+                column, QHeaderView::ResizeToContents);
+        }
+    }
+    connect(m_teamIncidentTable, &QTreeWidget::currentItemChanged, this,
+            [this](QTreeWidgetItem *current, QTreeWidgetItem *) {
+                m_teamSelectedIncidentId =
+                    current == nullptr
+                        ? QString()
+                        : current->data(0, Qt::UserRole).toString();
+                if (current != nullptr && m_teamCloseArmedId
+                    != m_teamSelectedIncidentId) {
+                    clearTeamClose();
+                }
+                updateTeamActions();
+            });
+    incidentLayout->addWidget(m_teamIncidentTable);
+
+    m_teamIncidentDetail = new QLabel(QStringLiteral("--"), incidentBox);
+    m_teamIncidentDetail->setObjectName(
+        QStringLiteral("ddTeamIncidentDetail"));
+    m_teamIncidentDetail->setFont(monoFont(10));
+    m_teamIncidentDetail->setWordWrap(true);
+    m_teamIncidentDetail->setMinimumWidth(1);
+    incidentLayout->addWidget(m_teamIncidentDetail);
+
+    auto *actionRow = new QHBoxLayout();
+    actionRow->setSpacing(6);
+    m_teamAck = new QPushButton(QStringLiteral("ACK"), incidentBox);
+    m_teamAck->setObjectName(QStringLiteral("ddTeamAck"));
+    m_teamClose = new QPushButton(QStringLiteral("CLOSE"), incidentBox);
+    m_teamClose->setObjectName(QStringLiteral("ddTeamClose"));
+    m_teamSilence = new QPushButton(QStringLiteral("SILENCE 30M"),
+                                    incidentBox);
+    m_teamSilence->setObjectName(QStringLiteral("ddTeamSilence"));
+    for (QPushButton *button : {m_teamAck, m_teamClose, m_teamSilence}) {
+        button->setFocusPolicy(Qt::NoFocus);
+    }
+    actionRow->addWidget(m_teamAck);
+    actionRow->addWidget(m_teamClose);
+    actionRow->addWidget(m_teamSilence);
+    actionRow->addStretch(1);
+    incidentLayout->addLayout(actionRow);
+
+    m_teamActionStatus = new QLabel(teamActionsGateText(m_team), incidentBox);
+    m_teamActionStatus->setObjectName(QStringLiteral("ddTeamActionStatus"));
+    m_teamActionStatus->setFont(monoFont(9));
+    m_teamActionStatus->setWordWrap(true);
+    m_teamActionStatus->setMinimumWidth(1);
+    incidentLayout->addWidget(m_teamActionStatus);
+
+    m_teamCloseTimer = new QTimer(this);
+    m_teamCloseTimer->setSingleShot(true);
+    m_teamCloseTimer->setInterval(4000);
+    connect(m_teamCloseTimer, &QTimer::timeout, this,
+            [this]() { clearTeamClose(); });
+
+    connect(m_teamAck, &QPushButton::clicked, this, [this]() {
+        const TeamIncident *incident =
+            teamIncidentById(m_teamSelectedIncidentId);
+        if (incident == nullptr || !teamActionsAllowed()
+            || m_teamPending.contains(incident->id)) {
+            return;
+        }
+        m_teamPending.insert(incident->id, QStringLiteral("ack"));
+        m_teamActionStatus->setText(QStringLiteral("acknowledging %1 ...")
+                                        .arg(incident->title));
+        emit teamAckRequested(*incident);
+        renderTeamIncidents();
+    });
+    connect(m_teamClose, &QPushButton::clicked, this, [this]() {
+        const TeamIncident *incident =
+            teamIncidentById(m_teamSelectedIncidentId);
+        if (incident == nullptr || !teamActionsAllowed()
+            || m_teamPending.contains(incident->id)) {
+            return;
+        }
+        if (m_teamCloseArmedId != incident->id) {
+            armTeamClose(*incident);
+            return;
+        }
+        clearTeamClose();
+        m_teamPending.insert(incident->id, QStringLiteral("close"));
+        m_teamActionStatus->setText(QStringLiteral("closing %1 ...")
+                                        .arg(incident->title));
+        emit teamCloseRequested(*incident);
+        renderTeamIncidents();
+    });
+    connect(m_teamSilence, &QPushButton::clicked, this, [this]() {
+        const TeamIncident *incident =
+            teamIncidentById(m_teamSelectedIncidentId);
+        if (incident == nullptr || !teamActionsAllowed()) {
+            return;
+        }
+        m_teamActionStatus->setText(
+            QStringLiteral("silencing %1 for 30m ...").arg(incident->title));
+        emit teamSilenceRequested(*incident, 30);
+    });
+
+    layout->addWidget(makeCard(QStringLiteral("the relay's queue"),
+                               incidentBox, view));
+
     auto *scroll = new QScrollArea(view);
     scroll->setObjectName(QStringLiteral("ddScroll"));
     scroll->setWidgetResizable(true);
@@ -8033,6 +8174,17 @@ void DashboardPanel::setFleetSnapshot(const FleetStatus &status) {
 
 void DashboardPanel::setTeamStatus(const TeamStatus &status) {
     m_team = status;
+    // The relay's refusal outlives the poll that learned it: a token's scope
+    // does not change between reads, and re-pressing the button would only
+    // earn the same answer. Turning the feature off forgets it.
+    if (!status.enabled || !status.actions) {
+        m_teamBlocked.clear();
+        if (m_teamActionStatus != nullptr) {
+            m_teamActionStatus->clear();
+        }
+    } else if (!m_teamBlocked.isEmpty()) {
+        m_team.actionsBlocked = m_teamBlocked;
+    }
     if (m_teamTable == nullptr) {
         return;
     }
@@ -8126,6 +8278,25 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
     }
     m_teamTable->blockSignals(false);
     updateTeamDetail();
+
+    // Server truth reconciles the optimistic rows: an ack the relay now shows,
+    // or a close that took the row out of the queue, supersedes the guess.
+    for (auto it = m_teamPending.begin(); it != m_teamPending.end();) {
+        const TeamIncident *incident = teamIncidentById(it.key());
+        bool superseded = incident == nullptr;
+        if (incident != nullptr) {
+            superseded = it.value() == QLatin1String("ack")
+                ? incident->state == QLatin1String("acknowledged")
+                : incident->state == QLatin1String("resolved");
+        }
+        if (superseded) {
+            it = m_teamPending.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    renderTeamIncidents();
+    updateTeamActions();
 }
 
 void DashboardPanel::updateTeamDetail() {
@@ -8139,6 +8310,179 @@ void DashboardPanel::updateTeamDetail() {
         }
     }
     m_teamDetail->setText(QStringLiteral("--"));
+}
+
+const TeamIncident *DashboardPanel::teamIncidentById(const QString &id) const {
+    if (id.isEmpty()) {
+        return nullptr;
+    }
+    for (const TeamIncident &incident : m_team.incidents) {
+        if (incident.id == id) {
+            return &incident;
+        }
+    }
+    return nullptr;
+}
+
+bool DashboardPanel::teamActionsAllowed() const {
+    return m_team.configured && m_team.actions
+        && m_team.actionsBlocked.isEmpty();
+}
+
+void DashboardPanel::renderTeamIncidents() {
+    if (m_teamIncidentTable == nullptr) {
+        return;
+    }
+    if (!m_team.incidentsError.isEmpty()) {
+        m_teamIncidentSummary->setText(
+            QStringLiteral("incident queue unavailable: %1")
+                .arg(m_team.incidentsError));
+    } else {
+        m_teamIncidentSummary->setText(teamIncidentSummaryText(m_team));
+    }
+
+    const QList<TeamIncident> rows = teamActiveIncidents(m_team);
+    const QString keep = m_teamSelectedIncidentId;
+    m_teamIncidentTable->blockSignals(true);
+    m_teamIncidentTable->clear();
+    for (const TeamIncident &incident : rows) {
+        auto *item = new QTreeWidgetItem(m_teamIncidentTable);
+        item->setData(0, Qt::UserRole, incident.id);
+        QString severity = incident.severity.toUpper();
+        if (severity == QLatin1String("CRITICAL")) {
+            severity = QStringLiteral("CRIT");
+        } else if (severity == QLatin1String("WARNING")) {
+            severity = QStringLiteral("WARN");
+        }
+        item->setText(0, severity);
+        item->setText(1, incident.title);
+        item->setText(2, teamIncidentMachineName(m_team, incident.machineId));
+        QString state = teamIncidentStateCell(m_team, incident);
+        const auto pending = m_teamPending.constFind(incident.id);
+        if (pending != m_teamPending.constEnd()) {
+            state = pending.value() == QLatin1String("ack")
+                ? QStringLiteral("ack by you (pending)")
+                : QStringLiteral("closed by you (pending)");
+        }
+        item->setText(3, state);
+        item->setText(4,
+                      incident.openedAtMs > 0 && m_team.asOfMs >= 0
+                          ? timelineAgeText(qMax<qint64>(
+                                0, m_team.asOfMs - incident.openedAtMs))
+                          : QStringLiteral("--"));
+        item->setText(5, incident.owner.isEmpty() ? QStringLiteral("--")
+                                                  : incident.owner);
+        if (severity == QLatin1String("CRIT")) {
+            item->setForeground(0, QColor(ui_theme::crit()));
+        } else if (severity == QLatin1String("WARN")) {
+            item->setForeground(0, QColor(ui_theme::warn()));
+        }
+        if (!keep.isEmpty() && incident.id == keep) {
+            m_teamIncidentTable->setCurrentItem(item);
+        }
+    }
+    m_teamIncidentTable->blockSignals(false);
+
+    if (rows.isEmpty()) {
+        m_teamSelectedIncidentId.clear();
+    }
+    const TeamIncident *selected =
+        teamIncidentById(m_teamSelectedIncidentId);
+    m_teamIncidentDetail->setText(
+        selected == nullptr ? QStringLiteral("--")
+                            : teamIncidentDetailText(m_team, *selected));
+}
+
+void DashboardPanel::updateTeamActions() {
+    if (m_teamAck == nullptr) {
+        return;
+    }
+    const bool allowed = teamActionsAllowed();
+    const bool has = teamIncidentById(m_teamSelectedIncidentId) != nullptr;
+    const bool pending =
+        m_teamPending.contains(m_teamSelectedIncidentId);
+    m_teamAck->setEnabled(allowed && has && !pending);
+    m_teamClose->setEnabled(allowed && has && !pending);
+    m_teamSilence->setEnabled(allowed && has);
+
+    if (!allowed) {
+        // A refusal that just arrived names what happened; the gate text would
+        // replace that with a description of the state and lose the event.
+        if (!m_teamActionStatus->text().startsWith(
+                QStringLiteral("not applied:"))) {
+            m_teamActionStatus->setText(teamActionsGateText(m_team));
+        }
+        clearTeamClose();
+        return;
+    }
+    if (!has) {
+        m_teamActionStatus->setText(
+            QStringLiteral("select an incident to act on it"));
+        clearTeamClose();
+        return;
+    }
+    if (m_teamActionStatus->text().isEmpty()) {
+        m_teamActionStatus->setText(teamActionsGateText(m_team));
+    }
+}
+
+void DashboardPanel::armTeamClose(const TeamIncident &incident) {
+    m_teamCloseArmedId = incident.id;
+    m_teamClose->setText(QStringLiteral("PRESS AGAIN: %1").arg(incident.title));
+    m_teamCloseTimer->start();
+    m_teamActionStatus->setText(
+        QStringLiteral("press again to close %1 - closing is a statement of "
+                       "fact; use silence to mute a condition that is still "
+                       "true")
+            .arg(incident.title));
+}
+
+void DashboardPanel::clearTeamClose() {
+    m_teamCloseArmedId.clear();
+    if (m_teamCloseTimer != nullptr) {
+        m_teamCloseTimer->stop();
+    }
+    if (m_teamClose != nullptr) {
+        m_teamClose->setText(QStringLiteral("CLOSE"));
+    }
+}
+
+void DashboardPanel::setTeamActionStatus(TeamAction action,
+                                         const QString &incidentId, bool ok,
+                                         int httpStatus, const QString &detail) {
+    if (ok) {
+        if (action == TeamAction::Silence) {
+            m_teamActionStatus->setText(QStringLiteral(
+                "silence posted - the next read shows what the relay holds"));
+        } else if (action == TeamAction::Ack) {
+            m_teamActionStatus->setText(QStringLiteral(
+                "acknowledged - the next read confirms who holds it"));
+        } else {
+            m_teamActionStatus->setText(QStringLiteral(
+                "closed - the next read shows the queue without it"));
+        }
+        return;
+    }
+    m_teamPending.remove(incidentId);
+    const QString reason = detail.isEmpty()
+        ? QStringLiteral("the relay refused it")
+        : detail;
+    m_teamActionStatus->setText(
+        QStringLiteral("not applied: %1").arg(reason));
+    // The relay's own words decide the gate, so the next reader does not have
+    // to press the button again to learn the same refusal.
+    if (httpStatus == 403 && detail.contains(QStringLiteral("token is read-only"))) {
+        m_teamBlocked = QStringLiteral("token is read-only");
+        m_team.actionsBlocked = m_teamBlocked;
+    } else if (httpStatus == 401) {
+        m_teamBlocked = QStringLiteral(
+            "this token cannot act (%1) - ingest tokens only report; create a "
+            "write API key in the relay's Settings")
+            .arg(reason);
+        m_team.actionsBlocked = m_teamBlocked;
+    }
+    renderTeamIncidents();
+    updateTeamActions();
 }
 
 void DashboardPanel::updateFleetPanel() {

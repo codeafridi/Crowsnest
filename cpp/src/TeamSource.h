@@ -38,6 +38,20 @@ struct TeamFetchResult {
 
 TeamFetchResult teamHttpGet(const TeamOptions &options, const QString &path);
 
+// M152: one write, synchronously. Refused before any socket when the link or
+// the actions switch is off - that refusal is what the socket assertion in the
+// test observes.
+struct TeamActionOutcome {
+    bool ok = false;
+    int httpStatus = 0;
+    QString detail;
+};
+
+TeamActionOutcome teamPerformAction(const TeamOptions &options,
+                                    TeamAction action,
+                                    const TeamIncident &incident,
+                                    int silenceMinutes, qint64 nowMs = 0);
+
 // One synchronous pass, used by --dump and the tests. Never call it from the
 // sampler tick: it blocks for up to timeoutMs.
 TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs = 0);
@@ -59,9 +73,16 @@ public slots:
     void start();
     void stop();
     void pollNow();
+    // The three verbs. They run on this thread so a slow relay costs the HUD
+    // nothing; the panel already applied the optimistic row.
+    void acknowledge(const TeamIncident &incident);
+    void closeIncident(const TeamIncident &incident);
+    void silenceIncident(const TeamIncident &incident, int minutes);
 
 signals:
     void teamUpdated(const TeamStatus &status);
+    void actionFinished(TeamAction action, const QString &incidentId, bool ok,
+                        int httpStatus, const QString &detail);
 
 private:
     void poll();
