@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crowsnest Team. Shared state for the fleet you already monitor.</title>
+    <meta name="description" content="The Crowsnest relay: your fleet, incident queue, on-call rota and alert delivery in one place, shared across machines and outliving a closed laptop. $9 a month or $90 a year. The desktop app stays free." />
+    <meta name="theme-color" content="#f4f5f8" />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="logo.png" />
+    <link rel="stylesheet" href="styles.css?v=5" />
+    <script>
+      (function () {
+        var t = 'light';
+        try { t = localStorage.getItem('theme') || 'light'; } catch (e) {}
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="logo" href="index.html" aria-label="Crowsnest home">
+          <img class="logo-mark" src="logo.svg" width="22" height="22" alt="" aria-hidden="true" />
+          <span class="logo-name">crowsnest</span>
+        </a>
+        <nav class="nav-mid">
+          <a href="index.html#features">Features</a>
+          <a href="team.html">Team</a>
+          <a href="index.html#screens">Screenshots</a>
+          <a href="index.html#install">Install</a>
+        </nav>
+        <div class="nav-right">
+          <a class="ver" href="team.html">team</a>
+          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle colour theme">
+            <svg class="sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.7 17.7l1.41 1.41M2 12h2M20 12h2M6.34 17.7l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            <svg class="moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+          </button>
+          <a class="gh" href="https://github.com/codeafridi/Crowsnest" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.79-.26.79-.58v-2.23c-3.34.72-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.3-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.19.7.8.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="wrap">
+          <p class="eyebrow">Crowsnest Team</p>
+          <h1>Your fleet, after the laptop closes.</h1>
+          <p class="lede">
+            The desktop app is yours, free and local. The relay is the other half:
+            one place that holds the fleet view, the incident queue, the on-call rota
+            and the alert delivery that keeps running while the machine that raised
+            the alert is asleep. Every machine reports to it with its own token; the
+            browser and the desktop read the same rows.
+          </p>
+          <div class="actions">
+            <a class="btn primary" href="#pricing">See the price</a>
+            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/team.md" rel="noopener">Read the details</a>
+          </div>
+
+          <div class="shot-frame wide">
+            <div class="shot-bar">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="shot-title">relay console &mdash; Fleet</span>
+            </div>
+            <a href="shots/relay-fleet.webp" target="_blank" rel="noopener">
+              <img src="shots/relay-fleet.webp" width="1200" height="712" alt="The relay's Fleet page: one machine silent for two minutes with dashes in every value column, one reporting machine with CPU, memory and load, and the machine count against the plan cap." />
+            </a>
+          </div>
+          <p class="shot-note">A live capture from the end-to-end run: one machine stopped reporting, so its row shows a dash rather than a stale reading.</p>
+        </div>
+      </section>
+
+      <section class="section" id="pricing">
+        <div class="wrap">
+          <p class="section-kicker">Pricing</p>
+          <h2>One price, both halves.</h2>
+          <p class="section-lede">The desktop app stays free and unmetered. The relay is $9 a month, or $90 a year ($7.50 a month), with a 14 day trial and no card to start.</p>
+          <div class="grid">
+            <article class="card">
+              <h3>Monthly</h3>
+              <p style="font-size:2rem;color:var(--text);font-family:var(--mono);margin:0 0 6px">$9</p>
+              <p>per month, one workspace. 100 machines, 10 seats, 15 second reports, 25 share links. Cancel any time; the data is kept 30 days.</p>
+            </article>
+            <article class="card">
+              <h3>Annual</h3>
+              <p style="font-size:2rem;color:var(--text);font-family:var(--mono);margin:0 0 6px">$90</p>
+              <p>per year, which is $7.50 a month. Same limits, two months free, cancel at the end of the year.</p>
+            </article>
+          </div>
+          <p class="small">Managed hosting is not open yet. The trial starts the day a relay you run begins serving your workspace, and the binary is MIT like the app.</p>
+        </div>
+      </section>
+
+      <section class="section" id="what">
+        <div class="wrap">
+          <p class="section-kicker">What the relay holds</p>
+          <h2>The shared state a single machine cannot.</h2>
+          <div class="grid">
+            <article class="card">
+              <h3>The fleet</h3>
+              <p>Every machine that reports, with silence detection (suspect at 1.5 times the learned interval, silent at 90 seconds), duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does.</p>
+            </article>
+            <article class="card">
+              <h3>Incidents that wait</h3>
+              <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. A DSM can acknowledge from the desktop or the browser; the server is the truth both read.</p>
+            </article>
+            <article class="card">
+              <h3>Delivery</h3>
+              <p>Email, webhook (the Alertmanager v4 body with an HMAC), Slack, PagerDuty, Opsgenie, Discord and Teams, driven by a routing tree with group wait, repeat, escalation steps and an on-call rota. A retry ladder and a dead letter queue; every send is one ledger row.</p>
+            </article>
+            <article class="card">
+              <h3>Your data, on your terms</h3>
+              <p>Retention is stated and enforced by one function. Export is streamed in the desktop client's own CSV dialect. Delete is a real delete with a counts receipt, and an optional export bundle whose sha256 is in that receipt.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="honesty">
+        <div class="wrap">
+          <p class="section-kicker">The honest part</p>
+          <h2>What the relay is not.</h2>
+          <ul class="truth">
+            <li><strong>Not a licence check.</strong> The desktop app is fully free and never asks the relay for permission. Turning <code>[remote]</code> on is the whole upgrade.</li>
+            <li><strong>Not metered local telemetry.</strong> The relay holds shared state. Your own machine's console stays local and unmetered either way.</li>
+            <li><strong>Not collecting what you would not send.</strong> No process list, command lines, environment, paths or logs: the schema refuses them and the privacy page lists every field it does accept, generated from that schema.</li>
+            <li><strong>Not hiding a gap.</strong> A silent machine shows a dash, a stale answer is dated, an unreachable relay is its own sentence, and the end-to-end proof is a committed transcript rather than a screenshot.</li>
+          </ul>
+          <div class="actions">
+            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/privacy.md" rel="noopener">Privacy and field list</a>
+            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/self-host-note.md" rel="noopener">Self-hosting note</a>
+            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/e2e-2026-11-09.md" rel="noopener">The end-to-end run</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="start">
+        <div class="wrap">
+          <p class="section-kicker">Start</p>
+          <h2>Point one machine at it.</h2>
+          <p class="section-lede">Install the desktop app, add the relay's address and the machine token, and the first report appears within one cadence. The rest of the fleet follows.</p>
+          <div class="terminal">
+            <div class="terminal-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="shot-title">crowsnest.conf</span></div>
+            <pre class="terminal-body" style="text-align:left"><code>[remote]
+enabled = true
+url = https://relay.example.com
+token = the-machine-token</code></pre>
+          </div>
+          <p class="small">The token is minted in the relay's dashboard and shown once. <code>[remote] actions</code> additionally lets the desktop acknowledge, close and silence; reading is on with the link alone.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <span>Crowsnest. Desktop app MIT. Relay source available for self-hosting.</span>
+        <span class="footer-links">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">GitHub</a>
+          <a href="https://github.com/codeafridi/crowsnest-relay" rel="noopener">Relay</a>
+          <a href="https://github.com/codeafridi/Crowsnest/blob/main/LICENSE" rel="noopener">License</a>
+        </span>
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById('theme-toggle')?.addEventListener('click', function () {
+        var el = document.documentElement;
+        var next = el.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        el.setAttribute('data-theme', next);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', next === 'dark' ? '#0c0e12' : '#f4f5f8');
+        try { localStorage.setItem('theme', next); } catch (e) {}
+      });
+    </script>
+  </body>
+</html>
