@@ -20,7 +20,7 @@ repo_root="$(cd "$here/../.." && pwd)"
 out_dir="${1:-$repo_root/dist}"
 mkdir -p "$out_dir"
 
-version="$(git -C "$repo_root" describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)"
+version="${VERSION:-$(git -C "$repo_root" describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)}"
 version="${version#v}"
 arch="$(uname -m)"
 [ "$arch" = "x86_64" ] || { echo "error: AppImage target is x86_64, you are on $arch" >&2; exit 1; }
