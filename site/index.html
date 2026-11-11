@@ -4,11 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crowsnest. A focused process HUD for Linux, macOS and Windows</title>
-    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 32-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, fully open source." />
+    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 34-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, MIT. A paid Team tier adds a relay for shared fleet state." />
     <meta name="theme-color" content="#f4f5f8" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
     <script>
       (function () {
         var t = 'light';
@@ -29,6 +29,7 @@
           <a href="team.html">Team</a>
           <a href="#screens">Screenshots</a>
           <a href="#install">Install</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <div class="nav-right">
           <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.13.0" rel="noopener" title="Release notes for 0.13.0">v0.13.0</a>
@@ -46,27 +47,17 @@
 
     <main id="top">
       <section class="hero">
-        <div class="wrap">
-          <p class="eyebrow">Linux, macOS, Windows. C++20 with Qt 6. Version 0.13.0.</p>
-          <h1>The HUD that follows the app you are using.</h1>
-          <p class="lede">
-            Pick any window and Crowsnest puts that app's CPU, memory, threads, file descriptors, disk and network throughput in a small panel that floats over your desktop. Click once and the same binary opens a full console for the whole machine: host, disks, GPU, sensors, containers, Kubernetes, databases, traces and what the cloud is billing you.
-          </p>
-          <div class="actions">
-            <a class="btn primary" href="#install">Install now</a>
-            <a class="btn" href="https://github.com/codeafridi/Crowsnest" rel="noopener">View on GitHub</a>
-          </div>
-
-          <div class="shot-frame wide">
-            <div class="shot-bar">
-              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="shot-title">crowsnest console &mdash; Overview</span>
+        <div class="wrap hero-grid">
+          <div>
+            <p class="eyebrow">Linux, macOS, Windows. C++20 with Qt 6. Version 0.13.0.</p>
+            <h1>The HUD that follows the app you are using.</h1>
+            <p class="lede">
+              Pick any window and Crowsnest puts that app's CPU, memory, threads, file descriptors, disk and network throughput in a small panel that floats over your desktop. Click once and the same binary opens a full console for the whole machine: host, disks, GPU, sensors, containers, Kubernetes, databases, traces and what the cloud is billing you.
+            </p>
+            <div class="actions">
+              <a class="btn primary" href="#install">Install now</a>
+              <a class="btn" href="https://github.com/codeafridi/Crowsnest" rel="noopener">View on GitHub</a>
             </div>
-            <a href="shots/overview.webp" target="_blank" rel="noopener">
-              <img src="shots/overview.webp" width="1200" height="852" alt="Crowsnest Overview console: focused app CPU, RSS and process count tiles, CPU, memory and process count charts, host CPU, memory available and load charts, network, disk and utilisation charts, and the watchdog and forecast cards." />
-            </a>
-          </div>
-          <div class="hud">
             <figure class="hud-figure">
               <img src="hud.png" width="430" height="197" alt="The compact Crowsnest overlay: focused app cursor, its PID, CPU and RSS, and one line each for Docker containers and Kubernetes pods." />
               <figcaption>
@@ -75,17 +66,25 @@
               </figcaption>
             </figure>
           </div>
-
-          <p class="shot-note">
-            Every panel on this page is a live capture &mdash; except the two Cloud panels, marked in the <a href="#screens">screenshot notes</a>.
-          </p>
+          <div>
+            <div class="shot-frame">
+              <div class="shot-bar">
+                <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="shot-title">crowsnest console &mdash; Overview</span>
+              </div>
+              <a href="shots/overview.webp" target="_blank" rel="noopener">
+                <img src="shots/overview.webp" width="1020" height="1040" alt="Crowsnest Overview console: focused app CPU, RSS and process count tiles, CPU, memory and process count charts, host CPU, memory available and load charts, network, disk and utilisation charts, and the watchdog and forecast cards." />
+              </a>
+            </div>
+            <p class="shot-note">Every panel on this page is a live capture &mdash; the cloud panel's caveat is in the <a href="#screenshot-notes">screenshot notes</a>.</p>
+          </div>
         </div>
       </section>
 
       <section class="section" id="features">
         <div class="wrap">
           <p class="section-kicker">What it shows</p>
-          <h2>One panel over your app. Thirty-two views behind it.</h2>
+          <h2>One panel over your app. Thirty-four views behind it.</h2>
           <div class="grid">
             <article class="card">
               <h3>The app you are using</h3>
@@ -96,18 +95,26 @@
               <p>Host CPU and steal, memory, load, per-device disk throughput and utilisation, network interfaces, hwmon temperatures, fans and power, battery health, and GPU utilisation with the process holding it. Anything an OS cannot report is labelled as such, never left blank.</p>
             </article>
             <article class="card">
-              <h3>The services you run</h3>
+              <h3>Containers and Kubernetes</h3>
               <p>Docker containers with live CPU, memory, network and PIDs through the Engine API. Kubernetes pods, deployments, nodes and metrics-server usage. systemd units, launchd jobs and Windows services. A local PostgreSQL client for cache hit rate, commits, deadlocks and the slowest statements.</p>
             </article>
             <article class="card">
-              <h3>The bills and the pager</h3>
-              <p>OTLP traces, DogStatsD metrics, synthetic HTTP checks and a Prometheus endpoint on the receiving end. Cloud instance identity, accrued cost, the provider's own billed spend, the burn rate against your own trailing baseline, per-pod right-sizing with the headroom priced at your cluster's rates, and Terraform state diffed against the account listing. Alerts correlated into one incident per subject, with an owner and a page only when the rule is not flapping, SLO burn, and webhooks to the receiver you already own.</p>
+              <h3>Logs, traces and metrics</h3>
+              <p>journald, the macOS unified log or the Windows event log, parsed into fields, scanned for secrets, grouped by error, watched for threats. An OTLP receiver on 4318 and a DogStatsD receiver on 8125 for your own telemetry, and a Prometheus endpoint the rest of your stack can scrape.</p>
+            </article>
+            <article class="card">
+              <h3>Cloud and cost</h3>
+              <p>Instance identity from the metadata service, accrued cost this boot, the provider's own billed spend and a burn rate against your trailing baseline. Fleet inventory, per-pod right-sizing priced at your cluster's rates, and Terraform state diffed against the account listing.</p>
+            </article>
+            <article class="card">
+              <h3>Alerts and incidents</h3>
+              <p>Editable thresholds you tune live, silences for maintenance windows, alerts correlated into one incident per subject with an owner, flap suppression, SLO burn tracking, and webhooks to the receiver you already own.</p>
             </article>
           </div>
 
           <ul class="truth">
             <li><strong>Local only.</strong> No account, no telemetry, no phone home. The only outbound calls are ones you switch on: cloud metadata, your own webhook, your own Prometheus scraper.</li>
-            <li><strong>Honest about the gaps.</strong> A surface the OS will not give up says so on the panel. macOS TCP counters need root, Windows has no load average, the cloud inventory and the cost query are gated on an identity the host may not have, and the console prints those sentences instead of a zero. Where the instance metadata service is blocked by network policy, <code>[cloud] identity=</code> is a fallback &mdash; the metadata service always wins when it answers, and the page says which source it used.</li>
+            <li><strong>Honest about the gaps.</strong> A surface the OS will not give up says so on the panel. macOS TCP counters need root, Windows has no load average, and the console prints those sentences instead of a zero. Where the cloud metadata service is blocked by network policy, <code>[cloud] identity=</code> is a fallback &mdash; and the page says which source it used.</li>
             <li><strong>One static binary.</strong> C++20 and Qt 6. Started from a .deb, a DMG, an MSI, an AppImage, Homebrew, Scoop or a single shell line.</li>
           </ul>
         </div>
@@ -124,96 +131,86 @@
           <div class="gallery">
             <figure class="tile">
               <a href="shots/team.webp" target="_blank" rel="noopener"><img src="shots/team.webp" width="1020" height="1040" loading="lazy" alt="Team page: the relay's fleet with this machine first and marked, a silent machine shown with dashes, and the relay's incident queue with ACK, CLOSE and SILENCE verbs." /></a>
-              <figcaption><b>Team</b> The relay's fleet and incident queue on the desktop. A silent machine is a dash, never a stale reading; an ack, close or silence posts with the server winning the next read.</figcaption>
+              <figcaption><b>Team</b> The relay's fleet and incident queue on the desktop. A silent machine is a dash, never a stale reading.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/processes.webp" target="_blank" rel="noopener"><img src="shots/processes.webp" width="1200" height="852" loading="lazy" alt="Processes page: grouped process tree with CPU, memory, threads, file descriptors, per-process disk read and write rates, TCP throughput and listening ports." /></a>
+              <a href="shots/processes.webp" target="_blank" rel="noopener"><img src="shots/processes.webp" width="1020" height="1040" loading="lazy" alt="Processes page: grouped process tree with CPU, memory, threads, file descriptors, per-process disk read and write rates, TCP throughput and listening ports." /></a>
               <figcaption><b>Processes</b> Each row carries CPU, RSS, threads, fds, block I/O and TCP throughput, plus the ports it listens on.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/sensors.webp" target="_blank" rel="noopener"><img src="shots/sensors.webp" width="1200" height="852" loading="lazy" alt="Sensors page: hottest temperature, fan RPM, power draw and battery charge tiles, hwmon readings per chip, hottest sensor and power charts, and a battery detail card." /></a>
+              <a href="shots/sensors.webp" target="_blank" rel="noopener"><img src="shots/sensors.webp" width="1020" height="1040" loading="lazy" alt="Sensors page: hottest temperature, fan RPM, power draw and battery charge tiles, hwmon readings per chip, hottest sensor and power charts, and a battery detail card." /></a>
               <figcaption><b>Sensors</b> Every hwmon chip, the battery's health and cycles, and the AC adapter state, sampled from sysfs.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/gpu.webp" target="_blank" rel="noopener"><img src="shots/gpu.webp" width="1200" height="852" loading="lazy" alt="GPU page: utilisation, VRAM, temperature and process count tiles, a utilisation chart, the device card and a per-process table of GPU engines and memory." /></a>
-              <figcaption><b>GPU</b> Device busy, VRAM, clocks and temperature, with the processes currently using the GPU.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/network.webp" target="_blank" rel="noopener"><img src="shots/network.webp" width="1200" height="852" loading="lazy" alt="Network page: connection counts, established sockets, retransmit percentage and transmit throughput tiles, a throughput chart, and the connection and interface tables." /></a>
-              <figcaption><b>Network</b> Sockets by state, retransmits, per-interface throughput and top talkers.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/disks.webp" target="_blank" rel="noopener"><img src="shots/disks.webp" width="1200" height="852" loading="lazy" alt="Disks page: read and write throughput, busiest device utilisation and I/O pressure tiles, a summary card, a per-device table and read, write and utilisation charts." /></a>
-              <figcaption><b>Disks</b> iostat-style per-device rates, await and utilisation, plus the processes doing the writing.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/host.webp" target="_blank" rel="noopener"><img src="shots/host.webp" width="1200" height="852" loading="lazy" alt="Host page: host CPU, load, memory available and disk free tiles, a load chart, the host inventory summary and the platform, CPU, filesystem and network cards." /></a>
-              <figcaption><b>Host</b> CPU topology, memory, load, kernel limits and every mounted filesystem with free space.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/metrics.webp" target="_blank" rel="noopener"><img src="shots/metrics.webp" width="1200" height="852" loading="lazy" alt="Metrics page: received, events, service checks and parse error tiles, a DogStatsD receiver card, ingestion and error charts and a series explorer table." /></a>
-              <figcaption><b>Metrics</b> A DogStatsD receiver on 8125, with counters, gauges, histograms, sets, events and service checks.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/traces.webp" target="_blank" rel="noopener"><img src="shots/traces.webp" width="1200" height="852" loading="lazy" alt="Traces page: trace, span, error and service tiles, a latency chart, the service map and recent traces." /></a>
-              <figcaption><b>Traces</b> An OTLP/HTTP receiver on 4318, with per-service latency, p95 and the cross-service map.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/containers.webp" target="_blank" rel="noopener"><img src="shots/containers.webp" width="1200" height="852" loading="lazy" alt="Containers page: running, issues, container count and cgroup memory tiles, a container table with CPU, memory, network and PIDs, and lifecycle buttons." /></a>
+              <a href="shots/containers.webp" target="_blank" rel="noopener"><img src="shots/containers.webp" width="1020" height="1040" loading="lazy" alt="Containers page: running, issues, container count and cgroup memory tiles, a container table with CPU, memory, network and PIDs, and lifecycle buttons." /></a>
               <figcaption><b>Containers</b> Engine API stats per container &mdash; CPU, memory against the limit, I/O, PIDs &mdash; and start, stop, restart.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/kubernetes.webp" target="_blank" rel="noopener"><img src="shots/kubernetes.webp" width="1200" height="852" loading="lazy" alt="Kubernetes page: pod, issue, deployment and monthly cost tiles, the cluster summary, pod and deployment tables, a pods-over-time chart and the cluster health, node and event cards." /></a>
-              <figcaption><b>Kubernetes</b> Pods and deployments with metrics-server usage, node capacity, warning events, deprecated APIs and cost.</figcaption>
+              <a href="shots/kubernetes.webp" target="_blank" rel="noopener"><img src="shots/kubernetes.webp" width="1020" height="1040" loading="lazy" alt="Kubernetes page: pod, issue, deployment and monthly cost tiles, the cluster summary, pod and deployment tables, a pods-over-time chart and the cluster health, node and event cards." /></a>
+              <figcaption><b>Kubernetes</b> Pods and deployments with metrics-server usage, node capacity, warning events and cost.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/databases.webp" target="_blank" rel="noopener"><img src="shots/databases.webp" width="1200" height="852" loading="lazy" alt="Databases page: cache hit ratio, commits per second, rollbacks and deadlock tiles, a throughput chart, and the statements and application connection cards." /></a>
-              <figcaption><b>Databases</b> PostgreSQL cache hit rate, commits, rollbacks, deadlocks and the slowest statements.</figcaption>
+              <a href="shots/network.webp" target="_blank" rel="noopener"><img src="shots/network.webp" width="1020" height="1040" loading="lazy" alt="Network page: connection counts, established sockets, retransmit percentage and transmit throughput tiles, a throughput chart, and the connection and interface tables." /></a>
+              <figcaption><b>Network</b> Sockets by state, retransmits, per-interface throughput and top talkers.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/logs.webp" target="_blank" rel="noopener"><img src="shots/logs.webp" width="1200" height="852" loading="lazy" alt="Logs page: log line, error, level and parse rate tiles, a journal summary, the parsed-fields card, a log volume chart, a sensitive data scan result and a tail of recent journal entries." /></a>
-              <figcaption><b>Logs</b> journald, unified logging or the Windows event log, parsed into fields, scanned for secrets, and kept local.</figcaption>
+              <a href="shots/fleet.webp" target="_blank" rel="noopener"><img src="shots/fleet.webp" width="1020" height="1040" loading="lazy" alt="Fleet page: peer tiles, a worst-CPU chart and a six-column peer table where this machine is row zero and a down peer shows dashes." /></a>
+              <figcaption><b>Fleet</b> The other machines on your network, polled over your own LAN, with worst CPU and lowest memory named.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/history.webp" target="_blank" rel="noopener"><img src="shots/history.webp" width="1200" height="852" loading="lazy" alt="History page: samples, span, on-disk size and interval tiles, a rewind card with a scrubber and record lines, and stored-window CPU and memory charts." /></a>
-              <figcaption><b>History</b> A bounded on-disk ring of every sample, with a scrubber to rewind the console an hour.</figcaption>
+              <a href="shots/incidents.webp" target="_blank" rel="noopener"><img src="shots/incidents.webp" width="1020" height="1040" loading="lazy" alt="Incidents page: open, critical, warning and resolved tiles, the grouped incident card with owners and re-fire counts, an open-over-time chart and the tracker history." /></a>
+              <figcaption><b>Incidents</b> Alerts correlated into one incident per subject, with an owner, a re-fire count and a timeline.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/timeline.webp" target="_blank" rel="noopener"><img src="shots/timeline.webp" width="1200" height="852" loading="lazy" alt="Timeline page: event, error, warning and subject tiles, a kind and text filter, a table of events with time, severity, kind, subject and title, and a selected-event detail block." /></a>
-              <figcaption><b>Timeline</b> One stream of everything that changed &mdash; alerts, actions, file edits, cluster changes &mdash; with a click from any chart spike straight to the events around it.</figcaption>
+              <a href="shots/traces.webp" target="_blank" rel="noopener"><img src="shots/traces.webp" width="1020" height="1040" loading="lazy" alt="Traces page: trace, span, error and service tiles, a latency chart, the service map and recent traces." /></a>
+              <figcaption><b>Traces</b> An OTLP/HTTP receiver on 4318, with per-service latency, p95 and the cross-service map.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/cost.webp" target="_blank" rel="noopener"><img src="shots/cost.webp" width="1200" height="852" loading="lazy" alt="Cost page: monthly, hourly, CPU efficiency and memory efficiency tiles, a cost allocation card, a right-sizing card, a cost chart and namespace and workload breakdown tables." /></a>
-              <figcaption><b>Cost</b> Cluster cost from declared requests, efficiency, and a per-pod suggestion table: request &rarr; usage &times; 1.2, priced at your own rates.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/cloud.webp" target="_blank" rel="noopener"><img src="shots/cloud.webp" width="1200" height="852" loading="lazy" alt="Cloud page: provider, age, accrued and monthly cost tiles, the instance identity card showing the config-fallback note, a running-instances chart, the fleet inventory table with per-instance monthly rates, and the IaC drift card reporting two resources in sync, one missing and one unmanaged." /></a>
+              <a href="shots/cloud.webp" target="_blank" rel="noopener"><img src="shots/cloud.webp" width="1020" height="1040" loading="lazy" alt="Cloud page: provider, age, accrued and monthly cost tiles, the instance identity card, a running-instances chart, the fleet inventory table with per-instance monthly rates, and the Terraform drift card." /></a>
               <figcaption><b>Cloud</b> Instance identity, the account's fleet from your own CLI with each row's age and monthly rate, and the Terraform state diffed against that listing.</figcaption>
             </figure>
             <figure class="tile">
-              <a href="shots/cloud-spend.webp" target="_blank" rel="noopener"><img src="shots/cloud-spend.webp" width="1200" height="761" loading="lazy" alt="Billed spend section of the Cloud page: a daily spend chart, month to date and forecast, the query it came from, and a per-service breakdown." /></a>
-              <figcaption><b>Billed spend</b> What the provider actually charged this month, straight from Cost Explorer, with a month-end forecast.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/security.webp" target="_blank" rel="noopener"><img src="shots/security.webp" width="1200" height="852" loading="lazy" alt="Security page: exposure, findings, threats and file change tiles, the sandbox exposure card, threat rows and file integrity entries." /></a>
-              <figcaption><b>Security</b> Sandbox exposure per process, log-based threat detection, and file integrity with hashes.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/settings.webp" target="_blank" rel="noopener"><img src="shots/settings.webp" width="1200" height="852" loading="lazy" alt="Settings page: version, refresh, monitors and silenced tiles, software and runtime paths, the collection scope matrix, monitor editors and the diagnostics card." /></a>
+              <a href="shots/settings.webp" target="_blank" rel="noopener"><img src="shots/settings.webp" width="1020" height="1040" loading="lazy" alt="Settings page: version, refresh, monitors and silenced tiles, software and runtime paths, the collection scope matrix, monitor editors and the diagnostics card." /></a>
               <figcaption><b>Settings</b> Every path, every switch, which collection surfaces are live on this OS, and the monitor editors.</figcaption>
             </figure>
           </div>
 
+          <figure class="views-fig">
+            <a href="shots/views.webp" target="_blank" rel="noopener"><img src="shots/views.webp" width="2324" height="704" loading="lazy" alt="A strip of all 34 console views rendered side by side, from Overview to Settings." /></a>
+            <figcaption>All 34 views of the console, one strip.</figcaption>
+          </figure>
+
           <div class="notes">
             <h3 id="screenshot-notes">Notes on these captures</h3>
             <p>
-              These are live captures of the Crowsnest console on one machine &mdash; not mock-ups and not a designer's render. The OTLP traces, DogStatsD metrics and synthetic checks are real receiver traffic from small local test clients pointed at the HUD, and the cluster panels are a real single-node Kubernetes cluster with metrics-server. There is no cloud account behind this laptop, so the <b>Cloud</b> panel is a live capture against a <em>local AWS emulator</em>: the identity comes from <code>[cloud] identity=</code> (no instance metadata service exists there, and the card says so), and the instances, the rates and the Terraform diff are the emulator's real API responses decoded by the shipping code. The <b>Billed spend</b> close-up is the one panel rendered from the application's screenshot fixtures &mdash; a three-hour-old emulator account has one day of cost, which makes for an empty chart &mdash; so treat its numbers as a layout reference and the release notes for what is proven where.
+              These are live captures of the Crowsnest console on one machine &mdash; not mock-ups and not a designer's render. The OTLP traces and DogStatsD metrics are real receiver traffic from small local test clients pointed at the HUD, and the cluster panels are a real single-node Kubernetes cluster with metrics-server. There is no cloud account behind this laptop, so the <b>Cloud</b> panel is a live capture against a <em>local AWS emulator</em>: the identity comes from <code>[cloud] identity=</code> (no instance metadata service exists there, and the card says so), and the instances, the rates and the Terraform diff are the emulator's real API responses decoded by the shipping code.
             </p>
           </div>
         </div>
       </section>
 
-      <section class="section getstarted" id="install">
+      <section class="section" id="tiers">
+        <div class="wrap">
+          <p class="section-kicker">Free and paid</p>
+          <h2>Everything on this page is free.</h2>
+          <div class="teaser-grid">
+            <div class="teaser-box">
+              <p class="teaser-tag">Free</p>
+              <h3>The desktop app</h3>
+              <p>Every view above, on every OS, under the MIT licence. No account, no telemetry, no licence check. Local telemetry is never metered, and a free fleet view over your LAN comes built in.</p>
+              <div class="actions"><a class="btn" href="#install">Install it</a></div>
+            </div>
+            <div class="teaser-box paid">
+              <p class="teaser-tag">Paid</p>
+              <h3>Team</h3>
+              <p>Shared state that outlives a closed laptop: a relay you run that holds the fleet view, the incident queue, the on-call rota and the alert delivery. $9 a month or $90 a year, 14-day trial, no card. The desktop app is never gated.</p>
+              <div class="actions"><a class="btn primary" href="team.html#pricing">See Team</a></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="install">
         <div class="wrap">
           <p class="section-kicker">Get started</p>
           <h2>Click your OS. Copy one line.</h2>
@@ -265,7 +262,38 @@
             <p class="alts">Prefer a setup wizard? Download the MSI from Releases. SmartScreen may ask once, choose Run anyway.</p>
           </div>
 
-          <p class="muted small">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade.</p>
+          <p class="muted small">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade, and <code>crowsnest serve</code> to run the headless collector on a display-less fleet member.</p>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="wrap">
+          <p class="section-kicker">FAQ</p>
+          <h2>The questions people actually ask.</h2>
+          <details class="faq-item">
+            <summary>Is it really free?</summary>
+            <p>Yes. The desktop app is MIT with no account, no telemetry, no licence check and no feature gate. Every one of the 34 views ships in the free build. Local telemetry is never metered, and there is nothing to buy to use it.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What does the paid tier add?</summary>
+            <p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="team.html#pricing">Pricing and limits</a>.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Which platforms, and what is gated?</summary>
+            <p>Linux, macOS and Windows from the same codebase. Collection depth differs by what each OS will hand an unprivileged process, and the console names every gap instead of showing a blank: macOS redacts TCP counters without root, Windows has no load average, cgroups and PSI pressure are Linux surfaces, per-process socket rates need Linux. What works on your OS is listed in Settings, per surface.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What data leaves my machine?</summary>
+            <p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a Team relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Why does a panel say "not supported on this OS"?</summary>
+            <p>Because the operating system will not give that surface to an unprivileged process, and a blank panel would read as broken. The sentence names the cause, what still works, and the switch that turns the surface on where one exists &mdash; for example <code>sudo crowsnest</code> on macOS for TCP counters.</p>
+          </details>
+          <details class="faq-item">
+            <summary>How do updates work?</summary>
+            <p><code>crowsnest update</code> fetches the latest release bundle and swaps it in. The AppImage updates itself over zsync, and the .deb, DMG, MSI and portable zip are on the <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases page</a> if you prefer to install by hand.</p>
+          </details>
         </div>
       </section>
     </main>

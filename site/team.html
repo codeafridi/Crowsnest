@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Crowsnest Team. Shared state for the fleet you already monitor.</title>
-    <meta name="description" content="The Crowsnest relay: your fleet, incident queue, on-call rota and alert delivery in one place, shared across machines and outliving a closed laptop. $9 a month or $90 a year. The desktop app stays free." />
+    <title>Crowsnest Team. Your fleet, after the laptop closes.</title>
+    <meta name="description" content="Crowsnest Team is the relay half: shared fleet state, an incident queue that waits, on-call rotas and alert delivery, on a server you run. $9 a month or $90 a year, 14-day trial, no card. The desktop app stays free." />
     <meta name="theme-color" content="#f4f5f8" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
     <script>
       (function () {
         var t = 'light';
@@ -26,12 +26,13 @@
         </a>
         <nav class="nav-mid">
           <a href="index.html#features">Features</a>
-          <a href="team.html">Team</a>
           <a href="index.html#screens">Screenshots</a>
           <a href="index.html#install">Install</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <div class="nav-right">
-          <a class="ver" href="team.html">team</a>
+          <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.13.0" rel="noopener" title="Release notes for 0.13.0">v0.13.0</a>
           <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle colour theme">
             <svg class="sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.7 17.7l1.41 1.41M2 12h2M20 12h2M6.34 17.7l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             <svg class="moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
@@ -44,7 +45,7 @@
       </div>
     </header>
 
-    <main id="top">
+    <main>
       <section class="hero">
         <div class="wrap">
           <p class="eyebrow">Crowsnest Team</p>
@@ -58,16 +59,16 @@
           </p>
           <div class="actions">
             <a class="btn primary" href="#pricing">See the price</a>
-            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/team.md" rel="noopener">Read the details</a>
+            <a class="btn" href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">How linking works</a>
           </div>
 
-          <div class="shot-frame wide">
+          <div class="shot-frame">
             <div class="shot-bar">
               <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
               <span class="shot-title">relay console &mdash; Fleet</span>
             </div>
             <a href="shots/relay-fleet.webp" target="_blank" rel="noopener">
-              <img src="shots/relay-fleet.webp" width="1200" height="712" alt="The relay's Fleet page: one machine silent for two minutes with dashes in every value column, one reporting machine with CPU, memory and load, and the machine count against the plan cap." />
+              <img src="shots/relay-fleet.webp" width="1280" height="760" alt="The relay's Fleet page: one machine silent for two minutes with dashes in every value column, one reporting machine with CPU, memory and load, and the machine count against the plan cap." />
             </a>
           </div>
           <p class="shot-note">A live capture from the end-to-end run: one machine stopped reporting, so its row shows a dash rather than a stale reading.</p>
@@ -78,20 +79,38 @@
         <div class="wrap">
           <p class="section-kicker">Pricing</p>
           <h2>One price, both halves.</h2>
-          <p class="section-lede">The desktop app stays free and unmetered. The relay is $9 a month, or $90 a year ($7.50 a month), with a 14 day trial and no card to start.</p>
-          <div class="grid">
-            <article class="card">
-              <h3>Monthly</h3>
-              <p style="font-size:2rem;color:var(--text);font-family:var(--mono);margin:0 0 6px">$9</p>
-              <p>per month, one workspace. 100 machines, 10 seats, 15 second reports, 25 share links. Cancel any time; the data is kept 30 days.</p>
-            </article>
-            <article class="card">
-              <h3>Annual</h3>
-              <p style="font-size:2rem;color:var(--text);font-family:var(--mono);margin:0 0 6px">$90</p>
-              <p>per year, which is $7.50 a month. Same limits, two months free, cancel at the end of the year.</p>
-            </article>
+          <p class="section-lede">The desktop app stays free and unmetered. The relay is $9 a month or $90 a year, with a 14-day trial and no card to start.</p>
+
+          <div class="billtoggle" role="group" aria-label="Billing period">
+            <button type="button" data-bill="annual" aria-pressed="true">Annual</button>
+            <button type="button" data-bill="monthly" aria-pressed="false">Monthly</button>
           </div>
-          <p class="small">Managed hosting is not open yet. The trial starts the day a relay you run begins serving your workspace, and the binary is MIT like the app.</p>
+
+          <div class="plans">
+            <div class="plan">
+              <span class="plan-name">Free</span>
+              <div class="price"><span class="free-price">$0</span> <span class="price-note">forever</span></div>
+              <ul>
+                <li>Every one of the 34 console views, on Linux, macOS and Windows</li>
+                <li>MIT, no account, no telemetry, no licence check</li>
+                <li>Local telemetry is never metered</li>
+                <li>A free fleet view over your own LAN</li>
+              </ul>
+              <a class="btn" href="index.html#install">Install the app</a>
+            </div>
+            <div class="plan team">
+              <span class="plan-name">Team <span class="chip">14-day trial &middot; no card</span></span>
+              <div class="price"><span id="price-amount">$7.50</span> <span id="price-note">a month, billed $90 a year &mdash; two months free</span></div>
+              <ul>
+                <li>Shared fleet, incident queue, rota and delivery on a relay you run</li>
+                <li>Browser dashboard and the desktop Team page reading the same rows</li>
+                <li>100 machines &middot; 10 seats &middot; 15 s cadence floor &middot; 25 share links</li>
+                <li>Cancel any time: data kept 30 days, then a counted delete with a receipt</li>
+              </ul>
+              <a class="btn primary" href="#start">Start the free trial</a>
+            </div>
+          </div>
+          <p class="small" style="margin-top:16px">Managed hosting is not open yet: today the relay is a binary you run on your own server. The trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
         </div>
       </section>
 
@@ -102,11 +121,11 @@
           <div class="grid">
             <article class="card">
               <h3>The fleet</h3>
-              <p>Every machine that reports, with silence detection (suspect at 1.5 times the learned interval, silent at 90 seconds), duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does.</p>
+              <p>Every machine that reports, with silence detection (suspect at 1.5 times the learned interval, silent at 90 seconds), duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does &mdash; and a silent machine is a dash, never a stale reading.</p>
             </article>
             <article class="card">
               <h3>Incidents that wait</h3>
-              <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. A DSM can acknowledge from the desktop or the browser; the server is the truth both read.</p>
+              <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. A colleague can acknowledge from the desktop or the browser; the server is the truth both read.</p>
             </article>
             <article class="card">
               <h3>Delivery</h3>
@@ -114,54 +133,120 @@
             </article>
             <article class="card">
               <h3>Your data, on your terms</h3>
-              <p>Retention is stated and enforced by one function. Export is streamed in the desktop client's own CSV dialect. Delete is a real delete with a counts receipt, and an optional export bundle whose sha256 is in that receipt.</p>
+              <p>Retention is stated and enforced by one function. Export is streamed as the desktop client's own CSV dialect or JSON. Delete is a real delete with a counts receipt, and an optional export bundle whose sha256 is in that receipt.</p>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="section" id="honesty">
+      <section class="section" id="limits">
         <div class="wrap">
-          <p class="section-kicker">The honest part</p>
-          <h2>What the relay is not.</h2>
-          <ul class="truth">
-            <li><strong>Not a licence check.</strong> The desktop app is fully free and never asks the relay for permission. Turning <code>[remote]</code> on is the whole upgrade.</li>
-            <li><strong>Not metered local telemetry.</strong> The relay holds shared state. Your own machine's console stays local and unmetered either way.</li>
-            <li><strong>Not collecting what you would not send.</strong> No process list, command lines, environment, paths or logs: the schema refuses them and the privacy page lists every field it does accept, generated from that schema.</li>
-            <li><strong>Not hiding a gap.</strong> A silent machine shows a dash, a stale answer is dated, an unreachable relay is its own sentence, and the end-to-end proof is a committed transcript rather than a screenshot.</li>
-          </ul>
-          <div class="actions">
-            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/privacy.md" rel="noopener">Privacy and field list</a>
-            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/self-host-note.md" rel="noopener">Self-hosting note</a>
-            <a class="btn" href="https://github.com/codeafridi/crowsnest-relay/blob/main/docs/e2e-2026-11-09.md" rel="noopener">The end-to-end run</a>
+          <p class="section-kicker">Limits</p>
+          <h2>Stated numbers, enforced by one function.</h2>
+          <div class="limits">
+            <div class="tcard">
+              <h3>Plan limits</h3>
+              <table>
+                <thead><tr><th>What</th><th>Limit</th></tr></thead>
+                <tbody>
+                  <tr><td class="k">Machines per workspace</td><td class="v">100</td></tr>
+                  <tr><td class="k">Seats (members)</td><td class="v">10</td></tr>
+                  <tr><td class="k">Report cadence floor</td><td class="v">15 s</td></tr>
+                  <tr><td class="k">Share links</td><td class="v">25 live, 7&ndash;90 days</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="tcard">
+              <h3>Retention</h3>
+              <table>
+                <thead><tr><th>Data</th><th>Kept</th></tr></thead>
+                <tbody>
+                  <tr><td class="k">Raw samples</td><td class="v">24 h</td></tr>
+                  <tr><td class="k">60 s buckets</td><td class="v">30 d</td></tr>
+                  <tr><td class="k">5 m buckets</td><td class="v">90 d</td></tr>
+                  <tr><td class="k">Events and audit</td><td class="v">1 y</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+          <ul class="truth">
+            <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
+            <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
+            <li><strong>Trial:</strong> 14 days, no card, full Team limits. It starts when a relay you run begins serving your workspace, not when you sign up.</li>
+          </ul>
         </div>
       </section>
 
       <section class="section" id="start">
         <div class="wrap">
-          <p class="section-kicker">Start</p>
-          <h2>Point one machine at it.</h2>
-          <p class="section-lede">Install the desktop app, add the relay's address and the machine token, and the first report appears within one cadence. The rest of the fleet follows.</p>
+          <p class="section-kicker">Getting started</p>
+          <h2>Four steps. The relay is yours.</h2>
+          <ol class="steps">
+            <li><strong>Install the client</strong> on each machine you want in the fleet. It is the same free app; <code>[remote]</code> is off until you switch it on.</li>
+            <li><strong>Run the relay</strong> on a server you control &mdash; one static binary and a Postgres database. No link yet; managed hosting is not open.</li>
+            <li><strong>Mint an ingest token</strong> in the relay's dashboard. It is shown once; each machine gets its own.</li>
+            <li><strong>Point the client at it</strong> with three config lines. The report leaves the box only after the relay answers, and an offline spool buffers what the machine gathered while the laptop was closed.</li>
+          </ol>
           <div class="terminal">
-            <div class="terminal-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="shot-title">crowsnest.conf</span></div>
-            <pre class="terminal-body" style="text-align:left"><code>[remote]
+            <div class="terminal-bar">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">crowsnest config</span>
+            </div>
+            <div class="terminal-body">[remote]
 enabled = true
-url = https://relay.example.com
-token = the-machine-token</code></pre>
+url     = https://relay.example.com
+token   = the-machine-token</div>
           </div>
-          <p class="small">The token is minted in the relay's dashboard and shown once. <code>[remote] actions</code> additionally lets the desktop acknowledge, close and silence; reading is on with the link alone.</p>
+          <p class="small" style="margin-top:14px"><code>[remote] actions</code> turns on the desktop verbs &mdash; acknowledge, close and a 30-minute silence from the Team page. Reading is on with the link alone, and a read-only token disables the verbs with the reason on the page.</p>
+        </div>
+      </section>
+
+      <section class="section" id="honesty">
+        <div class="wrap">
+          <p class="section-kicker">The honest version</p>
+          <h2>What you are buying, and what you are not.</h2>
+          <ul class="truth">
+            <li><strong>The desktop app is never gated.</strong> Team adds shared state; it unlocks nothing on your machine. <code>[remote]</code> ships in the free build, off by default, and there is no licence check anywhere.</li>
+            <li><strong>Shared state, not metered telemetry.</strong> The payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and a test asserts it.</li>
+            <li><strong>You run the relay.</strong> Managed hosting is not open yet. The relay is one static binary plus Postgres on your own server, and the trial starts when it begins serving your workspace.</li>
+            <li><strong>Deletion is a real delete.</strong> Thirty days of grace after cancellation, then counted deletes child-first, a receipt, and an optional export whose sha256 is in the receipt.</li>
+          </ul>
+          <div class="actions">
+            <a class="btn" href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">Read the field-level disclosure</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="wrap">
+          <p class="section-kicker">FAQ</p>
+          <h2>The questions people actually ask.</h2>
+          <details class="faq-item">
+            <summary>When does the trial start?</summary>
+            <p>The day a relay you run begins serving your workspace &mdash; not when you sign up. It runs 14 days, needs no card, and carries the full Team limits.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What happens if I cancel, or a payment lapses?</summary>
+            <p>Cancellation keeps the plan to the end of the period, then data is kept 30 days before a counted delete with a receipt. A lapsed payment gives 7 days of grace: read-only by day 7, cancelled by the pass on day 8. Restore inside the window and nothing is lost.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Is the free app limited?</summary>
+            <p>No. Same binary, same 34 views, MIT. <code>[remote]</code> ships in the free build off by default; turning it on is the entire upgrade. Local telemetry is never metered.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Can I self-host today?</summary>
+            <p>That is the only way today: one static relay binary plus Postgres on your own server. Managed hosting is not open yet, and the relay binary is MIT.</p>
+          </details>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
       <div class="wrap footer-inner">
-        <span>Crowsnest. Desktop app MIT. Relay source available for self-hosting.</span>
+        <span>Desktop app MIT and free. Team adds a relay you run.</span>
         <span class="footer-links">
           <a href="index.html">Home</a>
           <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">GitHub</a>
-          <a href="https://github.com/codeafridi/crowsnest-relay" rel="noopener">Relay</a>
           <a href="https://github.com/codeafridi/Crowsnest/blob/main/LICENSE" rel="noopener">License</a>
         </span>
       </div>
@@ -175,6 +260,24 @@ token = the-machine-token</code></pre>
         var m = document.querySelector('meta[name="theme-color"]');
         if (m) m.setAttribute('content', next === 'dark' ? '#0c0e12' : '#f4f5f8');
         try { localStorage.setItem('theme', next); } catch (e) {}
+      });
+
+      var prices = {
+        annual:  { amount: '$7.50', note: 'a month, billed $90 a year \u2014 two months free' },
+        monthly: { amount: '$9',    note: 'a month, billed monthly' }
+      };
+      document.querySelectorAll('.billtoggle button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          document.querySelectorAll('.billtoggle button').forEach(function (x) {
+            x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+          });
+          var p = prices[b.dataset.bill];
+          if (!p) return;
+          var a = document.getElementById('price-amount');
+          var n = document.getElementById('price-note');
+          if (a) a.textContent = p.amount;
+          if (n) n.textContent = p.note;
+        });
       });
     </script>
   </body>
