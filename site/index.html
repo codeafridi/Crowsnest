@@ -4,11 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crowsnest. A focused process HUD for Linux, macOS and Windows</title>
-    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 34-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, MIT. A paid Team tier adds a relay for shared fleet state." />
+    <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 34-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, MIT. The app is free; a paid Team tier adds a relay for shared fleet state, $9 a month or $90 a year, 14-day trial, no card." />
     <meta name="theme-color" content="#f4f5f8" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
     <script>
       (function () {
         var t = 'light';
@@ -26,8 +26,8 @@
         </a>
         <nav class="nav-mid">
           <a href="#features">Features</a>
-          <a href="team.html">Team</a>
           <a href="#screens">Screenshots</a>
+          <a href="#pricing">Pricing</a>
           <a href="#install">Install</a>
           <a href="#faq">FAQ</a>
         </nav>
@@ -189,23 +189,129 @@
         </div>
       </section>
 
-      <section class="section" id="tiers">
+      <section class="section" id="pricing">
         <div class="wrap">
           <p class="section-kicker">Free and paid</p>
-          <h2>Everything on this page is free.</h2>
-          <div class="teaser-grid">
-            <div class="teaser-box">
-              <p class="teaser-tag">Free</p>
-              <h3>The desktop app</h3>
-              <p>Every view above, on every OS, under the MIT licence. No account, no telemetry, no licence check. Local telemetry is never metered, and a free fleet view over your LAN comes built in.</p>
-              <div class="actions"><a class="btn" href="#install">Install it</a></div>
+          <h2>The app is free. Team adds shared state.</h2>
+          <p class="section-lede">
+            The desktop app ships whole under MIT. The paid tier is the relay half: one place where your fleet's state outlives a closed laptop.
+          </p>
+
+          <div class="billtoggle" role="group" aria-label="Billing period">
+            <button type="button" data-bill="annual" aria-pressed="true">Annual</button>
+            <button type="button" data-bill="monthly" aria-pressed="false">Monthly</button>
+          </div>
+
+          <div class="plans">
+            <div class="plan">
+              <span class="plan-name">Free</span>
+              <div class="price"><span class="free-price">$0</span> <span class="price-note">forever</span></div>
+              <ul>
+                <li>Every one of the 34 console views, on Linux, macOS and Windows</li>
+                <li>MIT, no account, no telemetry, no licence check</li>
+                <li>Local telemetry is never metered</li>
+                <li>A free fleet view over your own LAN</li>
+              </ul>
+              <a class="btn" href="#install">Install the app</a>
             </div>
-            <div class="teaser-box paid">
-              <p class="teaser-tag">Paid</p>
-              <h3>Team</h3>
-              <p>Shared state that outlives a closed laptop: a relay you run that holds the fleet view, the incident queue, the on-call rota and the alert delivery. $9 a month or $90 a year, 14-day trial, no card. The desktop app is never gated.</p>
-              <div class="actions"><a class="btn primary" href="team.html#pricing">See Team</a></div>
+            <div class="plan team">
+              <span class="plan-name">Team <span class="chip">14-day trial &middot; no card</span></span>
+              <div class="price"><span id="price-amount">$7.50</span> <span id="price-note">a month, billed $90 a year &mdash; two months free</span></div>
+              <ul>
+                <li>Shared fleet, incident queue, rota and delivery on a relay you run</li>
+                <li>Browser dashboard and the desktop Team page reading the same rows</li>
+                <li>100 machines &middot; 10 seats &middot; 15 s cadence floor &middot; 25 share links</li>
+                <li>Cancel any time: data kept 30 days, then a counted delete with a receipt</li>
+              </ul>
+              <a class="btn primary" href="#start">Start the free trial</a>
             </div>
+          </div>
+          <p class="small" style="margin-top:16px">Managed hosting is not open yet: today the relay is one static binary you run beside Postgres on your own server. The 14-day trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
+
+          <h3 class="sub">What the relay holds</h3>
+          <div class="grid">
+            <article class="card">
+              <h3>The fleet</h3>
+              <p>Every machine that reports, with silence detection, duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does &mdash; and a silent machine is a dash, never a stale reading.</p>
+            </article>
+            <article class="card">
+              <h3>Incidents that wait</h3>
+              <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. The server is the truth both the browser and the desktop read.</p>
+            </article>
+            <article class="card">
+              <h3>Delivery</h3>
+              <p>Email, webhook (the Alertmanager v4 body with an HMAC), Slack, PagerDuty, Opsgenie, Discord and Teams, driven by a routing tree with escalation steps and an on-call rota. A retry ladder and a dead letter queue; every send is one ledger row.</p>
+            </article>
+            <article class="card">
+              <h3>Your data, on your terms</h3>
+              <p>Retention is stated and enforced by one function. Export is streamed as the desktop client's own CSV dialect or JSON. Delete is a real delete with a counts receipt.</p>
+            </article>
+          </div>
+
+          <div class="pr-split">
+            <figure class="shot-frame">
+              <div class="shot-bar">
+                <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="shot-title">relay console &mdash; Fleet</span>
+              </div>
+              <a href="shots/relay-fleet.webp" target="_blank" rel="noopener">
+                <img src="shots/relay-fleet.webp" width="1280" height="760" loading="lazy" alt="The relay's Fleet page: one machine silent for two minutes with dashes in every value column, one reporting machine with CPU, memory and load, and the machine count against the plan cap." />
+              </a>
+              <figcaption class="shot-cap">A live capture from the end-to-end run: one machine stopped reporting, so its row shows a dash rather than a stale reading.</figcaption>
+            </figure>
+            <div class="limits">
+              <div class="tcard">
+                <h3>Plan limits</h3>
+                <table>
+                  <thead><tr><th>What</th><th>Limit</th></tr></thead>
+                  <tbody>
+                    <tr><td class="k">Machines per workspace</td><td class="v">100</td></tr>
+                    <tr><td class="k">Seats (members)</td><td class="v">10</td></tr>
+                    <tr><td class="k">Report cadence floor</td><td class="v">15 s</td></tr>
+                    <tr><td class="k">Share links</td><td class="v">25 live, 7&ndash;90 days</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tcard">
+                <h3>Retention</h3>
+                <table>
+                  <thead><tr><th>Data</th><th>Kept</th></tr></thead>
+                  <tbody>
+                    <tr><td class="k">Raw samples</td><td class="v">24 h</td></tr>
+                    <tr><td class="k">60 s buckets</td><td class="v">30 d</td></tr>
+                    <tr><td class="k">5 m buckets</td><td class="v">90 d</td></tr>
+                    <tr><td class="k">Events and audit</td><td class="v">1 y</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <ul class="truth">
+            <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
+            <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
+            <li><strong>What you are not buying:</strong> gating of the desktop app. <code>[remote]</code> ships in the free build off by default, there is no licence check anywhere, and the report payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</li>
+          </ul>
+
+          <div id="start">
+            <h3 class="sub">Four steps. The relay is yours.</h3>
+            <ol class="steps">
+              <li><strong>Install the client</strong> on each machine you want in the fleet. It is the same free app; <code>[remote]</code> is off until you switch it on.</li>
+              <li><strong>Run the relay</strong> on a server you control &mdash; one static binary and a Postgres database. No link yet; managed hosting is not open.</li>
+              <li><strong>Mint an ingest token</strong> in the relay's dashboard. It is shown once; each machine gets its own.</li>
+              <li><strong>Point the client at it</strong> with three config lines. The report leaves the box only after the relay answers, and an offline spool buffers what the machine gathered while the laptop was closed.</li>
+            </ol>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">crowsnest config</span>
+              </div>
+              <div class="terminal-body">[remote]
+enabled = true
+url     = https://relay.example.com
+token   = the-machine-token</div>
+            </div>
+            <p class="small" style="margin-top:14px"><code>[remote] actions</code> turns on the desktop verbs &mdash; acknowledge, close and a 30-minute silence from the Team page. Reading is on with the link alone, and a read-only token disables the verbs with the reason on the page.</p>
           </div>
         </div>
       </section>
@@ -276,7 +382,15 @@
           </details>
           <details class="faq-item">
             <summary>What does the paid tier add?</summary>
-            <p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="team.html#pricing">Pricing and limits</a>.</p>
+            <p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="#pricing">Pricing and limits</a>.</p>
+          </details>
+          <details class="faq-item">
+            <summary>When does the trial start?</summary>
+            <p>The day a relay you run begins serving your workspace &mdash; not when you sign up. It runs 14 days, needs no card, and carries the full Team limits.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What happens if I cancel, or a payment lapses?</summary>
+            <p>Cancellation keeps the plan to the end of the period, then data is kept 30 days before a counted delete with a receipt. A lapsed payment gives 7 days of grace: read-only by day 7, cancelled by the pass on day 8. Restore inside the window and nothing is lost.</p>
           </details>
           <details class="faq-item">
             <summary>Which platforms, and what is gated?</summary>
@@ -300,7 +414,7 @@
 
     <footer class="site-footer">
       <div class="wrap footer-inner">
-        <span>Crowsnest 0.13.0. MIT license.</span>
+        <span>Desktop app MIT and free. Team adds a relay you run.</span>
         <span class="footer-links">
           <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">GitHub</a>
           <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases</a>
@@ -327,6 +441,24 @@
           document.querySelectorAll('.ospanel').forEach(function (p) {
             p.hidden = p.dataset.os !== b.dataset.os;
           });
+        });
+      });
+
+      var prices = {
+        annual:  { amount: '$7.50', note: 'a month, billed $90 a year \u2014 two months free' },
+        monthly: { amount: '$9',    note: 'a month, billed monthly' }
+      };
+      document.querySelectorAll('.billtoggle button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          document.querySelectorAll('.billtoggle button').forEach(function (x) {
+            x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+          });
+          var p = prices[b.dataset.bill];
+          if (!p) return;
+          var a = document.getElementById('price-amount');
+          var n = document.getElementById('price-note');
+          if (a) a.textContent = p.amount;
+          if (n) n.textContent = p.note;
         });
       });
     </script>

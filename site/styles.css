@@ -247,19 +247,10 @@ h1 {
 .notes h3 { font-size: 1rem; margin: 0 0 6px; }
 .notes p { margin: 0; color: var(--muted); font-size: 0.93rem; }
 
-.teaser-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.teaser-box { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
-.teaser-box.paid { border-color: var(--accent); }
-.teaser-tag {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 6px;
-}
-.teaser-box h3 { margin: 0 0 8px; font-size: 1.15rem; }
-.teaser-box p { margin: 0 0 16px; color: var(--muted); font-size: 0.95rem; }
+.sub { font-size: 1.05rem; margin: 34px 0 14px; }
+.pr-split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; margin-top: 26px; }
+.pr-split .limits { grid-template-columns: 1fr; }
+.shot-cap { padding: 10px 14px; font-size: 0.85rem; color: #8b93a1; border-top: 1px solid #2a313c; background: var(--code-bar); }
 
 .ostabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 16px; }
 .ostabs button {
@@ -423,6 +414,6 @@ ol.steps strong { color: var(--text); }
 }
 @media (max-width: 720px) {
   .nav-mid { display: none; }
-  .teaser-grid, .plans, .limits { grid-template-columns: 1fr; }
+  .plans, .limits, .pr-split { grid-template-columns: 1fr; }
   .section { padding: 44px 0; }
 }
