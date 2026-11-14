@@ -959,6 +959,27 @@ jobs:
           cmd /c "`"$exe`" status > status.out 2>&1"
           $statusOut = Get-Content status.out -Raw
           if ("$statusOut" -notmatch 'autostart: disabled') { throw "status verb: unexpected output ($statusOut)" }
+          cmd /c "`"$exe`" vers > vers.out 2>&1"
+          $versOut = (Get-Content vers.out -Raw).Trim()
+          if ($versOut -notmatch '^\d+\.\d+\.\d+') { throw "vers verb: unexpected output ($versOut)" }
+          cmd /c "`"$exe`" path > path.out 2>&1"
+          $pathOut = (Get-Content path.out -Raw).Trim()
+          if ($pathOut -notlike '*Crowsnest*') { throw "path verb: unexpected output ($pathOut)" }
+          cmd /c "`"$exe`" bogus > bogus.out 2>&1"
+          if ($LASTEXITCODE -ne 2) { throw "unknown command should exit 2 (got $LASTEXITCODE)" }
+          cmd /c "`"$exe`" run > run.out 2>&1"
+          $runOut = Get-Content run.out -Raw
+          if ("$runOut" -notmatch 'started: HUD launched|already running: \d+') { throw "run verb: unexpected output ($runOut)" }
+          cmd /c "`"$exe`" restart > restart.out 2>&1"
+          if ($LASTEXITCODE -ne 0) { throw 'restart verb failed' }
+          Start-Sleep -Seconds 2
+          cmd /c "`"$exe`" status > status2.out 2>&1"
+          if ((Get-Content status2.out -Raw) -notmatch 'other instances: [1-9]\d*') { throw 'restart did not leave a HUD running' }
+          cmd /c "`"$exe`" stop > stop2.out 2>&1"
+          cmd /c "`"$exe`" enable > enable.out 2>&1"
+          if ((Get-Content enable.out -Raw) -notmatch 'autostart: enabled') { throw 'enable verb did not turn autostart on' }
+          cmd /c "`"$exe`" disable > disable2.out 2>&1"
+          if ((Get-Content disable2.out -Raw) -notmatch 'autostart: disabled') { throw 'disable verb did not turn autostart off' }
           cmd /c "`"$exe`" --dump > dump.json"
           $dump = Get-Content dump.json -Raw | ConvertFrom-Json -AsHashtable
           if (($dump.processCount -as [int]) -lt 1) { throw 'dump: processCount missing' }

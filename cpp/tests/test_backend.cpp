@@ -16,6 +16,7 @@
 #include <QProcess>
 
 #if defined(Q_OS_WIN)
+#include "platform/win/WinFocusProvider.h"
 #include <process.h>
 #else
 #include <unistd.h>
@@ -274,6 +275,16 @@ int main(int argc, char *argv[]) {
         }
 #endif
     }
+
+#if defined(Q_OS_WIN)
+    {
+        // Clicking the overlay (or opening one of its popups) must never make
+        // the console report itself as the focused app.
+        WinFocusProvider provider;
+        check(provider.focusedPid() != static_cast<int>(::_getpid()),
+              "focus: the overlay never reports itself as the focused app");
+    }
+#endif
 
     std::printf("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;

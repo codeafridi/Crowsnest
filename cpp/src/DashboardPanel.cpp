@@ -495,7 +495,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     m_views->addWidget(buildAlertsView());
     m_views->addWidget(buildIncidentsView());
     m_views->addWidget(buildSloView());
-    m_views->addWidget(buildProcessesView());
+    m_processesPageIndex = m_views->addWidget(buildProcessesView());
     m_views->addWidget(buildMemoryView());
     m_views->addWidget(buildDisksView());
     m_views->addWidget(buildGpuView());
@@ -527,6 +527,15 @@ DashboardPanel::DashboardPanel(QWidget *parent)
 
     connect(m_rail, &QListWidget::currentRowChanged, m_views,
             &QStackedWidget::setCurrentIndex);
+
+    // The process tree is rebuilt from the newest sample when its page is the
+    // one being watched; switching to it repopulates from the stored rows
+    // instead of leaving an empty page until the next tick.
+    connect(m_views, &QStackedWidget::currentChanged, this, [this](int index) {
+        if (index == m_processesPageIndex && m_procs != nullptr) {
+            populateProcessTree(m_lastProcessRows);
+        }
+    });
 
     // "Why did this spike": every live chart carries the event tick overlay;
     // clicking one narrows the timeline to that instant.
@@ -7336,7 +7345,15 @@ void DashboardPanel::setSnapshot(const DisplaySnapshot &snapshot) {
     }
 
     m_lastProcessRows = snapshot.processes;
-    populateProcessTree(m_lastProcessRows);
+    // One QTreeWidgetItem per process across eleven columns is the most
+    // expensive per-tick rebuild in the console; while another page is on
+    // screen it would be rebuilt unseen. The page switch repopulates from
+    // m_lastProcessRows (see the currentChanged hook). A hidden panel (tests,
+    // before the first show) keeps the old unconditional behaviour.
+    if (m_procs != nullptr
+        && (!isVisible() || m_views->currentIndex() == m_processesPageIndex)) {
+        populateProcessTree(m_lastProcessRows);
+    }
 }
 
 void DashboardPanel::populateProcessTree(const QList<ProcessRow> &rows) {
@@ -7347,6 +7364,7 @@ void DashboardPanel::populateProcessTree(const QList<ProcessRow> &rows) {
     // action buttons would lose their target once per second.
     const int previousPid = selectedProcessPid();
     m_populating = true;
+    m_procs->setUpdatesEnabled(false);
     m_procs->clear();
     QList<QTreeWidgetItem *> byDepth;
     QList<QTreeWidgetItem *> allItems;
@@ -7432,6 +7450,7 @@ void DashboardPanel::populateProcessTree(const QList<ProcessRow> &rows) {
         }
     }
     m_populating = false;
+    m_procs->setUpdatesEnabled(true);
 
     if (m_procFilterNote != nullptr) {
         m_procFilterNote->setText(

@@ -50,8 +50,11 @@ bash cpp/packaging/install_macos.sh enable  # install ~/Library/LaunchAgents/dev
 bash cpp/packaging/install_macos.sh start   # load + start
 bash cpp/packaging/install_macos.sh status
 bash cpp/packaging/install_macos.sh logs    # tail ~/Library/Logs/Crowsnest/crowsnest.log
-bash cpp/packaging/install_macos.sh stop|restart|disable|uninstall
+bash cpp/packaging/install_macos.sh stop|restart|disable|update|uninstall
 ```
+
+`update` stops the HUD, downloads the latest DMG and reinstalls; `uninstall`
+removes the app, the `crowsnest` command and the LaunchAgent.
 
 Logs: `~/Library/Logs/Crowsnest/`.
 Config: `~/Library/Application Support/Crowsnest/config.conf`.

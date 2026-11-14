@@ -3435,6 +3435,42 @@ int main(int argc, char *argv[]) {
               "remote reporter: what the console hands over carries no private key");
     }
 
+    // The process tree is the most expensive per-tick rebuild; it is only
+    // refreshed while its own page is on screen, and a page switch repopulates
+    // it from the last sample instead of leaving it empty until the next tick.
+    {
+        DashboardPanel panel;
+        panel.resize(1000, 700);
+        panel.show();
+        QCoreApplication::processEvents();
+        panel.setSnapshot(withProcs);
+        auto *rail = panel.findChild<QListWidget *>(QStringLiteral("ddRail"));
+        auto *tree = panel.findChild<QTreeWidget *>(QStringLiteral("ddProcs"));
+        check(rail != nullptr && tree != nullptr,
+              "process page widgets exist");
+        check(tree != nullptr && tree->topLevelItemCount() == 0,
+              "process tree is not rebuilt while its page is hidden");
+        if (rail != nullptr && tree != nullptr) {
+            rail->setCurrentRow(5);
+            QCoreApplication::processEvents();
+            check(tree->topLevelItemCount() == 1,
+                  "switching to the process page populates the tree");
+            check(tree->topLevelItem(0) != nullptr
+                      && tree->topLevelItem(0)->childCount() == 1,
+                  "switching populates the nested rows too");
+        }
+        panel.hide();
+
+        // A hidden panel (tests, before the first show) keeps the old
+        // unconditional behaviour.
+        DashboardPanel hiddenPanel;
+        hiddenPanel.setSnapshot(withProcs);
+        auto *hiddenTree =
+            hiddenPanel.findChild<QTreeWidget *>(QStringLiteral("ddProcs"));
+        check(hiddenTree != nullptr && hiddenTree->topLevelItemCount() == 1,
+              "a hidden panel still populates the process tree");
+    }
+
     std::printf("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }

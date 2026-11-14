@@ -75,16 +75,21 @@ the exe:
 
 ```bat
 crowsnest                    run the HUD
+crowsnest run                same as bare crowsnest
 crowsnest stop               stop other crowsnest instances (never itself)
 crowsnest restart            stop, then relaunch
-crowsnest status             autostart state + other instance count
+crowsnest status             version, autostart state, other instance count
+crowsnest enable             start now + turn autostart on
 crowsnest disable            stop + turn autostart off
 crowsnest --autostart=on|off|status
-crowsnest uninstall          stop + autostart off + remove shims,
-                           prints the one folder-removal step left
+crowsnest update             stop, download and install the latest release
+crowsnest uninstall          stop + autostart off + remove the command,
+                             the shims and the install folder
+crowsnest path               print the install folder
+crowsnest vers               print the installed version
 crowsnest --dump             JSON snapshot of the machine
 crowsnest --probe[=ticks]    live pipeline diagnostic (headless, no window);
-                           prints one line per tick + requested/received
+                             prints one line per tick + requested/received
 crowsnest logs               tail the universal hud.log (last 40 lines)
 ```
 
@@ -99,6 +104,17 @@ from (Windows file locks it), so it prints the exact
 `Remove-Item -Recurse -Force "%LOCALAPPDATA%\Crowsnest"` command to
 finish the job. The PowerShell installer's `-Uninstall` path handles
 the whole removal in one step.
+
+## Focus tracking
+
+The overlay is created with Qt's `WindowDoesNotAcceptFocus`, which the Windows
+platform plugin maps to `WS_EX_NOACTIVATE` — clicking the HUD (or expanding it)
+does not take the foreground away from the app you are in. Windows can still
+answer `GetForegroundWindow` with `NULL` or with one of the HUD's own popups
+for a moment after such a click; the focus provider ignores both and keeps the
+last real app, so the FOCUSED APP panels stay live instead of blanking until
+you click back into your app. It switches the instant you focus a different
+window.
 
 ## Feature matrix (M49 + M50)
 

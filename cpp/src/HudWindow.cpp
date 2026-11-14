@@ -1370,7 +1370,11 @@ void HudWindow::toggleDetails() {
         }
         if (screen != nullptr) {
             const QRect avail = screen->availableGeometry();
-            QSize want(avail.width() * 7 / 10, avail.height() * 7 / 10);
+            // 55% of the available area, capped so a 4K panel does not open
+            // a 2300 px console: this is an overlay, the work has to stay
+            // visible around it. A size the user dragged is kept as-is.
+            QSize want(qMin(avail.width() * 11 / 20, 1180),
+                       qMin(avail.height() * 11 / 20, 780));
             if (m_overlayConfig.width >= 430 && m_overlayConfig.height >= 120) {
                 // The console remembers the size the user last gave it.
                 want = QSize(m_overlayConfig.width, m_overlayConfig.height);

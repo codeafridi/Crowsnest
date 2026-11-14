@@ -13,7 +13,9 @@
 #
 # Installs the app and the `crowsnest` command. Nothing starts automatically:
 # run `crowsnest` after installing, or pass -Autostart to start the HUD now
-# and at every login. Downloads show live byte/percent progress.
+# and at every login. `crowsnest update` runs this script again (it stops the
+# running HUD first, because Windows locks a running exe). Downloads show live
+# byte/percent progress.
 
 #Requires -Version 5.1
 [CmdletBinding()]
@@ -150,22 +152,67 @@ function LatestTag {
 function ZipUrl {
     if ($env:CROWSNEST_WIN_URL) { return $env:CROWSNEST_WIN_URL }
     if ($Url) { return $Url }
-    $tag = LatestTag
     $ver = ($tag -replace '^v', '')
     return "https://github.com/$Repo/releases/download/$tag/Crowsnest-$ver-windows-portable.zip"
+}
+
+# Resolved once: the tag names the release AND the VERSION stamp written into
+# the install directory, which is what `update` reports as old -> new.
+$tag = $null
+if (-not $env:CROWSNEST_WIN_URL -and -not $Url) {
+    $tag = LatestTag
 }
 
 $AppDir = Join-Path $env:LOCALAPPDATA 'Crowsnest'
 $ShimDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
 $Exe = Join-Path $AppDir 'crowsnest.exe'
+$VerFile = Join-Path $AppDir 'VERSION'
+
+# A running exe keeps its image locked: it is stopped first (the exe's own
+# `stop` verb waits for the kernel to retire each process), and folder removal
+# is retried briefly because the handle is released a moment later.
+function Stop-RunningHud {
+    $stopped = 0
+    if (Test-Path $Exe) {
+        # PowerShell does not wait for a GUI-subsystem exe invoked with `&`,
+        # so the count would never be read; cmd.exe waits and passes the
+        # output through. Elsewhere (tests on other OSes) call it directly.
+        $out = ''
+        try {
+            if ($env:OS -eq 'Windows_NT') {
+                $out = cmd /c "`"$Exe`" stop" 2>$null
+            } else {
+                $out = & $Exe stop 2>$null
+            }
+        } catch { $out = '' }
+        if ("$out" -match 'stopped:\s*(\d+)') { $stopped = [int]$Matches[1] }
+    }
+    $procs = @(Get-Process -Name crowsnest -ErrorAction SilentlyContinue)
+    if ($procs.Count -gt 0) {
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        $stopped += $procs.Count
+    }
+    return ($stopped -gt 0)
+}
+
+function Remove-AppDir {
+    for ($i = 0; $i -lt 50; $i++) {
+        if (-not (Test-Path $AppDir)) { return }
+        try { Remove-Item -Recurse -Force $AppDir; return } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    if (Test-Path $AppDir) {
+        throw "could not replace $AppDir - close any file open in it and retry"
+    }
+}
 
 if ($Uninstall) {
     if (Test-Path $Exe) {
-        & $Exe --autostart=off 2>$null | Out-Null
+        try { & $Exe --autostart=off 2>$null | Out-Null } catch { }
     }
-    Get-Process -Name crowsnest -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-    if (Test-Path $AppDir) { Remove-Item -Recurse -Force $AppDir }
+    $null = Stop-RunningHud
+    Remove-AppDir
     $shim = Join-Path $ShimDir 'crowsnest.cmd'
     $shimPosix = Join-Path $ShimDir 'crowsnest'
     if (Test-Path $shim) { Remove-Item -Force $shim }
@@ -192,16 +239,26 @@ try {
     }
     if ((Get-Item -LiteralPath $zip).Length -lt 10MB) { throw 'downloaded zip is too small' }
 
-    Get-Process -Name crowsnest -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-    if (Test-Path $AppDir) { Remove-Item -Recurse -Force $AppDir }
+    $ver = 'unknown'
+    if ($tag) { $ver = $tag -replace '^v', '' }
+    if ($env:CROWSNEST_TEST_TAG) { $ver = $env:CROWSNEST_TEST_TAG -replace '^v', '' }
+    $oldVer = $null
+    if (Test-Path $VerFile) { $oldVer = (Get-Content -LiteralPath $VerFile -Raw).Trim() }
+
+    if (Stop-RunningHud) { Info 'stopped the running HUD to replace its files' }
+    Remove-AppDir
     New-Item -ItemType Directory -Path $AppDir | Out-Null
     Info "extracting to $AppDir"
-    Expand-Archive -Path $zip -DestinationPath $AppDir -Force
-
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $AppDir)
+    } catch {
+        Expand-Archive -Path $zip -DestinationPath $AppDir -Force
+    }
     if (-not (Test-Path $Exe)) {
         Die 'portable install incomplete (crowsnest.exe missing)'
     }
+    [IO.File]::WriteAllText($VerFile, $ver + "`n", [Text.Encoding]::ASCII)
 
     New-Item -ItemType Directory -Path $ShimDir -Force | Out-Null
     $shimCmd = Join-Path $ShimDir 'crowsnest.cmd'
@@ -244,22 +301,30 @@ try {
         Start-Process -FilePath $Exe
         Info 'Started now and at login.'
     } else {
-        Info 'Installed. Nothing is running yet - open a NEW shell and type: crowsnest'
+        Info 'Nothing is running yet - open a NEW shell and type: crowsnest'
     }
 
     Info ''
-    Info "Installed to $AppDir"
+    if ($oldVer -and $oldVer -ne $ver) {
+        Info "Updated $oldVer -> $ver in $AppDir"
+    } elseif ($oldVer) {
+        Info "Reinstalled $ver in $AppDir"
+    } else {
+        Info "Installed $ver to $AppDir"
+    }
     Info ''
     Info 'Next steps:'
-    Info '  crowsnest                  launch the HUD and return to the prompt'
-    Info '  crowsnest stop             stop every running HUD instance'
-    Info '  crowsnest status           autostart state + running instances'
-    Info '  crowsnest restart          restart the HUD'
-    Info '  crowsnest --autostart=on   also start at every login'
-    Info '  crowsnest --autostart=off  stop doing that'
-    Info '  crowsnest --dump           JSON snapshot of the machine (headless check)'
-    Info '  update                     re-run this bootstrapper'
-    Info '  uninstall                  $env:CROWSNEST_UNINSTALL=''1''; irm this script | iex'
+    Info '  crowsnest                 launch the HUD and return to the prompt'
+    Info '  crowsnest stop            stop every running HUD instance'
+    Info '  crowsnest status          version, autostart state, running instances'
+    Info '  crowsnest restart         restart the HUD'
+    Info '  crowsnest enable          start now and at every login'
+    Info '  crowsnest disable         stop and do not start at login'
+    Info '  crowsnest update          download and install the latest release'
+    Info '  crowsnest uninstall       remove the app, the command and autostart'
+    Info '  crowsnest path            show where it is installed'
+    Info '  crowsnest vers            show the installed version'
+    Info '  crowsnest --dump          JSON snapshot of the machine (headless check)'
     Info "note: unsigned build - SmartScreen 'More info / Run anyway' on first GUI launch."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

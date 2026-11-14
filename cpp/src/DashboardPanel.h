@@ -546,6 +546,7 @@ private:
     QPushButton *m_containerRestart = nullptr;
     QList<QPushButton *> m_processActionButtons;
     QList<ProcessRow> m_lastProcessRows;
+    int m_processesPageIndex = -1;
     int m_confirmPid = 0;
     ProcessSignal m_confirmSignal = ProcessSignal::Term;
     bool m_procFilterActive = false;

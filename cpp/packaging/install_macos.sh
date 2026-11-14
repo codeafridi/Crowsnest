@@ -27,7 +27,7 @@ mkdir -p "$(dirname "$PLIST")" 2>/dev/null || true
 
 usage() {
     cat <<'USAGE'
-usage: crowsnest.sh {run|start|stop|restart|status|logs|enable|disable|uninstall|path}
+usage: crowsnest.sh {run|start|stop|restart|status|logs|enable|disable|update|uninstall|path}
 
   run         run the HUD in the foreground (management mode: no LaunchAgent)
   start       load the LaunchAgent and start the HUD
@@ -37,8 +37,8 @@ usage: crowsnest.sh {run|start|stop|restart|status|logs|enable|disable|uninstall
   logs        tail the HUD stdout/stderr log
   enable      install the LaunchAgent plist (login autostart) + start now
   disable     remove the LaunchAgent plist
-  update      re-run the install one-liner (wget, curl, or busybox download)
-  uninstall   disable + stop + remove plist
+  update      stop the HUD, download and reinstall the latest release
+  uninstall   stop the HUD and remove the app, the command and autostart
   path        print the binary path
 USAGE
 }
@@ -116,11 +116,19 @@ case "$cmd" in
         tail -n 80 -f "$LOG_FILE" "$ERR_FILE" 2>/dev/null
         ;;
     update)
-        cat <<'UPDATE'
-update: re-run the install one-liner:
-  curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
-UPDATE
-        curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
+        "$0" stop >/dev/null 2>&1 || true
+        pkill -f "$BIN" >/dev/null 2>&1 || true
+        echo "updating Crowsnest..."
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
+        else
+            echo "update: no curl or wget - re-run this one-liner manually:" >&2
+            echo "  curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh" >&2
+            exit 1
+        fi
+        echo "updated - run 'crowsnest start' to launch the new build"
         ;;
     enable)
         write_plist
@@ -136,8 +144,18 @@ UPDATE
         echo "disabled"
         ;;
     uninstall)
-        "$0" disable
-        echo "uninstalled"
+        "$0" disable >/dev/null 2>&1 || true
+        pkill -f "$BIN" >/dev/null 2>&1 || true
+        echo "uninstalling Crowsnest..."
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh -s -- --uninstall
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh -s -- --uninstall
+        else
+            rm -f "$PLIST"
+            echo "uninstalled the service; remove the app and command manually:" >&2
+            echo "  sudo rm -rf /Applications/Crowsnest.app /usr/local/bin/crowsnest" >&2
+        fi
         ;;
     path)
         echo "$BIN"

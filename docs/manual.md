@@ -103,8 +103,11 @@ autostart/status are `--autostart=on|off|status` — run the installer with
 | `crowsnest disable` | stop it and remove login autostart |
 | `crowsnest enable` | set up login autostart and start it |
 | `crowsnest status` | is it running? |
-| `crowsnest update` | upgrade to the latest version |
+| `crowsnest logs` | tail the HUD log |
+| `crowsnest update` | upgrade to the latest version (stops the HUD first) |
 | `crowsnest uninstall` | remove everything |
+| `crowsnest vers` | print the installed version |
+| `crowsnest path` | print the install folder |
 | `crowsnest --new-instance` | start the HUD even though one is already running on this display |
 
 The HUD is single-instance **per display**: a second launch on the same screen

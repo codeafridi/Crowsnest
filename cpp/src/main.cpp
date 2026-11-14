@@ -271,8 +271,9 @@ QString settingsAutostartLine() {
 
 QString settingsVerbsLine() {
 #if defined(Q_OS_WIN)
-    return QStringLiteral("crowsnest start|stop|restart|status|disable"
-                          "|uninstall|logs|--dump|--probe|--record");
+    return QStringLiteral("crowsnest run|start|stop|restart|status|enable"
+                          "|disable|update|uninstall|logs|path|vers"
+                          "|--dump|--probe|--record");
 #elif defined(Q_OS_MACOS)
     return QStringLiteral("install_macos.sh run|start|stop|restart|status"
                           "|enable|disable|update|uninstall|logs");
@@ -415,27 +416,83 @@ int windowsStopOthers() {
     return stopped;
 }
 
+bool windowsStartHud() {
+    const QList<DWORD> others = crowsnestPidsExcludingSelf();
+    if (!others.isEmpty()) {
+        std::fprintf(stdout, "already running: %d instance(s)\n",
+                     others.size());
+        std::fflush(stdout);
+        return true;
+    }
+    const QString exe = windowsSelfExePath();
+    if (exe.isEmpty()
+            || !QProcess::startDetached(exe, QStringList())) {
+        std::fprintf(stderr, "start failed: could not launch %s\n",
+                     qUtf8Printable(exe));
+        return true;
+    }
+    std::fprintf(stdout, "started: HUD launched\n");
+    std::fflush(stdout);
+    return true;
+}
+
 bool windowsVerb(const QString &verb) {
-    if (verb == QStringLiteral("start")) {
-        const QList<DWORD> others = crowsnestPidsExcludingSelf();
-        if (!others.isEmpty()) {
-            std::fprintf(stdout, "already running: %d instance(s)\n",
-                         others.size());
-            std::fflush(stdout);
+    if (verb == QStringLiteral("run")
+            || verb == QStringLiteral("start")) {
+        return windowsStartHud();
+    }
+    if (verb == QStringLiteral("enable")) {
+        autostartCommand(QStringLiteral("on"));
+        return windowsStartHud();
+    }
+    if (verb == QStringLiteral("vers")) {
+        std::fprintf(stdout, "%s\n", CROWSNEST_APP_VERSION);
+        std::fflush(stdout);
+        return true;
+    }
+    if (verb == QStringLiteral("path")) {
+        std::fprintf(stdout, "%s\n",
+                     qUtf8Printable(
+                         QFileInfo(windowsSelfExePath()).absolutePath()));
+        std::fflush(stdout);
+        return true;
+    }
+    if (verb == QStringLiteral("update")) {
+        const int stopped = windowsStopOthers();
+        std::fprintf(stdout, "stopped: %d other instance(s)\n", stopped);
+        std::fflush(stdout);
+        // Windows will not let this running image be overwritten, so the
+        // installer is handed to a shell that starts after this process
+        // exits (the 2 s wait is the hand-off window). It writes to the
+        // same console, so the download progress stays visible.
+        const QString script = QStringLiteral(
+            "Start-Sleep -Seconds 2; "
+            "$ProgressPreference='SilentlyContinue'; "
+            "irm 'https://raw.githubusercontent.com/codeafridi/Crowsnest/"
+            "main/cpp/packaging/windows/install.ps1' | iex");
+        const bool launched = QProcess::startDetached(
+            QStringLiteral("powershell.exe"),
+            QStringList() << QStringLiteral("-NoProfile")
+                          << QStringLiteral("-ExecutionPolicy")
+                          << QStringLiteral("Bypass")
+                          << QStringLiteral("-Command") << script);
+        if (!launched) {
+            std::fprintf(stderr,
+                         "update failed: powershell.exe could not be "
+                         "started\n  run the installer instead: irm "
+                         "https://raw.githubusercontent.com/codeafridi/"
+                         "Crowsnest/main/cpp/packaging/windows/install.ps1 "
+                         "| iex\n");
+            std::fflush(stderr);
             return true;
         }
-        const QString exe = windowsSelfExePath();
-        if (exe.isEmpty()
-                || !QProcess::startDetached(exe, QStringList())) {
-            std::fprintf(stderr, "start failed: could not launch %s\n",
-                         qUtf8Printable(exe));
-            return true;
-        }
-        std::fprintf(stdout, "started: HUD launched\n");
+        std::fprintf(stdout,
+                     "installing the latest release in this window...\n");
         std::fflush(stdout);
         return true;
     }
     if (verb == QStringLiteral("status")) {
+        std::fprintf(stdout, "version: %s\n", CROWSNEST_APP_VERSION);
         autostartCommand(QStringLiteral("status"));
         const QList<DWORD> others = crowsnestPidsExcludingSelf();
         std::fprintf(stdout, "other instances: %d\n", others.size());
@@ -459,14 +516,28 @@ bool windowsVerb(const QString &verb) {
             QFile::remove(shimDir + QStringLiteral("/crowsnest"));
             const QString appDir = QFileInfo(
                     windowsSelfExePath()).absolutePath();
+            // The running image keeps its own folder locked, so a shell that
+            // starts after this process exits removes it.
+            QString escaped = appDir;
+            escaped.replace(QLatin1Char('\''), QStringLiteral("''"));
+            const QString script = QStringLiteral(
+                "Start-Sleep -Seconds 2; "
+                "Remove-Item -LiteralPath '%1' -Recurse -Force "
+                "-ErrorAction SilentlyContinue").arg(escaped);
+            const bool launched = QProcess::startDetached(
+                QStringLiteral("powershell.exe"),
+                QStringList() << QStringLiteral("-NoProfile")
+                              << QStringLiteral("-ExecutionPolicy")
+                              << QStringLiteral("Bypass")
+                              << QStringLiteral("-Command") << script);
             std::fprintf(stdout,
-                         "teardown done: HUD stopped, autostart removed, "
-                         "shims removed\n");
+                         "uninstalled: HUD stopped, autostart removed, "
+                         "command shims removed\n");
             std::fflush(stdout);
             std::fprintf(stdout,
-                         "the running exe locks its folder - delete it "
-                         "after this command exits:\n  "
-                         "Remove-Item -Recurse -Force \"%s\"\n",
+                         launched
+                             ? "removing %s after this command exits\n"
+                             : "delete the folder manually:\n  %s\n",
                          qUtf8Printable(appDir));
             std::fflush(stdout);
         }
@@ -547,15 +618,31 @@ int main(int argc, char *argv[]) {
             ? QString::fromLocal8Bit(argv[1])
             : QString();
         if (!verb.isEmpty()
-                && (verb == QStringLiteral("start")
+                && (verb == QStringLiteral("run")
+                    || verb == QStringLiteral("start")
                     || verb == QStringLiteral("stop")
-                    || verb == QStringLiteral("disable")
-                    || verb == QStringLiteral("uninstall")
                     || verb == QStringLiteral("restart")
-                    || verb == QStringLiteral("status"))) {
+                    || verb == QStringLiteral("status")
+                    || verb == QStringLiteral("enable")
+                    || verb == QStringLiteral("disable")
+                    || verb == QStringLiteral("update")
+                    || verb == QStringLiteral("uninstall")
+                    || verb == QStringLiteral("vers")
+                    || verb == QStringLiteral("path"))) {
             if (windowsVerb(verb)) {
                 return 0;
             }
+        }
+        // A mistyped command must not launch the GUI: it used to fall through
+        // to QApplication, so `crowsnest update` (added later) and every typo
+        // looked like "nothing happened".
+        if (!verb.isEmpty() && !verb.startsWith(QLatin1Char('-'))) {
+            std::fprintf(stderr,
+                         "crowsnest: unknown command: %s\n"
+                         "  run|start|stop|restart|status|enable|disable"
+                         "|update|uninstall|logs|path|vers|--dump\n",
+                         qUtf8Printable(verb));
+            return 2;
         }
     }
 #endif

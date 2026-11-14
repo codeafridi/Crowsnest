@@ -530,6 +530,12 @@ win_install() {
     tag="$(latest_version_tag)"
     zip_url="https://github.com/${REPO}/releases/download/${tag}/Crowsnest-$(printf '%s' "$tag" | tr -d v)-windows-portable.zip"
   fi
+  ver=""
+  if [ -n "${CROWSNEST_TEST_TAG:-}" ]; then
+    ver="${CROWSNEST_TEST_TAG#v}"
+  elif [ -n "${tag:-}" ]; then
+    ver="${tag#v}"
+  fi
 
   tmp="$(work_dir)" || die "no writable directory for the download"
   mkdir -p "$tmp" 2>/dev/null || true
@@ -539,22 +545,40 @@ win_install() {
   fetch "$zip_url" "$tmp/crowsnest.zip" \
     || die "download failed ($zip_url). Get the installer from https://github.com/${REPO}/releases"
 
+  # A running exe keeps its image locked. The exe's own stop verb waits for
+  # the kernel to retire each process; taskkill is the fallback. Removal is
+  # retried because Windows releases the handle a moment after the exit.
+  if [ -f "$appdir/crowsnest.exe" ]; then
+    "$appdir/crowsnest.exe" stop >/dev/null 2>&1 || true
+  fi
   taskkill //F //IM crowsnest.exe >/dev/null 2>&1 || true
-  rm -rf "$appdir"
+  i=0
+  while [ -d "$appdir" ] && [ "$i" -lt 50 ]; do
+    rm -rf "$appdir" 2>/dev/null && break
+    i=$((i + 1))
+    sleep 0.1
+  done
+  [ -d "$appdir" ] \
+    && die "could not replace $(cygpath -w "$appdir") - close any file open in it and retry"
   mkdir -p "$appdir"
   ZIP_WIN="$(cygpath -w "$tmp/crowsnest.zip")" \
   DEST_WIN="$(cygpath -w "$appdir")" \
   MSYS_NO_PATHCONV=1 powershell.exe -NoProfile -ExecutionPolicy Bypass \
-    -Command 'Expand-Archive -Path $env:ZIP_WIN -DestinationPath $env:DEST_WIN -Force' \
-    || die "unzip (Expand-Archive) failed"
+    -Command 'try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::ExtractToDirectory($env:ZIP_WIN, $env:DEST_WIN) } catch { Expand-Archive -Path $env:ZIP_WIN -DestinationPath $env:DEST_WIN -Force }' \
+    || die "unzip failed"
   [ -f "$appdir/crowsnest.exe" ] || die "portable install incomplete (crowsnest.exe missing)"
+  if [ -n "$ver" ]; then
+    printf '%s\n' "$ver" > "$appdir/VERSION"
+  fi
 
   shimDirUnix="$(dirname "$appdir")/Microsoft/WindowsApps"
   shimDirWin="$(cygpath -w "$shimDirUnix")"
   mkdir -p "$shimDirUnix" 2>/dev/null || true
-  printf '@echo off\r\nif "%%~1"=="" (\r\n  start "" /b "%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe"\r\n  exit /b 0\r\n)\r\n"%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe" %%*\r\n' \
+  # uninstall is handled by the shims: the running exe cannot delete the
+  # folder it is executing from, and a batch file can remove itself.
+  printf '@echo off\r\nif /i "%%~1"=="uninstall" (\r\n  if exist "%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe" "%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe" disable >nul 2>&1\r\n  rmdir /s /q "%%LOCALAPPDATA%%\\Crowsnest" 2>nul\r\n  del "%%LOCALAPPDATA%%\\Microsoft\\WindowsApps\\crowsnest" 2>nul\r\n  echo Crowsnest uninstalled (Windows).\r\n  (goto) 2>nul & del "%%~f0"\r\n  exit /b 0\r\n)\r\nif "%%~1"=="" (\r\n  start "" /b "%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe"\r\n  exit /b 0\r\n)\r\n"%%LOCALAPPDATA%%\\Crowsnest\\crowsnest.exe" %%*\r\n' \
     > "$shimDirUnix/crowsnest.cmd" 2>/dev/null || true
-  printf '#!/bin/sh\nif [ "$#" -eq 0 ]; then\n  cmd.exe //c start "" /b "$LOCALAPPDATA\\Crowsnest\\crowsnest.exe" >/dev/null 2>&1\n  exit 0\nfi\nexec "$LOCALAPPDATA/Crowsnest/crowsnest.exe" "$@"\n' \
+  printf '#!/bin/sh\nif [ "$1" = "uninstall" ]; then\n  if [ -x "$LOCALAPPDATA/Crowsnest/crowsnest.exe" ]; then\n    "$LOCALAPPDATA/Crowsnest/crowsnest.exe" disable >/dev/null 2>&1 || true\n  fi\n  MSYS_NO_PATHCONV=1 cmd.exe //c rmdir /s /q "%%LOCALAPPDATA%%\\Crowsnest" >/dev/null 2>&1 || true\n  rm -f "$LOCALAPPDATA/Microsoft/WindowsApps/crowsnest.cmd"\n  rm -f "$LOCALAPPDATA/Microsoft/WindowsApps/crowsnest"\n  echo "Crowsnest uninstalled (Windows)."\n  exit 0\nfi\nif [ "$#" -eq 0 ]; then\n  cmd.exe //c start "" /b "$LOCALAPPDATA\\Crowsnest\\crowsnest.exe" >/dev/null 2>&1\n  exit 0\nfi\nexec "$LOCALAPPDATA/Crowsnest/crowsnest.exe" "$@"\n' \
     > "$shimDirUnix/crowsnest" 2>/dev/null || true
   chmod 0755 "$shimDirUnix/crowsnest" 2>/dev/null || true
   if [ ! -f "$shimDirUnix/crowsnest.cmd" ] && [ ! -f "$shimDirUnix/crowsnest" ]; then
@@ -569,22 +593,30 @@ win_install() {
       -Command 'Start-Process -FilePath $env:EXE_WIN' >/dev/null 2>&1 || true
     log "Started now and at login."
   else
-    log "Installed. Nothing is running yet."
+    log "Nothing is running yet - run: crowsnest"
+  fi
+  if [ -n "$ver" ]; then
+    log "Installed $ver to $appdirWin"
+  else
+    log "Installed to $appdirWin"
   fi
 
   cat <<'EOF' >&2
 Next steps:
-  crowsnest                     run the HUD now (open a NEW shell first so the
-                                command is on PATH)
-  crowsnest --autostart=on      also run at every login
-  crowsnest --autostart=off     turn login autostart off
-  crowsnest --autostart=status  show the current setting
-  crowsnest --dump              JSON snapshot of the machine (headless check)
-  update                        re-run this installer to upgrade
-  uninstall                     remove everything
+  crowsnest              run the HUD now (open a NEW shell first so the
+                         command is on PATH)
+  crowsnest stop         stop it
+  crowsnest status       version, autostart state, running instances
+  crowsnest restart      restart the HUD
+  crowsnest enable       start now and at every login
+  crowsnest disable      stop and do not start at login
+  crowsnest update       download and install the latest release
+  crowsnest uninstall    remove the app, the command and autostart
+  crowsnest path         show where it is installed
+  crowsnest vers         show the installed version
+  crowsnest --dump       JSON snapshot of the machine (headless check)
 EOF
   log "note: unsigned build - SmartScreen 'More info / Run anyway' on first GUI launch."
-  log "note: 'update' = re-run the install one-liner (the .exe has no self-update verb)."
 }
 
 win_uninstall_standalone() {
@@ -646,7 +678,9 @@ case "\$cmd" in
   logs)      tail_log ;;
   enable)    if have_sd && systemctl --user enable --now "\$UNIT" 2>/dev/null; then :; else add_xdg_entry; launch_now; fi ;;
   disable)   if have_sd; then systemctl --user disable --now "\$UNIT" 2>/dev/null || true; fi; rm_xdg_entry; stop_app ;;
-  update)    t="\$(mktemp)"
+  update)    if have_sd; then systemctl --user stop "\$UNIT" 2>/dev/null || true; fi
+             stop_app
+             t="\$(mktemp)"
              if wget -q -T 20 -O "\$t" ${RAW}/install.sh 2>/dev/null \
                 || curl -fsSL --connect-timeout 10 -o "\$t" ${RAW}/install.sh \
                 || busybox wget -q -T 20 -O "\$t" ${RAW}/install.sh; then
@@ -655,7 +689,8 @@ case "\$cmd" in
                echo "crowsnest update: no working downloader (wget/curl/busybox)" >&2
              fi
              rm -f "\$t" ;;
-  uninstall) t="\$(mktemp)"
+  uninstall) stop_app
+             t="\$(mktemp)"
              if wget -q -T 20 -O "\$t" ${RAW}/install.sh 2>/dev/null \
                 || curl -fsSL --connect-timeout 10 -o "\$t" ${RAW}/install.sh \
                 || busybox wget -q -T 20 -O "\$t" ${RAW}/install.sh; then
@@ -665,7 +700,10 @@ case "\$cmd" in
              fi
              rm -f "\$t" ;;
   path)      echo "\$APP" ;;
-  *)         exec "\$APP/run.sh" "\$cmd" "\$@" ;;
+  -*)        exec "\$APP/run.sh" "\$cmd" "\$@" ;;
+  *)         echo "crowsnest: unknown command: \$cmd" >&2
+             echo "  run start stop restart status vers logs enable disable update uninstall path" >&2
+             exit 2 ;;
 esac
 EOF
   chmod 0755 "$WRAPPER"
@@ -854,6 +892,8 @@ Next steps:
   crowsnest stop        stop it now
   crowsnest status      is it running?
   crowsnest logs        tail the HUD output
+  crowsnest vers        show the installed version
+  crowsnest path        show where it is installed
   crowsnest enable      also run at every login
   crowsnest disable     stop and don't start at login
   crowsnest update      upgrade to the latest version
