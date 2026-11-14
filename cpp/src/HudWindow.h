@@ -12,6 +12,7 @@
 #include "AlertEngine.h"
 
 #include "Config.h"
+#include "DashboardPanel.h"
 
 #include "IncidentStatus.h"
 #include "WatchdogStatus.h"
@@ -33,6 +34,8 @@
 #include <QSet>
 #include <QRect>
 #include <QWidget>
+
+class QVBoxLayout;
 
 #include <memory>
 
@@ -71,6 +74,10 @@ public:
     void setServicesSnapshot(const ServicesSnapshot &snapshot);
 
     void setJournalSnapshot(const JournalSnapshot &snapshot);
+
+    // Builds the console on first use. It is ~39 MB of widgets and
+    // stylesheet state, so the collapsed strip never pays for it.
+    DashboardPanel *ensureConsole();
 
     void setMonitors(const QList<AlertRule> &rules);
 
@@ -226,6 +233,9 @@ private:
     QString m_kubeDetailsText;
     bool m_kubeOpen = false;
     DashboardPanel *m_panel = nullptr;
+    QVBoxLayout *m_pagesLayout = nullptr;
+    SettingsInfo m_consoleSettings;
+    bool m_haveConsoleSettings = false;
     HistoryLog m_historyLog;
     int m_historyCapacity = 0;
     int m_historySeek = -1;

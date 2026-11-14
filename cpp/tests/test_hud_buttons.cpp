@@ -64,6 +64,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
     HudWindow hud;
+    hud.ensureConsole();
 
     int failures = 0;
     auto check = [&failures](bool condition, const char *message) {

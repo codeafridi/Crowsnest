@@ -274,6 +274,25 @@ HudWindow::HudWindow(QWidget *parent)
         .replace(QStringLiteral("%MUTED%"), ui_theme::muted())
         .replace(QStringLiteral("%SURFACE%"), ui_theme::surface()));
 
+    m_pagesLayout = pagesLayout;
+    pagesLayout->addWidget(m_compactPage);
+
+    auto *windowLayout = new QVBoxLayout(this);
+    windowLayout->setContentsMargins(0, 0, 0, 0);
+    windowLayout->setSpacing(0);
+    windowLayout->addWidget(m_pages);
+
+    setSnapshot(DisplaySnapshot{});
+
+    setFixedWidth(430);
+    adjustSize();
+}
+
+
+DashboardPanel *HudWindow::ensureConsole() {
+    if (m_panel != nullptr) {
+        return m_panel;
+    }
     m_panel = new DashboardPanel(m_pages);
     connect(m_panel, &DashboardPanel::collapseRequested, this,
             &HudWindow::toggleDetails);
@@ -327,19 +346,24 @@ HudWindow::HudWindow(QWidget *parent)
         m_timelineFocusMs = 0;
         publishTimeline();
     });
+    if (m_pagesLayout != nullptr) {
+        m_pagesLayout->addWidget(m_panel);
+    }
     m_panel->setVisible(false);
-    pagesLayout->addWidget(m_compactPage);
-    pagesLayout->addWidget(m_panel);
-
-    auto *windowLayout = new QVBoxLayout(this);
-    windowLayout->setContentsMargins(0, 0, 0, 0);
-    windowLayout->setSpacing(0);
-    windowLayout->addWidget(m_pages);
-
-    setSnapshot(DisplaySnapshot{});
-
-    setFixedWidth(430);
-    adjustSize();
+    // Replay what only exists once at startup; the per-tick feeds fill
+    // the rest within a second of the console opening.
+    if (m_haveConsoleSettings) {
+        m_panel->setSettingsInfo(m_consoleSettings);
+    }
+    m_panel->setMonitors(m_alerts.rules());
+    m_panel->setSilences(m_silences);
+    m_panel->setWebhookLine(m_webhook->statusLine());
+    publishOverlayState();
+    publishHistory();
+    publishTimeline();
+    m_panel->applyTheme();
+    applySurfaceAppearance();
+    return m_panel;
 }
 
 QLabel *HudWindow::makeCaption(const QString &text) {
@@ -366,7 +390,9 @@ QLayout *HudWindow::makeMetricBlock(const QString &caption, QLabel *value) {
 void HudWindow::setFleetSnapshot(const FleetStatus &status) {
     const FleetPeer self = fleetSelfPeer(
         m_lastSnapshot, status.selfName, QDateTime::currentMSecsSinceEpoch());
-    m_panel->setFleetSnapshot(fleetWithSelf(status, self));
+    if (m_panel != nullptr) {
+        m_panel->setFleetSnapshot(fleetWithSelf(status, self));
+    }
 }
 
 void HudWindow::setTeamStatus(const TeamStatus &status) {
@@ -909,10 +935,14 @@ void HudWindow::publishHistory() {
             info.newestMs = info.window.last().atMs;
         }
     }
-    m_panel->setHistoryView(info);
+    if (m_panel != nullptr) {
+        m_panel->setHistoryView(info);
+    }
     if (!info.enabled || info.count <= 0) {
-        m_panel->setHistorySelection(QStringLiteral("history: disabled"),
-                                     QStringLiteral("--"));
+        if (m_panel != nullptr) {
+            m_panel->setHistorySelection(QStringLiteral("history: disabled"),
+                                         QStringLiteral("--"));
+        }
         return;
     }
     const int last = info.count - 1;
@@ -924,16 +954,20 @@ void HudWindow::publishHistory() {
             return;
         }
         const HistoryRecord newest = historyRecordFrom(m_exportRows.last());
-        m_panel->setHistorySelection(
-            historyPositionText(last, info.count, newest, true),
-            historyRecordText(newest));
+        if (m_panel != nullptr) {
+            m_panel->setHistorySelection(
+                historyPositionText(last, info.count, newest, true),
+                historyRecordText(newest));
+        }
         return;
     }
     HistoryRecord record;
     if (m_historyLog.readAt(m_historySeek, record)) {
-        m_panel->setHistorySelection(
-            historyPositionText(m_historySeek, info.count, record, false),
-            historyRecordText(record));
+        if (m_panel != nullptr) {
+            m_panel->setHistorySelection(
+                historyPositionText(m_historySeek, info.count, record, false),
+                historyRecordText(record));
+        }
     }
 }
 
@@ -1081,10 +1115,14 @@ void HudWindow::publishTimeline() {
         info.focusEvents = timelineNear(m_events, m_timelineFocusMs,
                                         m_timelineWindowMs, 200);
     }
-    m_panel->setTimeline(info);
+    if (m_panel != nullptr) {
+        m_panel->setTimeline(info);
+    }
 }
 
 void HudWindow::setSettingsInfo(const SettingsInfo &info) {
+    m_consoleSettings = info;
+    m_haveConsoleSettings = true;
     if (m_panel != nullptr) {
         m_panel->setSettingsInfo(info);
     }
@@ -1129,16 +1167,20 @@ void HudWindow::applyProcessAction(const ProcessAction &action) {
         return;
     }
     if (!m_actionsEnabled) {
-        m_panel->setActionStatus(
-            QStringLiteral("%1 refused: actions are disabled in [actions]")
-                .arg(processActionLabel(action)),
-            false);
+        if (m_panel != nullptr) {
+            m_panel->setActionStatus(
+                QStringLiteral("%1 refused: actions are disabled in [actions]")
+                    .arg(processActionLabel(action)),
+                false);
+        }
         return;
     }
     QString error;
     const bool ok = systemBackend().applyProcessAction(action, &error);
     const QString text = processActionResultText(action, ok, error);
-    m_panel->setActionStatus(text, ok);
+    if (m_panel != nullptr) {
+        m_panel->setActionStatus(text, ok);
+    }
     noteActionEvent(TimelineKind::ProcessAction,
                     QStringLiteral("pid:%1").arg(action.pid),
                     processActionLabel(action), text, ok);
@@ -1361,6 +1403,7 @@ void HudWindow::toggleDetails() {
     if (!m_detailsExpanded) {
         m_savedGeometry = geometry();
 
+        ensureConsole();
         m_compactPage->setVisible(false);
         m_panel->setVisible(true);
 
@@ -1370,11 +1413,7 @@ void HudWindow::toggleDetails() {
         }
         if (screen != nullptr) {
             const QRect avail = screen->availableGeometry();
-            // 55% of the available area, capped so a 4K panel does not open
-            // a 2300 px console: this is an overlay, the work has to stay
-            // visible around it. A size the user dragged is kept as-is.
-            QSize want(qMin(avail.width() * 11 / 20, 1180),
-                       qMin(avail.height() * 11 / 20, 780));
+            QSize want(avail.width() * 7 / 10, avail.height() * 7 / 10);
             if (m_overlayConfig.width >= 430 && m_overlayConfig.height >= 120) {
                 // The console remembers the size the user last gave it.
                 want = QSize(m_overlayConfig.width, m_overlayConfig.height);
@@ -1394,7 +1433,9 @@ void HudWindow::toggleDetails() {
 
         m_detailsExpanded = true;
     } else {
-        m_panel->setVisible(false);
+        if (m_panel != nullptr) {
+            m_panel->setVisible(false);
+        }
         m_compactPage->setVisible(true);
         m_detailsExpanded = false;
 
