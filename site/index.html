@@ -372,7 +372,7 @@ token   = the-machine-token</div>
                 <code id="cmd-linux"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code>
               </div>
             </div>
-            <p>Installs for your user only, puts crowsnest on PATH and starts it at login. Runs on Ubuntu, Debian, Fedora, Arch, openSUSE, Alpine and other 64 bit distros with glibc 2.34 or newer. No curl? The installer falls back to wget, busybox, or your package manager.</p>
+            <p>Installs for your user only and puts crowsnest on PATH. Nothing is started; run crowsnest to launch it, or re-run the installer with <code>--autostart</code> to also start it at login. Runs on Ubuntu, Debian, Fedora, Arch, openSUSE, Alpine and other 64 bit distros with glibc 2.34 or newer. No curl? The installer falls back to wget, busybox, or your package manager.</p>
             <p class="alts">Prefer a package file? Download the .deb or the AppImage from Releases. The AppImage updates itself over zsync.</p>
           </div>
 
@@ -386,7 +386,7 @@ token   = the-machine-token</div>
                 <code id="cmd-mac"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code>
               </div>
             </div>
-            <p>Downloads the latest DMG, copies the app into Applications and turns on login autostart. Needs macOS 12 Monterey or newer. No permissions asked, and the installer clears Gatekeeper for you.</p>
+            <p>Downloads the latest DMG, copies the app into Applications and adds the crowsnest command. Nothing is started; re-run with <code>--autostart</code> for login autostart. Needs macOS 12 Monterey or newer. No permissions asked, and the installer clears Gatekeeper for you.</p>
             <p class="alts">Prefer a package file? Download the DMG from Releases. TCP health is gated on macOS: the kernel will not hand those counters to an unprivileged reader, and the panel says so.</p>
           </div>
 
@@ -400,7 +400,7 @@ token   = the-machine-token</div>
                 <code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex</code>
               </div>
             </div>
-            <p>Open PowerShell, paste the line, done. Installs into your user folder, puts crowsnest on PATH and starts it at login. Needs Windows 10 or newer. No Git Bash required.</p>
+            <p>Open PowerShell, paste the line, done. Installs into your user folder and puts crowsnest on PATH. Nothing is started; add <code>-Autostart</code> if you want start at login. Needs Windows 10 or newer. No Git Bash required.</p>
             <p class="alts">Prefer a setup wizard? Download the MSI from Releases. SmartScreen may ask once, choose Run anyway.</p>
           </div>
 

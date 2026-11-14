@@ -13,11 +13,12 @@ curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.s
 ```
 
 It downloads the latest DMG, copies `Crowsnest.app` into `/Applications`
-(falls back to `~/Applications` when not an admin), installs the
-LaunchAgent autostart, adds the `crowsnest` command in `/usr/local/bin`
-and clears the quarantine attribute (`curl` never applies it). It may
-prompt for the administrator password for `/Applications`; decline with
-Ctrl-C and install manually (steps 1-4) if you prefer.
+(falls back to `~/Applications` when not an admin), adds the `crowsnest`
+command in `/usr/local/bin` and clears the quarantine attribute (`curl`
+never applies it). **Nothing is started.** Re-run with `--autostart` to
+also install the LaunchAgent and start it. The script may prompt for the
+administrator password for `/Applications`; decline with Ctrl-C and
+install manually (steps 1-4) if you prefer.
 
 **Manual:**
 
@@ -33,9 +34,10 @@ Ctrl-C and install manually (steps 1-4) if you prefer.
    the same way.
 
 The app is a `LSUIElement` overlay: no Dock icon, no menu bar entry.
-Quit with `crowsnest.sh stop` (below) or `pkill crowsnest`; login autostart
-is managed via launchd, so a plain quit is restarted on next login
-unless you disable the agent first.
+Quit with `crowsnest.sh stop` (below) or `pkill crowsnest`. Start-at-login
+only exists if you opted in (install with `--autostart`, or run
+`crowsnest enable`); with autostart installed, a plain quit is restarted
+on next login until you run `crowsnest disable`.
 
 ## Service management (launchd)
 

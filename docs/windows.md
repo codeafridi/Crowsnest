@@ -21,7 +21,9 @@ needed, including on fresh VMs). No registry, no install.
 
 **Scripted portable install (Windows 10+):**
 
-PowerShell (no Git Bash needed) — options via env (`$env:CROWSNEST_NO_AUTOSTART='1'`, `$env:CROWSNEST_UNINSTALL='1'`):
+PowerShell (no Git Bash needed) — install only by default; add
+`-Autostart` for start-at-login + start (env alternatives:
+`$env:CROWSNEST_AUTOSTART='1'`, uninstall `$env:CROWSNEST_UNINSTALL='1'`):
 
 ```powershell
 irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex
@@ -33,12 +35,12 @@ Git Bash — the same bash installer as macOS/Linux:
 curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
 ```
 
-It downloads the portable zip into `%LOCALAPPDATA%\Crowsnest` (Expand-Archive),
-writes a `crowsnest` command shim into `%LOCALAPPDATA%\Microsoft\WindowsApps`
-(already on PATH), sets HKCU Run autostart via the exe's own
-`--autostart=on` verb, and starts the HUD. `sh install.sh --uninstall`
-removes all of it. (That downloads the same zip; there is no MotW
-because curl does not stamp it.)
+It downloads the portable zip into `%LOCALAPPDATA%\Crowsnest` (Expand-Archive)
+and writes a `crowsnest` command shim into
+`%LOCALAPPDATA%\Microsoft\WindowsApps` (already on PATH). **Nothing is
+started**; add `-Autostart` to also set the HKCU Run entry and start the
+HUD. `sh install.sh --uninstall` removes all of it. (That downloads the
+same zip; there is no MotW because curl does not stamp it.)
 
 **Scoop** — the bucket manifest is generated per release by
 `cpp/packaging/windows/write_manifests.ps1` (see `manifests/` in the

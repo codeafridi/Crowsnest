@@ -22,7 +22,8 @@ cmake --build cpp/build -j"$(nproc)"
 bash cpp/install.sh
 ```
 
-`cpp/install.sh` takes `--no-systemd`, and `--uninstall` removes the install.
+`cpp/install.sh` installs only (nothing is started); add `--autostart` for
+start-at-login, and `--uninstall` removes the install.
 
 The tree compiles on the oldest Qt 6 the distro channel ships (6.2 on Ubuntu
 22.04, 6.4 on 24.04), not only on the newest. That floor is enforced because the

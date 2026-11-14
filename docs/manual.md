@@ -69,16 +69,20 @@ instructions. Snap-packaged curl (which cannot write files on some setups) is
 only tried after the native tools.
 
 - **Linux (x86-64, glibc ≥ 2.34)** — downloads a self-contained build (Qt 6
-  bundled — nothing else to install), puts it in `~/.local/opt/crowsnest`, adds a
-  `crowsnest` command, starts it at login, and installs the desktop focus bridge
-  when one is needed (see [Compatibility](#compatibility)).
+  bundled — nothing else to install), puts it in `~/.local/opt/crowsnest`, and
+  adds a `crowsnest` command. **Nothing is started.** To have it start at login
+  as well, re-run with `--autostart` (systemd user unit when systemd is
+  available, an XDG autostart entry otherwise). The desktop focus bridge is
+  installed when one is needed (see [Compatibility](#compatibility)).
 - **macOS** — downloads the latest DMG, copies `Crowsnest.app` into
   `/Applications` (falls back to `~/Applications` without admin rights),
-  installs LaunchAgent autostart + the `crowsnest` command in
-  `/usr/local/bin`, and reports the Gatekeeper steps for the unsigned build.
-- **Windows** — PowerShell native bootstrap into `%LOCALAPPDATA%\Crowsnest`,
-  `crowsnest` shim through the WindowsApps PATH directory, HKCU Run
-  autostart, then the HUD starts:
+  adds the `crowsnest` command in `/usr/local/bin`, and reports the
+  Gatekeeper steps for the unsigned build. **Nothing is started**; run with
+  `--autostart` to also install the LaunchAgent and start it.
+- **Windows** — PowerShell native bootstrap into `%LOCALAPPDATA%\Crowsnest`
+  with a `crowsnest` shim through the WindowsApps PATH directory.
+  **Nothing is started**; add `-Autostart` to also set the HKCU Run entry
+  and start it:
 
   ```powershell
   irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex
@@ -94,9 +98,10 @@ autostart/status are `--autostart=on|off|status` — run the installer with
 | Command | What it does |
 | --- | --- |
 | `crowsnest run` | run in the foreground |
+| `crowsnest start` | start it now (stays after the terminal closes) |
 | `crowsnest stop` | stop it now |
-| `crowsnest disable` | stop it and don't start at login |
-| `crowsnest enable` | start it and start at login |
+| `crowsnest disable` | stop it and remove login autostart |
+| `crowsnest enable` | set up login autostart and start it |
 | `crowsnest status` | is it running? |
 | `crowsnest update` | upgrade to the latest version |
 | `crowsnest uninstall` | remove everything |
@@ -129,7 +134,7 @@ git clone https://github.com/codeafridi/Crowsnest.git
 cd Crowsnest
 cmake -S cpp -B cpp/build
 cmake --build cpp/build -j"$(nproc)"
-bash cpp/install.sh              # add --no-systemd, or --uninstall to remove
+bash cpp/install.sh              # installs only; add --autostart for start-at-login, --uninstall to remove
 ```
 
 The tree compiles on the oldest Qt 6 the distro channel ships (6.2 on Ubuntu
@@ -187,10 +192,11 @@ Asset names carry the version, so there is no stable `releases/latest/download`
 URL for the AppImage — grab it from the
 [release page](https://github.com/codeafridi/Crowsnest/releases/latest) if you
 don't want the short script above. The one-liner installer is the better route:
-same bundle, plus the `crowsnest` command and start-at-login.
+same bundle, plus the `crowsnest` command (and `--autostart` if you want
+login autostart).
 
-The AppImage has no `crowsnest` command and no start-at-login; it just runs. Use
-the one-liner above if you want those.
+The AppImage has no `crowsnest` command and no autostart handling; it just
+runs. Use the one-liner above if you want those.
 
 </details>
 
@@ -208,8 +214,9 @@ sudo apt install ./crowsnest_0.6.0_amd64.deb
 ```
 
 This installs `/usr/bin/crowsnest`, a user unit
-(`/usr/lib/systemd/user/crowsnest.service`), a launcher, and docs.
-Enable start-at-login with `systemctl --user enable --now crowsnest.service`.
+(`/usr/lib/systemd/user/crowsnest.service`), a launcher, and docs. It does not
+start anything; enable start-at-login with
+`systemctl --user enable --now crowsnest.service`.
 Remove with `sudo apt remove crowsnest`.
 
 </details>

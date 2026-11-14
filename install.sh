@@ -8,24 +8,27 @@
 # fallback ladder: native curl -> wget -> snap curl -> busybox wget ->
 # distro package-manager rescue -> manual instructions.
 #
+# Installs the app and the `crowsnest` command. Nothing starts automatically:
+# run `crowsnest start` after installing, or pass --autostart to have the
+# installer start the HUD now and at login. Downloads show live byte/percent
+# progress on the terminal.
+#
 # Linux x86-64 (glibc >= 2.34): downloads a self-contained build (Qt 6 bundled
-# — nothing else to install) into ~/.local/opt/crowsnest, adds a `crowsnest`
-# command, starts it at login, and installs the desktop focus bridge
-# (GNOME extension / KWin script) when one is needed.
+# — nothing else to install) into ~/.local/opt/crowsnest, and installs the
+# desktop focus bridge (GNOME extension / KWin script) when one is needed.
 #
 # macOS: downloads the latest DMG, mounts it, copies Crowsnest.app into
 # /Applications (falls back to ~/Applications without admin rights),
-# installs the LaunchAgent autostart and the `crowsnest` command in
-# /usr/local/bin, and clears the quarantine attribute so the unsigned
-# app starts like any other.
+# installs the `crowsnest` command in /usr/local/bin, and clears the
+# quarantine attribute so the unsigned app starts like any other.
 #
 # Windows (run inside Git Bash / MSYS2): downloads the portable zip into
-# %LOCALAPPDATA%\Crowsnest, adds a `crowsnest` command through the WindowsApps
-# PATH directory, sets HKCU Run autostart via the app's own --autostart
-# verb, and starts the HUD.
+# %LOCALAPPDATA%\Crowsnest and adds a `crowsnest` command through the
+# WindowsApps PATH directory.
 #
 # Options:
-#   --no-autostart   install without enabling start-at-login
+#   --autostart      also start the HUD now and at login (default: off)
+#   --no-autostart   accepted for compatibility; same as the default
 #   --no-bridge      skip installing the Linux desktop focus bridge
 #   --uninstall      remove the app, command, service, autostart and bridge
 #   -h, --help       show this help
@@ -60,17 +63,41 @@ MAC_PLIST="${HOME_DIR}/Library/LaunchAgents/${MAC_LABEL}.plist"
 MAC_APP_DEFAULT="/Applications/Crowsnest.app"
 MAC_CLI="/usr/local/bin/crowsnest"
 
-autostart=1
+autostart=0
 bridge=1
 mode=install
+
+usage() {
+  cat >&2 <<'USAGE'
+Crowsnest installer (Linux x86-64, macOS, Windows).
+
+Installs the app and the `crowsnest` command. Nothing starts automatically:
+run `crowsnest start` after installing, or pass --autostart to have the
+installer start the HUD now and at login. Downloads show live byte/percent
+progress on the terminal.
+
+  --autostart      also start the HUD now and at login (default: off)
+  --no-autostart   accepted for compatibility; same as the default
+  --no-bridge      skip installing the Linux desktop focus bridge
+  --uninstall      remove the app, command, service, autostart and bridge
+  -h, --help       show this help
+
+Environment overrides:
+  CROWSNEST_BUNDLE_URL  override the Linux portable-bundle URL
+  CROWSNEST_DMG_URL     override the macOS DMG URL
+  CROWSNEST_WIN_URL     override the Windows portable-zip URL
+  CROWSNEST_TEST_TAG    pin the resolved release tag (packaging CI only)
+USAGE
+}
 
 for arg in "$@"; do
   case "$arg" in
     --uninstall)    mode=uninstall ;;
+    --autostart)    autostart=1 ;;
     --no-autostart) autostart=0 ;;
     --no-bridge)    bridge=0 ;;
-    -h|--help)      sed -n '2,34p' "$0" 2>/dev/null || true; exit 0 ;;
-    *) echo "unknown option: $arg" >&2; exit 2 ;;
+    -h|--help)      usage; exit 0 ;;
+    *) echo "unknown option: $arg" >&2; usage; exit 2 ;;
   esac
 done
 
@@ -154,6 +181,114 @@ larger filesystem:
   return 1
 }
 
+# Live download progress: a background watcher prints bytes/percent once per
+# second on a tty; the downloader itself stays silent so its stderr keeps
+# recording real failures for write_failure.
+watcher=""
+
+stop_watcher() {
+  if [ -n "$watcher" ]; then
+    kill "$watcher" 2>/dev/null || true
+    wait "$watcher" 2>/dev/null || true
+    watcher=""
+  fi
+}
+
+content_length() { # <url> — echoes the server's Content-Length in bytes, else nothing
+  len=""
+  if command -v curl >/dev/null 2>&1; then
+    len="$(curl -fsIL --connect-timeout 10 --max-time 15 "$1" 2>/dev/null \
+      | tr -d '\r' | grep -i '^content-length:' | tail -n 1 | awk '{print $2}')"
+  elif command -v wget >/dev/null 2>&1; then
+    len="$(wget -q --spider -S -T 20 "$1" 2>&1 \
+      | grep -i '^ *content-length:' | tail -n 1 | awk '{print $2}')"
+  fi
+  case "$len" in
+    ''|*[!0-9]*) return 0 ;;
+    *)           printf '%s\n' "$len" ;;
+  esac
+}
+
+fmt_bytes() { # <bytes> — human-readable size for the progress line
+  awk -v b="${1:-0}" 'BEGIN {
+    if (b !~ /^[0-9]+$/) { print "--"; exit }
+    split("B KiB MiB GiB TiB", u)
+    i = 1
+    while (b >= 1024 && i < 5) { b /= 1024; i++ }
+    if (i == 1) printf "%d %s\n", b, u[i]
+    else        printf "%.1f %s\n", b, u[i]
+  }'
+}
+
+progress_loop() { # <dest> <want> — background watcher; exits by itself when the
+                  # size has been stable (done/failed) or never moves
+  f="$1" want="$2" prev="" stable=0 zeros=0 missing=0 seen=0
+  while :; do
+    if [ ! -f "$f" ]; then
+      # The downloader has not created the destination yet (DNS, connect,
+      # server response). Give it 30 s before giving up on progress; a file
+      # that disappears AFTER it existed means the attempt is over.
+      if [ "$seen" -eq 1 ]; then exit 0; fi
+      missing=$((missing + 1))
+      [ "$missing" -ge 30 ] && exit 0
+      sleep 1
+      continue
+    fi
+    seen=1
+    sz="$(wc -c <"$f" 2>/dev/null | tr -d '[:space:]')"
+    case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+    if [ "$sz" -gt 0 ]; then
+      zeros=0
+      if [ "$sz" = "$prev" ]; then
+        stable=$((stable + 1))
+        [ "$stable" -ge 3 ] && exit 0
+      else
+        stable=0
+      fi
+    else
+      zeros=$((zeros + 1))
+      [ "$zeros" -ge 15 ] && exit 0
+    fi
+    prev="$sz"
+    if [ -t 2 ]; then
+      if [ -n "$want" ] && [ "$want" -gt 0 ] && [ "$sz" -le "$want" ]; then
+        printf '\r\033[Kdownloading %s / %s (%s%%)' \
+          "$(fmt_bytes "$sz")" "$(fmt_bytes "$want")" "$(( sz * 100 / want ))" >&2
+      else
+        # No (or a wrong) advertised length: bytes only, never a fake percent.
+        printf '\r\033[Kdownloading %s' "$(fmt_bytes "$sz")" >&2
+      fi
+    fi
+    sleep 1
+  done
+}
+
+finish() { # <dest> — stop the watcher, clear the line, report the size
+  stop_watcher
+  [ -t 2 ] && printf '\r\033[K' >&2
+  sz="$(wc -c <"$1" 2>/dev/null | tr -d '[:space:]')"
+  case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+  log "downloaded: $(fmt_bytes "$sz") $1"
+}
+
+dl_curl() { # <url> <dest> — one silent curl attempt; write_failure dies on disk errors
+  curl -fsSL --connect-timeout 10 -o "$2" "$1" 2>"$errf" && return 0
+  write_failure "$errf" "$(dirname "$2")" || true
+  return 1
+}
+
+dl_wget() { # <url> <dest> — one silent wget attempt
+  wget -q -T 20 -O "$2" "$1" 2>"$errf" && return 0
+  write_failure "$errf" "$(dirname "$2")" || true
+  return 1
+}
+
+dl_busybox() { # <url> <dest> — one silent busybox wget attempt
+  busybox wget -q -T 20 -O "$2" "$1" 2>"$errf" && return 0
+  write_failure "$errf" "$(dirname "$2")" || true
+  return 1
+}
+
 fetch() { # <url> <dest> — downloader ladder (M58a), works without native curl
   # Every attempt records its stderr: the ladder must be able to tell "no
   # downloader" from "the disk is full", because the remedy is different and
@@ -162,26 +297,30 @@ fetch() { # <url> <dest> — downloader ladder (M58a), works without native curl
   { : > "$errf"; } 2>/dev/null || errf=/dev/null
   attempted=""
 
+  if [ -t 2 ] && [ -z "$watcher" ]; then
+    want="$(content_length "$1" || true)"
+    case "$want" in ''|0|*[!0-9]*) want="" ;; esac
+    progress_loop "$2" "$want" &
+    watcher="$!"
+  fi
+
   if command -v curl >/dev/null 2>&1 && ! under_snap curl; then
     attempted="$attempted curl"
-    curl -fsSL --connect-timeout 10 -o "$2" "$1" 2>"$errf" && return 0
-    write_failure "$errf" "$(dirname "$2")" && return 1
+    if dl_curl "$1" "$2"; then finish "$2"; return 0; fi
   fi
   if command -v wget >/dev/null 2>&1 && ! under_snap wget; then
     attempted="$attempted wget"
-    wget -q -T 20 -O "$2" "$1" 2>"$errf" && return 0
-    write_failure "$errf" "$(dirname "$2")" && return 1
+    if dl_wget "$1" "$2"; then finish "$2"; return 0; fi
   fi
   if command -v curl >/dev/null 2>&1; then
     log "note: the curl on this machine is a snap (sandbox may block writes)"
     attempted="$attempted snap-curl"
-    curl -fsSL --connect-timeout 10 -o "$2" "$1" 2>"$errf" && return 0
+    if dl_curl "$1" "$2"; then finish "$2"; return 0; fi
     log "snap curl failed - continuing down the ladder"
   fi
   if command -v busybox >/dev/null 2>&1; then
     attempted="$attempted busybox"
-    busybox wget -q -T 20 -O "$2" "$1" 2>"$errf" && return 0
-    write_failure "$errf" "$(dirname "$2")" && return 1
+    if dl_busybox "$1" "$2"; then finish "$2"; return 0; fi
   fi
 
   # Only ask for sudo when there is no downloader at all - not when one ran and
@@ -193,15 +332,14 @@ fetch() { # <url> <dest> — downloader ladder (M58a), works without native curl
   esac
   if [ -z "$attempted" ] || ! command -v curl >/dev/null 2>&1; then
     if pkg_install_curl; then
-      curl -fsSL --connect-timeout 10 -o "$2" "$1" 2>"$errf" && return 0
-      write_failure "$errf" "$(dirname "$2")" && return 1
+      if dl_curl "$1" "$2"; then finish "$2"; return 0; fi
       if command -v wget >/dev/null 2>&1; then
-        wget -q -T 20 -O "$2" "$1" 2>"$errf" && return 0
-        write_failure "$errf" "$(dirname "$2")" && return 1
+        if dl_wget "$1" "$2"; then finish "$2"; return 0; fi
       fi
     fi
   fi
 
+  stop_watcher
   last="$(head -n 1 "$errf" 2>/dev/null | cut -c1-160)"
   [ -n "$last" ] && last="
 last error: $last"
@@ -328,17 +466,20 @@ EOF
 
   if [ "$autostart" -eq 1 ]; then
     "$res" enable
+    log "Started now and at login."
   else
-    log "not started - run: crowsnest start  (or open Crowsnest.app)"
+    log "Installed. Nothing is running yet."
   fi
 
   cat <<'EOF' >&2
-Control it:
-  crowsnest start       load the LaunchAgent and run the HUD
+Next steps:
+  crowsnest start       run the HUD now
   crowsnest stop        stop the HUD
   crowsnest restart     stop + start
   crowsnest status      is it running?
   crowsnest logs        tail the HUD output
+  crowsnest enable      also run at every login
+  crowsnest disable     stop and don't start at login
   crowsnest update      upgrade to the latest version (re-runs this installer)
   crowsnest uninstall   remove everything
 EOF
@@ -426,17 +567,21 @@ win_install() {
     EXE_WIN="$(cygpath -w "$appdir/crowsnest.exe")" \
     MSYS_NO_PATHCONV=1 powershell.exe -NoProfile -ExecutionPolicy Bypass \
       -Command 'Start-Process -FilePath $env:EXE_WIN' >/dev/null 2>&1 || true
+    log "Started now and at login."
   else
-    log "not started - open a NEW shell and type: crowsnest"
+    log "Installed. Nothing is running yet."
   fi
 
   cat <<'EOF' >&2
-Control it:
-  crowsnest                  launch the HUD and return to the prompt
-  crowsnest --autostart=on|off|status   login autostart (HKCU Run key)
-  crowsnest --dump           JSON snapshot of the machine (headless check)
-  update                   re-run this installer
-  uninstall                remove everything
+Next steps:
+  crowsnest                     run the HUD now (open a NEW shell first so the
+                                command is on PATH)
+  crowsnest --autostart=on      also run at every login
+  crowsnest --autostart=off     turn login autostart off
+  crowsnest --autostart=status  show the current setting
+  crowsnest --dump              JSON snapshot of the machine (headless check)
+  update                        re-run this installer to upgrade
+  uninstall                     remove everything
 EOF
   log "note: unsigned build - SmartScreen 'More info / Run anyway' on first GUI launch."
   log "note: 'update' = re-run the install one-liner (the .exe has no self-update verb)."
@@ -463,18 +608,44 @@ write_wrapper() {
 set -eu
 APP="\${CROWSNEST_DIR:-\$HOME/.local/opt/crowsnest}"
 UNIT="crowsnest.service"
+XDG_ENTRY="\${XDG_CONFIG_HOME:-\$HOME/.config}/autostart/crowsnest.desktop"
+have_sd() { command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; }
+launch_now() { ( setsid "\$APP/run.sh" >/dev/null 2>&1 & ) || true; }
+add_xdg_entry() {
+  mkdir -p "\$(dirname "\$XDG_ENTRY")"
+  printf '[Desktop Entry]\nType=Application\nName=Crowsnest\nExec=%s\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' "\$APP/run.sh" > "\$XDG_ENTRY"
+}
+rm_xdg_entry() { rm -f "\$XDG_ENTRY" 2>/dev/null || true; }
+running() {
+  command -v pgrep >/dev/null 2>&1 && pgrep -f "\$APP/crowsnest" >/dev/null 2>&1
+}
+stop_app() {
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "\$APP/crowsnest" 2>/dev/null || true
+  else
+    echo "note: pkill not available on this system; kill the HUD manually with: pkill -f crowsnest" >&2
+  fi
+}
+tail_log() {
+  if have_sd && command -v journalctl >/dev/null 2>&1; then
+    exec journalctl --user -u "\$UNIT" -f
+  fi
+  echo "journal not available; follow the app log with:" >&2
+  echo "  tail -f \$HOME/.cache/dev.crowsnest/crowsnest/hud.log" >&2
+  exit 1
+}
 cmd="\${1:-run}"
 [ "\$#" -gt 0 ] && shift
 case "\$cmd" in
   run|gui)   exec "\$APP/run.sh" "\$@" ;;
-  start)     systemctl --user start "\$UNIT" ;;
-  stop)      systemctl --user stop "\$UNIT" 2>/dev/null || pkill -f "\$APP/crowsnest" 2>/dev/null || true ;;
-  restart)   systemctl --user restart "\$UNIT" ;;
-  status)    systemctl --user status "\$UNIT" --no-pager 2>/dev/null || pgrep -af "\$APP/crowsnest" || echo "not running" ; [ -f "\$APP/VERSION" ] && printf 'version: ' && cat "\$APP/VERSION" || true ;;
+  start)     if have_sd && systemctl --user start "\$UNIT" 2>/dev/null; then :; else launch_now; fi ;;
+  stop)      if have_sd; then systemctl --user stop "\$UNIT" 2>/dev/null || true; fi; stop_app ;;
+  restart)   if have_sd && systemctl --user restart "\$UNIT" 2>/dev/null; then :; else stop_app; sleep 1; launch_now; fi ;;
+  status)    if running; then pgrep -af "\$APP/crowsnest" 2>/dev/null || echo "running"; else echo "not running"; fi; [ -f "\$APP/VERSION" ] && printf 'version: ' && cat "\$APP/VERSION" || true ;;
   vers)      [ -f "\$APP/VERSION" ] && cat "\$APP/VERSION" || echo "unknown" ;;
-  logs)      journalctl --user -u "\$UNIT" -f ;;
-  enable)    systemctl --user enable --now "\$UNIT" ;;
-  disable)   systemctl --user disable --now "\$UNIT" ;;
+  logs)      tail_log ;;
+  enable)    if have_sd && systemctl --user enable --now "\$UNIT" 2>/dev/null; then :; else add_xdg_entry; launch_now; fi ;;
+  disable)   if have_sd; then systemctl --user disable --now "\$UNIT" 2>/dev/null || true; fi; rm_xdg_entry; stop_app ;;
   update)    t="\$(mktemp)"
              if wget -q -T 20 -O "\$t" ${RAW}/install.sh 2>/dev/null \
                 || curl -fsSL --connect-timeout 10 -o "\$t" ${RAW}/install.sh \
@@ -488,7 +659,7 @@ case "\$cmd" in
              if wget -q -T 20 -O "\$t" ${RAW}/install.sh 2>/dev/null \
                 || curl -fsSL --connect-timeout 10 -o "\$t" ${RAW}/install.sh \
                 || busybox wget -q -T 20 -O "\$t" ${RAW}/install.sh; then
-               sh "\$t" -s -- --uninstall
+               sh "\$t" --uninstall
              else
                echo "crowsnest uninstall: no working downloader (wget/curl/busybox)" >&2
              fi
@@ -500,10 +671,14 @@ EOF
   chmod 0755 "$WRAPPER"
 }
 
-install_autostart() {
-  if have_systemd; then
-    mkdir -p "$UNIT_DIR"
-    cat > "$UNIT_FILE" <<EOF
+# The systemd user unit is written and loaded but never enabled or started
+# here; enabling belongs to --autostart only.
+write_service() {
+  if ! have_systemd; then
+    return 0
+  fi
+  mkdir -p "$UNIT_DIR"
+  cat > "$UNIT_FILE" <<EOF
 [Unit]
 Description=Crowsnest HUD
 [Service]
@@ -512,15 +687,16 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 EOF
-    systemctl --user daemon-reload
+  systemctl --user daemon-reload
+  log "Installed systemd user service: $UNIT_FILE (disabled)"
+}
+
+enable_login_start() { # --autostart only: start now and enable at every login
+  if have_systemd; then
     systemctl --user import-environment DISPLAY WAYLAND_DISPLAY \
       XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_RUNTIME_DIR 2>/dev/null || true
-    if [ "$autostart" -eq 1 ]; then
-      systemctl --user enable --now crowsnest.service
-    else
-      systemctl --user start crowsnest.service 2>/dev/null || true
-    fi
-    log "Installed systemd user service: $UNIT_FILE"
+    systemctl --user enable --now crowsnest.service \
+      || log "warning: the service did not start; try: crowsnest start"
   else
     mkdir -p "$AUTOSTART_DIR"
     cat > "$AUTOSTART_FILE" <<EOF
@@ -531,10 +707,7 @@ Exec=$APP_DIR/run.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
-    log "Installed XDG autostart entry: $AUTOSTART_FILE"
-    if [ "$autostart" -eq 1 ]; then
-      ( setsid "$APP_DIR/run.sh" >/dev/null 2>&1 & ) || true
-    fi
+    ( setsid "$APP_DIR/run.sh" >/dev/null 2>&1 & ) || true
     log "note: no systemd user session; stop with: pkill -f crowsnest"
   fi
 }
@@ -663,18 +836,26 @@ linux_install() {
   fi
 
   write_wrapper
-  install_autostart
+  write_service
+  if [ "$autostart" -eq 1 ]; then
+    enable_login_start
+    log "Started now and at login."
+  else
+    log "Installed. Nothing is running yet - run: crowsnest start"
+  fi
   install_focus_bridge
 
   log ""
   log "Installed to $APP_DIR"
   cat <<'EOF' >&2
-Control it:
-  crowsnest run         run in the foreground
+Next steps:
+  crowsnest run         run in the foreground (Ctrl+C to stop)
+  crowsnest start       run in the background
   crowsnest stop        stop it now
-  crowsnest disable     stop it and don't start at login
-  crowsnest enable      start it and start at login
   crowsnest status      is it running?
+  crowsnest logs        tail the HUD output
+  crowsnest enable      also run at every login
+  crowsnest disable     stop and don't start at login
   crowsnest update      upgrade to the latest version
   crowsnest uninstall   remove everything
 EOF

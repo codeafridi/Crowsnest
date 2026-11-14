@@ -32,14 +32,14 @@ ctest --test-dir cpp/build --output-on-failure
 ## Install / uninstall
 
 ```bash
-bash cpp/install.sh            # systemd user service if available
-bash cpp/install.sh --no-systemd   # XDG autostart only
+bash cpp/install.sh                  # installs the binary; nothing is started
+bash cpp/install.sh --autostart      # also set up start-at-login and start it
 bash cpp/install.sh --uninstall
 ```
 
 - Installs the binary to `~/.local/bin/crowsnest` (`XDG_BINDIR` overrides).
-- With systemd: writes `~/.config/systemd/user/crowsnest.service` and enables it.
-- Without systemd: writes `~/.config/autostart/crowsnest.desktop`.
+- With `--autostart` and systemd: writes `~/.config/systemd/user/crowsnest.service` and enables it.
+- With `--autostart` without systemd: writes `~/.config/autostart/crowsnest.desktop`.
 
 ## Focus detection per desktop
 
@@ -98,7 +98,7 @@ bundle already exists in `dist/`; it downloads `appimagetool` on first run.
 
 The `.deb` installs the binary to `/usr/bin/crowsnest`, a system-wide user
 unit to `/usr/lib/systemd/user/crowsnest.service`, a launcher `.desktop`, and
-docs. Per-user autostart is then a normal user action:
+docs. Nothing is started; per-user autostart is a normal user action:
 
 ```bash
 systemctl --user enable --now crowsnest.service   # systemd

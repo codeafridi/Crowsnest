@@ -3,33 +3,130 @@
 # Bootstrap one-liner (no Git Bash needed):
 #   irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex
 #
-# With options (irm|iex cannot take parameters - they come from env):
-#   $env:CROWSNEST_UNINSTALL='1';  irm ... | iex
-#   $env:CROWSNEST_NO_AUTOSTART='1'; irm ... | iex
-#   $env:CROWSNEST_WIN_URL='<zip url>'; irm ... | iex
+# Options (irm|iex cannot take parameters - they come from env):
+#   $env:CROWSNEST_UNINSTALL='1';    irm ... | iex
+#   $env:CROWSNEST_AUTOSTART='1';    irm ... | iex   start the HUD now and at login
+#   $env:CROWSNEST_NO_AUTOSTART='1'; irm ... | iex   (accepted, no effect - default is off)
+#   $env:CROWSNEST_WIN_URL='<zip>';  irm ... | iex
 # Direct invocation takes the same options as parameters:
-#   ./install.ps1 -Uninstall | -NoAutostart | -Url <zip url>
+#   ./install.ps1 [-Uninstall] [-Autostart] [-NoAutostart] [-Url <zip url>]
 #
-# Mirrors install.sh (bash) for Windows: portable zip into
-# %LOCALAPPDATA%\Crowsnest, 'crowsnest' shims in the WindowsApps PATH
-# directory, HKCU Run autostart through the app's own --autostart verb.
+# Installs the app and the `crowsnest` command. Nothing starts automatically:
+# run `crowsnest` after installing, or pass -Autostart to start the HUD now
+# and at every login. Downloads show live byte/percent progress.
 
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
     [switch]$Uninstall,
+    [switch]$Autostart,
     [switch]$NoAutostart,
     [string]$Url
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $Repo = 'codeafridi/Crowsnest'
+
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
 
 function Info([string]$msg) { Write-Host $msg }
 function Die([string]$msg) { throw "error: $msg" }
 
 if ($env:CROWSNEST_UNINSTALL) { $Uninstall = $true }
+if ($env:CROWSNEST_AUTOSTART) { $Autostart = $true }
 if ($env:CROWSNEST_NO_AUTOSTART) { $NoAutostart = $true }
+
+function Format-Bytes([long]$n) {
+    if ($n -ge 1GB) { return '{0:F1} GB' -f ($n / 1GB) }
+    if ($n -ge 1MB) { return '{0:F1} MB' -f ($n / 1MB) }
+    if ($n -ge 1KB) { return '{0:F1} KB' -f ($n / 1KB) }
+    return "$n B"
+}
+
+# Streams the body straight to disk with a live progress line that rewrites
+# itself in place. A read that stops producing data for 30 s aborts, a body
+# shorter than its Content-Length aborts, and the whole download is retried
+# once before giving up. Redirected output (CI) prints nothing per chunk.
+function Invoke-DownloadOnce {
+    param([string]$Source, [string]$Dest)
+    $null = Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+    $client = New-Object System.Net.Http.HttpClient
+    $client.Timeout = [TimeSpan]::FromSeconds(600)
+    try {
+        $resp = $client.GetAsync($Source,
+            [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead
+        ).GetAwaiter().GetResult()
+        try {
+            if (-not $resp.IsSuccessStatusCode) {
+                throw "HTTP $([int]$resp.StatusCode) for $Source"
+            }
+            $total = $resp.Content.Headers.ContentLength
+            $stream = $resp.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+            $out = [IO.File]::Create($Dest)
+            try {
+                $buf = New-Object byte[] 65536
+                $done = [long]0
+                $sw = [Diagnostics.Stopwatch]::StartNew()
+                $lastData = [long]0
+                $lastTick = [long]0
+                $live = -not [Console]::IsOutputRedirected
+                while ($true) {
+                    $read = $stream.ReadAsync($buf, 0, $buf.Length)
+                    while (-not $read.Wait(1000)) {
+                        if ($sw.ElapsedMilliseconds - $lastData -gt 30000) {
+                            throw 'download stalled: no data for 30 s'
+                        }
+                    }
+                    $n = $read.Result
+                    if ($n -eq 0) { break }
+                    $out.Write($buf, 0, $n)
+                    $done += $n
+                    $lastData = $sw.ElapsedMilliseconds
+                    if ($live -and ($sw.ElapsedMilliseconds - $lastTick) -ge 200) {
+                        $lastTick = $sw.ElapsedMilliseconds
+                        $line = if ($total) {
+                            '{0,3}%  ({1} of {2})' -f [int](100 * $done / $total),
+                                (Format-Bytes $done), (Format-Bytes $total)
+                        } else {
+                            Format-Bytes $done
+                        }
+                        [Console]::Write("downloading  $line`r")
+                    }
+                }
+                if ($total -and $done -lt $total) {
+                    throw "download truncated: got $(Format-Bytes $done) of $(Format-Bytes $total)"
+                }
+                if ($live) { [Console]::Write((' ' * 60) + "`r") }
+            } finally {
+                $out.Dispose()
+            }
+        } finally {
+            $resp.Dispose()
+        }
+    } finally {
+        $client.Dispose()
+    }
+}
+
+function DownloadWithProgress {
+    param([string]$Source, [string]$Dest)
+    foreach ($attempt in 1..2) {
+        try {
+            Invoke-DownloadOnce -Source $Source -Dest $Dest
+            $size = [long](Get-Item -LiteralPath $Dest).Length
+            Info "downloaded: $(Format-Bytes $size) -> $Dest"
+            return
+        } catch {
+            Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
+            if ($attempt -eq 2) { throw "download failed: $($_.Exception.Message)" }
+            Info "download attempt $attempt failed, retrying"
+        }
+    }
+}
 
 function LatestTag {
     if ($env:CROWSNEST_TEST_TAG) { return $env:CROWSNEST_TEST_TAG }
@@ -83,30 +180,23 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
     $zip = Join-Path $tmp 'crowsnest.zip'
     $zipUrl = ZipUrl
-    $ok = $false
-    foreach ($attempt in 1..2) {
-        try {
-            if ($zipUrl -match '^(?i)file:/') {
-                $localZip = [Uri]::UnescapeDataString(([Uri]$zipUrl).LocalPath)
-                Copy-Item -LiteralPath $localZip -Destination $zip -Force
-            } elseif ($zipUrl -match '^[a-zA-Z]:[\\/]') {
-                Copy-Item -LiteralPath $zipUrl -Destination $zip -Force
-            } else {
-                Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing -TimeoutSec 600
-            }
-            if ((Get-Item -LiteralPath $zip).Length -lt 10MB) { throw 'downloaded zip is too small' }
-            $ok = $true
-            break
-        } catch {
-            if ($attempt -eq 2) { throw "download failed: $($_.Exception.Message)" }
-            Info "download attempt $attempt failed, retrying"
-        }
+    if ($zipUrl -match '^(?i)file:/') {
+        $localZip = [Uri]::UnescapeDataString(([Uri]$zipUrl).LocalPath)
+        Copy-Item -LiteralPath $localZip -Destination $zip -Force
+        Info "using local bundle: $localZip"
+    } elseif ($zipUrl -match '^[a-zA-Z]:[\\/]') {
+        Copy-Item -LiteralPath $zipUrl -Destination $zip -Force
+        Info "using local bundle: $zipUrl"
+    } else {
+        DownloadWithProgress -Source $zipUrl -Dest $zip
     }
+    if ((Get-Item -LiteralPath $zip).Length -lt 10MB) { throw 'downloaded zip is too small' }
 
     Get-Process -Name crowsnest -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
     if (Test-Path $AppDir) { Remove-Item -Recurse -Force $AppDir }
     New-Item -ItemType Directory -Path $AppDir | Out-Null
+    Info "extracting to $AppDir"
     Expand-Archive -Path $zip -DestinationPath $AppDir -Force
 
     if (-not (Test-Path $Exe)) {
@@ -140,24 +230,36 @@ try {
     [IO.File]::WriteAllBytes($shimPosix,
         [Text.Encoding]::ASCII.GetBytes($shimPosixContents))
 
-    if ($NoAutostart) {
-        Info 'not started - open a NEW shell and type: crowsnest'
-    } else {
-        & $Exe --autostart=on
+    if ($Autostart) {
+        $out = Join-Path $tmp 'autostart.out'
+        $err = Join-Path $tmp 'autostart.err'
+        $p = Start-Process -FilePath $Exe -ArgumentList '--autostart=on' `
+                -Wait -PassThru `
+                -RedirectStandardOutput $out -RedirectStandardError $err
+        if ($p.ExitCode -ne 0) {
+            $detail = ((Get-Content $err -Raw -ErrorAction SilentlyContinue) + `
+                       (Get-Content $out -Raw -ErrorAction SilentlyContinue)).Trim()
+            throw "autostart failed: exit $($p.ExitCode) - $detail"
+        }
         Start-Process -FilePath $Exe
+        Info 'Started now and at login.'
+    } else {
+        Info 'Installed. Nothing is running yet - open a NEW shell and type: crowsnest'
     }
 
     Info ''
-    Info 'Control it:'
+    Info "Installed to $AppDir"
+    Info ''
+    Info 'Next steps:'
     Info '  crowsnest                  launch the HUD and return to the prompt'
-    Info '  crowsnest start            launch the HUD if it is not running yet'
     Info '  crowsnest stop             stop every running HUD instance'
-    Info '  crowsnest restart          restart the HUD'
     Info '  crowsnest status           autostart state + running instances'
-    Info '  crowsnest --autostart=on|off|status   login autostart (HKCU Run key)'
+    Info '  crowsnest restart          restart the HUD'
+    Info '  crowsnest --autostart=on   also start at every login'
+    Info '  crowsnest --autostart=off  stop doing that'
     Info '  crowsnest --dump           JSON snapshot of the machine (headless check)'
-    Info '  update                   re-run this bootstrapper'
-    Info "  uninstall                \$env:CROWSNEST_UNINSTALL='1'; irm this script | iex"
+    Info '  update                     re-run this bootstrapper'
+    Info '  uninstall                  $env:CROWSNEST_UNINSTALL=''1''; irm this script | iex'
     Info "note: unsigned build - SmartScreen 'More info / Run anyway' on first GUI launch."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
