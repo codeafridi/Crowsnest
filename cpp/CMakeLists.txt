@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(crowsnest
-    VERSION 0.13.0
+    VERSION 0.13.1
     DESCRIPTION "Crowsnest HUD (Qt 6 Widgets)"
     LANGUAGES CXX)
 
