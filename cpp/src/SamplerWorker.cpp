@@ -98,6 +98,7 @@ void SamplerWorker::setCloudPageVisible(bool visible) {
 
 void SamplerWorker::refreshCloudNow() {
     m_cloudRefreshRequested = true;
+    qInfo("[cloud] CHECK NOW requested from the console");
 }
 
 QString SamplerWorker::localIpv4() const {
@@ -1053,6 +1054,11 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         m_cloudFleet->setOptions(fleetOptions);
         if (m_cloudRefreshRequested) {
             m_cloudRefreshRequested = false;
+            if (cloud.identity.provider == CloudProvider::None) {
+                qInfo("[cloud] CHECK NOW ignored: no cloud identity "
+                      "([cloud] identity=auto is not loaded in this process, "
+                      "or the CLI has no login)");
+            }
             m_cloudFleet->refreshNow();
         }
         if (cloud.identity.instanceId.isEmpty()) {

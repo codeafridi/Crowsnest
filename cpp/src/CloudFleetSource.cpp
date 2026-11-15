@@ -3,6 +3,7 @@
 #include "CloudCli.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -842,6 +843,20 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
     if (nowMs <= 0) {
         nowMs = QDateTime::currentMSecsSinceEpoch();
     }
+    // One line per finished listing: "did the account inventory actually run,
+    // and what did it say" must be answerable from hud.log, because the page
+    // only speaks after a run and a silent no-op is indistinguishable from a
+    // broken one.
+    const auto logFinished = [this]() {
+        const CloudFleetStatus &status = m_session->status;
+        qInfo("[cloud] inventory: %d row(s), %d region(s), %s - %s",
+              int(status.rows.size()), int(status.regions.size()),
+              qUtf8Printable(status.cliName.isEmpty()
+                                 ? QStringLiteral("no cli")
+                                 : status.cliName),
+              qUtf8Printable(status.note.isEmpty() ? status.scope
+                                                   : status.note));
+    };
     if (!m_options.enabled) {
         m_session->reset();
         m_session->status.note = fleetDisabledText();
@@ -854,6 +869,9 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
     }
     if (m_session->active()) {
         m_session->poll(nowMs);
+        if (!m_session->active()) {
+            logFinished();
+        }
         return;
     }
     // A different instance (or a different provider) invalidates the listing:
@@ -869,4 +887,7 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
         return;
     }
     m_session->begin(identity, m_options, nowMs);
+    if (!m_session->active()) {
+        logFinished();
+    }
 }
