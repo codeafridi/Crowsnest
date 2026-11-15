@@ -3468,6 +3468,8 @@ QWidget *DashboardPanel::buildSettingsView() {
         {"host_steal", 0.0, 100.0, 1},
         {"host_temp", 0.0, 150.0, 1},
         {"battery_low", 0.0, 100.0, 0},
+        {"cloud_spend", 0.0, 1000000.0, 2},
+        {"cloud_forecast", 0.0, 1000000.0, 2},
     };
     auto boundsFor = [](const QString &id) {
         for (const MonitorBounds &b : monitorBounds) {

@@ -67,6 +67,12 @@ struct AlertInput {
     // M88: the account's current spend per hour against its trailing baseline.
     bool cloudBurnValid = false;
     double cloudBurnUsdHour = 0.0;
+    // The budget guardrail: month to date, and the month end the provider's
+    // forecast implies. Both come from the billed-spend query, so they are
+    // only valid once that has answered.
+    bool cloudSpendValid = false;
+    double cloudSpendMonthUsd = 0.0;
+    double cloudSpendProjectedUsd = 0.0;
 };
 
 class AlertEngine {

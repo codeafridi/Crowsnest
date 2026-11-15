@@ -396,6 +396,53 @@ int main(int argc, char *argv[]) {
               "alert: no billed spend never fires the burn rule");
     }
 
+    // The budget guardrail: month to date and the month end the provider's
+    // forecast implies, both off the billed-spend answer.
+    {
+        AlertEngine budgetEngine;
+        AlertInput budget;
+        budget.cloudSpendValid = true;
+        budget.cloudSpendMonthUsd = 41.5;
+        budget.cloudSpendProjectedUsd = 42.0;
+        const QList<Alert> firedNow = budgetEngine.update(budget, 10);
+        check(firedNow.size() == 1
+                  && firedNow.first().id == QStringLiteral("cloud_spend")
+                  && firedNow.first().group == QStringLiteral("cost")
+                  && firedNow.first().detail
+                         == QStringLiteral("41.50 USD"),
+              "alert: month to date over the budget fires with cents");
+
+        budget.cloudSpendProjectedUsd = 120.75;
+        const QList<Alert> projected = budgetEngine.update(budget, 11);
+        check(projected.size() == 1
+                  && projected.first().id == QStringLiteral("cloud_forecast")
+                  && projected.first().detail
+                         == QStringLiteral("120.75 USD"),
+              "alert: the month end forecast fires its own rule");
+
+        AlertEngine noSpend;
+        AlertInput unknown;
+        unknown.cloudSpendValid = false;
+        unknown.cloudSpendMonthUsd = 999.0;
+        unknown.cloudSpendProjectedUsd = 999.0;
+        for (int i = 0; i < 5; ++i) {
+            noSpend.update(unknown, 20 + i);
+        }
+        check(noSpend.active().isEmpty(),
+              "alert: a refused cost query never fires a budget rule");
+
+        AlertEngine underBudget;
+        AlertInput small;
+        small.cloudSpendValid = true;
+        small.cloudSpendMonthUsd = 2.0;
+        small.cloudSpendProjectedUsd = 3.0;
+        for (int i = 0; i < 5; ++i) {
+            underBudget.update(small, 30 + i);
+        }
+        check(underBudget.active().isEmpty(),
+              "alert: a small bill stays quiet");
+    }
+
     engine.reset();
     AlertInput memInput;
     memInput.hostMemValid = true;

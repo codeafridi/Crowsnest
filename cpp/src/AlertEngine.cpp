@@ -46,6 +46,12 @@ bool metricFor(const AlertRule &rule, const AlertInput &input, double &value,
     } else if (rule.id == QLatin1String("cloud_burn")) {
         value = input.cloudBurnUsdHour;
         valid = input.cloudBurnValid;
+    } else if (rule.id == QLatin1String("cloud_spend")) {
+        value = input.cloudSpendMonthUsd;
+        valid = input.cloudSpendValid;
+    } else if (rule.id == QLatin1String("cloud_forecast")) {
+        value = input.cloudSpendProjectedUsd;
+        valid = input.cloudSpendValid;
     } else {
         valid = false;
     }
@@ -61,7 +67,12 @@ Alert makeAlert(const AlertRule &rule, double value, qint64 nowMs) {
     alert.atMs = nowMs;
     alert.group = rule.group;
     alert.owner = rule.owner;
-    alert.detail = QStringLiteral("%1%2").arg(value, 0, 'f', 1).arg(rule.unit);
+    // Money reads with cents; everything else with one decimal.
+    const int decimals =
+        rule.unit == QStringLiteral(" USD") ? 2 : 1;
+    alert.detail = QStringLiteral("%1%2")
+                       .arg(value, 0, 'f', decimals)
+                       .arg(rule.unit);
     return alert;
 }
 
@@ -119,6 +130,10 @@ QList<AlertRule> defaultAlertRules() {
              QStringLiteral("%"), "thermal"),
         make("cloud_burn", "Cloud cost burn high", "warning", 5.0, true, 3,
              QStringLiteral(" $/h"), "cost"),
+        make("cloud_spend", "Cloud month to date over budget", "warning", 25.0,
+             true, 1, QStringLiteral(" USD"), "cost"),
+        make("cloud_forecast", "Cloud month end over budget", "warning", 50.0,
+             true, 1, QStringLiteral(" USD"), "cost"),
     };
 }
 

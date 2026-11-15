@@ -505,6 +505,20 @@ void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
     } else {
         m_alertInput.cloudBurnValid = false;
     }
+    // The budget guardrail, from the same billed-spend answer the Cloud page
+    // shows. Projected month end falls back to month to date when the provider
+    // gave no forecast (a refused CE forecast must not read as a zero bill).
+    if (snapshot.cloud.spend.available) {
+        m_alertInput.cloudSpendValid = true;
+        m_alertInput.cloudSpendMonthUsd = snapshot.cloud.spend.monthToDateUsd;
+        m_alertInput.cloudSpendProjectedUsd =
+            snapshot.cloud.spend.forecastRemainingUsd >= 0.0
+                ? snapshot.cloud.spend.monthToDateUsd +
+                      snapshot.cloud.spend.forecastRemainingUsd
+                : snapshot.cloud.spend.monthToDateUsd;
+    } else {
+        m_alertInput.cloudSpendValid = false;
+    }
     if (snapshot.kernelLimits.available && snapshot.kernelLimits.fdMax > 0) {
         m_alertInput.kernelFdValid = true;
         m_alertInput.kernelFdPct =
