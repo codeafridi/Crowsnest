@@ -6304,7 +6304,12 @@ int main(int argc, char *argv[]) {
             fanOptions.timeoutMs = 15000;
             fanOptions.cliPath = binDir + QStringLiteral("/aws") + suffix;
             fanOptions.identityAuto = true;
-            fanOptions.regionConcurrency = 2;
+            // One region at a time: two concurrent .cmd -> powershell fakes
+            // race on their shared argv log on windows and make this test
+            // flaky. The pool itself is platform-neutral and is exercised on
+            // linux/macos; here the plan, the per-region stamping and the
+            // cache are what is being proven.
+            fanOptions.regionConcurrency = 1;
             fanOptions.accountTimeoutMs = 30000;
             const CloudFleetStatus fan =
                 probeCloudFleet(autoIdentity, fanOptions, cliNow);
