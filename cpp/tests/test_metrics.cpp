@@ -3177,6 +3177,78 @@ int main(int argc, char *argv[]) {
                          == QStringLiteral("tcp sockets: 11 tracked, "
                                            "35 other users"),
               "net: summary states attribution honesty");
+
+        // Connections by process: grouped by remote endpoint, so forty sockets
+        // to one host are one row with a count.
+        check(formatEndpoint(QStringLiteral("0.0.0.0"), 0)
+                  == QStringLiteral("*")
+                  && formatEndpoint(QStringLiteral("1.2.3.4"), 443)
+                         == QStringLiteral("1.2.3.4:443")
+                  && formatEndpoint(QStringLiteral("fe80::1"), 443)
+                         == QStringLiteral("[fe80::1]:443")
+                  && formatEndpoint(QStringLiteral("169.254.169.254"), 0)
+                         == QStringLiteral("169.254.169.254"),
+              "net: endpoints format, including a wildcard and ipv6");
+        QList<linuxproc::SocketInfo> connSockets;
+        for (int i = 0; i < 3; ++i) {
+            linuxproc::SocketInfo socket;
+            socket.proto = QStringLiteral("tcp4");
+            socket.state = QStringLiteral("ESTABLISHED");
+            socket.localAddr = QStringLiteral("10.0.0.5");
+            socket.localPort = quint16(50000 + i);
+            socket.remoteAddr = QStringLiteral("1.2.3.4");
+            socket.remotePort = 443;
+            socket.inode = 400 + i;
+            connSockets.append(socket);
+        }
+        linuxproc::SocketInfo listener;
+        listener.proto = QStringLiteral("tcp4");
+        listener.state = QStringLiteral("LISTEN");
+        listener.localAddr = QStringLiteral("0.0.0.0");
+        listener.localPort = 8080;
+        listener.inode = 410;
+        connSockets.append(listener);
+        linuxproc::SocketInfo otherUser;
+        otherUser.proto = QStringLiteral("tcp4");
+        otherUser.state = QStringLiteral("ESTABLISHED");
+        otherUser.inode = 999;
+        connSockets.append(otherUser);
+        linuxproc::SocketInfo kernel;
+        kernel.proto = QStringLiteral("tcp6");
+        kernel.state = QStringLiteral("LISTEN");
+        kernel.inode = 0;
+        connSockets.append(kernel);
+        QHash<unsigned long long, int> connOwner;
+        connOwner.insert(400, 10);
+        connOwner.insert(401, 10);
+        connOwner.insert(402, 10);
+        connOwner.insert(410, 20);
+        QHash<int, QString> comm;
+        comm.insert(10, QStringLiteral("firefox"));
+        comm.insert(20, QStringLiteral("nginx"));
+        const QList<ProcessNetConnection> conns =
+            processNetConnections(connSockets, connOwner, comm, 50);
+        check(conns.size() == 2,
+              "net: connections skip the kernel and other users");
+        const ProcessNetConnection firefoxRow = conns.first();
+        check(firefoxRow.name == QStringLiteral("firefox")
+                  && firefoxRow.pid == 10
+                  && firefoxRow.remote == QStringLiteral("1.2.3.4:443")
+                  && firefoxRow.count == 3,
+              "net: sockets to one endpoint group into one row with a count");
+        check(conns.at(1).name == QStringLiteral("nginx")
+                  && conns.at(1).remote == QStringLiteral("*")
+                  && conns.at(1).state == QStringLiteral("LISTEN"),
+              "net: a listener shows a wildcard remote and its state");
+        check(processNetConnections(connSockets, connOwner, comm, 1).size()
+                  == 1,
+              "net: the connections list respects its cap");
+        check(processConnectionsNote(3, 0).contains(QStringLiteral("3 grouped"))
+                  && !processConnectionsNote(3, 0).contains(
+                      QStringLiteral("other users"))
+                  && processConnectionsNote(3, 2).contains(
+                      QStringLiteral("2 socket(s) belong to other users")),
+              "net: the connections note names what it cannot see");
     }
 
     {

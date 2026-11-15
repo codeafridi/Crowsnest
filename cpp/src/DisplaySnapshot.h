@@ -114,6 +114,8 @@ struct DisplaySnapshot {
     double focusNetRxPerSec = -1.0;
     double focusNetTxPerSec = -1.0;
     QList<ProcessNetTalker> processNetTalkers;
+    // "which process is talking to where": grouped sockets, capped.
+    QList<ProcessNetConnection> processConnections;
     bool processDiskAvailable = false;
     bool processDiskWarming = false;
     bool processDiskScanning = false;

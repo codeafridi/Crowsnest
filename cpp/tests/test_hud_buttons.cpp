@@ -240,6 +240,23 @@ int main(int argc, char *argv[]) {
     talker.txPerSec = 512.0;
     talker.listenPorts = {8080};
     withProcs.processNetTalkers = {talker};
+    ProcessNetConnection connAlpha;
+    connAlpha.pid = 123;
+    connAlpha.name = QStringLiteral("alpha");
+    connAlpha.proto = QStringLiteral("tcp4");
+    connAlpha.local = QStringLiteral("10.0.0.5:50000");
+    connAlpha.remote = QStringLiteral("1.2.3.4:443");
+    connAlpha.state = QStringLiteral("ESTABLISHED");
+    connAlpha.count = 3;
+    ProcessNetConnection connNginx;
+    connNginx.pid = 42;
+    connNginx.name = QStringLiteral("nginx");
+    connNginx.proto = QStringLiteral("tcp4");
+    connNginx.local = QStringLiteral("*");
+    connNginx.remote = QStringLiteral("*");
+    connNginx.state = QStringLiteral("LISTEN");
+    connNginx.count = 1;
+    withProcs.processConnections = {connAlpha, connNginx};
     withProcs.processDiskAvailable = true;
     withProcs.processDiskScanning = true;
     withProcs.processDiskTracked = 9;
@@ -1255,6 +1272,26 @@ int main(int argc, char *argv[]) {
                   && talkerSummary->text().contains(
                       QStringLiteral("tcp sockets")),
               "panel talker card carries the socket summary");
+        auto *conns =
+            hud.findChild<QTreeWidget *>(QStringLiteral("ddProcConns"));
+        auto *connsNote =
+            hud.findChild<QLabel *>(QStringLiteral("ddProcConnsNote"));
+        check(conns != nullptr && conns->topLevelItemCount() == 2
+                  && conns->topLevelItem(0)->text(0)
+                         == QStringLiteral("alpha")
+                  && conns->topLevelItem(0)->text(3)
+                         == QStringLiteral("1.2.3.4:443")
+                  && conns->topLevelItem(0)->text(5) == QStringLiteral("3")
+                  && conns->topLevelItem(1)->text(0)
+                         == QStringLiteral("nginx")
+                  && conns->topLevelItem(1)->text(4)
+                         == QStringLiteral("LISTEN"),
+              "panel lists which process talks to which endpoint");
+        check(connsNote != nullptr
+                  && connsNote->text().contains(QStringLiteral("2 grouped"))
+                  && connsNote->text().contains(
+                      QStringLiteral("35 socket(s) belong to other users")),
+              "panel connections note states coverage and its limit");
     } else {
         check(netNote != nullptr
                   && netNote->text().contains(

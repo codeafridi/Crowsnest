@@ -654,6 +654,15 @@ void SamplerWorker::fillProcessNet(
     if (m_netInodePid.isEmpty() || now - m_netMapStampMs >= 2000) {
         m_netInodePid = processNetInodePid(*m_backend, m_backend->allPids());
         m_netMapStampMs = now;
+        // One comm() per owner, on the same 2 s cadence: the connections table
+        // is rebuilt every tick but its names are cheap to keep.
+        m_netNames.clear();
+        for (auto it = m_netInodePid.constBegin();
+             it != m_netInodePid.constEnd(); ++it) {
+            if (!m_netNames.contains(it.value())) {
+                m_netNames.insert(it.value(), m_backend->comm(it.value()));
+            }
+        }
     }
 
     qint64 windowMs = m_intervalMs;
@@ -733,6 +742,8 @@ void SamplerWorker::fillProcessNet(
             processNetListenPorts(sockets, inodesOfPid.value(talker.pid));
     }
     snapshot.processNetTalkers = talkers;
+    snapshot.processConnections =
+        processNetConnections(sockets, m_netInodePid, m_netNames, 200);
 }
 
 void SamplerWorker::fillGpu(DisplaySnapshot &snapshot) {

@@ -2099,6 +2099,38 @@ QWidget *DashboardPanel::buildNetworkView() {
     layout->addWidget(makeCard(QStringLiteral("processes by tcp throughput"),
                                talkerBox, view), 1);
 
+    // --- Which process is talking to where. The same socket table the talkers
+    // use, grouped by process and remote endpoint: forty sockets to one host
+    // read as one line with a count.
+    m_procConns = new QTreeWidget(view);
+    m_procConns->setObjectName(QStringLiteral("ddProcConns"));
+    m_procConns->setColumnCount(6);
+    m_procConns->setHeaderLabels({QStringLiteral("PROCESS"),
+                                  QStringLiteral("PID"),
+                                  QStringLiteral("PROTO"),
+                                  QStringLiteral("REMOTE"),
+                                  QStringLiteral("STATE"),
+                                  QStringLiteral("COUNT")});
+    m_procConns->setRootIsDecorated(false);
+    m_procConns->setSelectionMode(QAbstractItemView::NoSelection);
+    m_procConns->setFocusPolicy(Qt::NoFocus);
+    m_procConns->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    for (int column = 1; column < 6; ++column) {
+        m_procConns->header()->setSectionResizeMode(
+            column, QHeaderView::ResizeToContents);
+    }
+    m_procConnsNote = new QLabel(QStringLiteral("--"), view);
+    m_procConnsNote->setObjectName(QStringLiteral("ddProcConnsNote"));
+    m_procConnsNote->setFont(monoFont(9));
+    m_procConnsNote->setWordWrap(true);
+    m_procConnsNote->setMinimumWidth(1);
+
+    layout->addWidget(makeBanner(QStringLiteral("CONNECTIONS BY PROCESS"),
+        ui_theme::banner(), view));
+    layout->addWidget(makeCard(QStringLiteral("process to remote endpoint"),
+                               m_procConns, view));
+    layout->addWidget(m_procConnsNote);
+
     // --- Focused-app connection latency trend (netlink tcp_info per tick).
     m_chartConnRtt = new TimeseriesChart(view);
     m_chartConnRtt->setUnit(QStringLiteral("ms"));
@@ -7129,6 +7161,51 @@ void DashboardPanel::setSnapshot(const DisplaySnapshot &snapshot) {
                 m_talkers->setText(text);
             }
         }
+    }
+
+    if (m_procConns != nullptr) {
+        m_procConns->setUpdatesEnabled(false);
+        m_procConns->clear();
+        if (!m_osProcessNet) {
+            auto *item = new QTreeWidgetItem(m_procConns);
+            item->setText(0, unsupportedOsText(QStringLiteral("connections")));
+            item->setForeground(0, QColor(ui_theme::dim()));
+            m_procConns->setFirstColumnSpanned(0, QModelIndex(), true);
+            m_procConnsNote->setText(
+                QStringLiteral("the socket owner is not readable on this OS"));
+        } else if (snapshot.processConnections.isEmpty()) {
+            auto *item = new QTreeWidgetItem(m_procConns);
+            item->setText(0, snapshot.processNetWarming
+                                 ? QStringLiteral("warming up")
+                                 : QStringLiteral(
+                                       "no tcp sockets owned by your user"));
+            item->setForeground(0, QColor(ui_theme::dim()));
+            m_procConns->setFirstColumnSpanned(0, QModelIndex(), true);
+            m_procConnsNote->setText(
+                processConnectionsNote(0, snapshot.processNetUnattributed));
+        } else {
+            for (const ProcessNetConnection &connection
+                 : snapshot.processConnections) {
+                auto *item = new QTreeWidgetItem(m_procConns);
+                item->setText(0, connection.name);
+                item->setText(1, QString::number(connection.pid));
+                item->setText(2, connection.proto);
+                item->setText(3, connection.remote);
+                item->setText(4, connection.state);
+                item->setText(5, QString::number(connection.count));
+                item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
+                item->setTextAlignment(5, Qt::AlignRight | Qt::AlignVCenter);
+                if (connection.state == QLatin1String("ESTABLISHED")) {
+                    item->setForeground(4, QColor(ui_theme::ok()));
+                } else if (connection.state == QLatin1String("LISTEN")) {
+                    item->setForeground(4, QColor(ui_theme::muted()));
+                }
+            }
+            m_procConnsNote->setText(processConnectionsNote(
+                int(snapshot.processConnections.size()),
+                snapshot.processNetUnattributed));
+        }
+        m_procConns->setUpdatesEnabled(true);
     }
 
     if (snapshot.tcpHealthAvailable) {

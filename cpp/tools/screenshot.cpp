@@ -151,6 +151,31 @@ DisplaySnapshot demoSnapshot(int tick) {
     talkerC.txPerSec = 40'960.0;
     talkerC.name = QStringLiteral("rsync");
     s.processNetTalkers = {talkerA, talkerB, talkerC};
+    // Connections by process: the same sockets, grouped by remote endpoint.
+    const auto netConn = [](int pid, const char *name, const char *proto,
+                         const char *local, const char *remote,
+                         const char *state, int count) {
+        ProcessNetConnection row;
+        row.pid = pid;
+        row.name = QLatin1String(name);
+        row.proto = QLatin1String(proto);
+        row.local = QLatin1String(local);
+        row.remote = QLatin1String(remote);
+        row.state = QLatin1String(state);
+        row.count = count;
+        return row;
+    };
+    s.processConnections = {
+        netConn(2092707, "cursor", "tcp4", "127.0.0.1:59640",
+                "140.82.114.3:22", "ESTABLISHED", 1),
+        netConn(2092707, "cursor", "tcp4", "10.0.3.17:50112",
+                "142.250.183.74:443", "ESTABLISHED", 6),
+        netConn(2092708, "node", "tcp4", "10.0.3.17:3000", "*", "LISTEN", 1),
+        netConn(2092708, "node", "tcp4", "10.0.3.17:55432",
+                "10.0.0.9:55432", "ESTABLISHED", 2),
+        netConn(8842, "rsync", "tcp4", "10.0.3.17:51022",
+                "51.91.204.12:873", "ESTABLISHED", 1),
+    };
 
     s.processDiskAvailable = true;
     s.processDiskScanning = true;

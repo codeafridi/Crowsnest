@@ -93,6 +93,7 @@ private:
 #endif
     QHash<unsigned long long, ProcessNetPrior> m_netPrior;
     QHash<unsigned long long, int> m_netInodePid;
+    QHash<int, QString> m_netNames;
     qint64 m_netMapStampMs = 0;
     qint64 m_netRateStampMs = 0;
     QHash<int, ProcessDiskCounters> m_rowDiskCounters;

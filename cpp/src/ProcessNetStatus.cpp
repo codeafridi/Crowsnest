@@ -106,6 +106,92 @@ QHash<unsigned long long, int> processNetInodePid(SystemBackend &backend,
     return map;
 }
 
+QString formatEndpoint(const QString &addr, quint16 port) {
+    QString host = addr.trimmed();
+    if (host.isEmpty() || host == QLatin1String("0.0.0.0") ||
+        host == QLatin1String("::") || host == QLatin1String("*")) {
+        host = QStringLiteral("*");
+    }
+    if (port == 0) {
+        return host;
+    }
+    if (host.contains(QLatin1Char(':'))) {
+        return QStringLiteral("[%1]:%2").arg(host).arg(port);
+    }
+    return QStringLiteral("%1:%2").arg(host).arg(port);
+}
+
+QList<ProcessNetConnection> processNetConnections(
+    const QList<linuxproc::SocketInfo> &sockets,
+    const QHash<unsigned long long, int> &inodePid,
+    const QHash<int, QString> &commByPid, int limit) {
+    QList<ProcessNetConnection> rows;
+    if (limit <= 0) {
+        return rows;
+    }
+    // Some kernels no longer export a UDP remote endpoint; a listening socket
+    // (or a wildcard peer) has nowhere to go, so it reads as "*".
+    QHash<QString, int> index;
+    for (const linuxproc::SocketInfo &socket : sockets) {
+        if (socket.inode == 0) {
+            continue; // kernel sockets have no owner
+        }
+        const auto owner = inodePid.constFind(socket.inode);
+        if (owner == inodePid.constEnd()) {
+            continue; // another user's socket is not readable
+        }
+        ProcessNetConnection row;
+        row.pid = owner.value();
+        row.name = commByPid.value(row.pid);
+        if (row.name.isEmpty()) {
+            row.name = QStringLiteral("pid %1").arg(row.pid);
+        }
+        row.proto = socket.proto;
+        row.local = formatEndpoint(socket.localAddr, socket.localPort);
+        row.remote = formatEndpoint(socket.remoteAddr, socket.remotePort);
+        row.state = socket.state;
+        // Grouped by process and remote endpoint. The local ephemeral port is
+        // deliberately not part of the key (forty sockets to one host are one
+        // row); a listener is, because ports 80 and 443 are different things.
+        QString key = QStringLiteral("%1|%2|%3|%4")
+                          .arg(row.pid)
+                          .arg(row.proto, row.remote, row.state);
+        if (row.state == QLatin1String("LISTEN")) {
+            key += QLatin1Char('|') + row.local;
+        }
+        const auto seen = index.constFind(key);
+        if (seen != index.constEnd()) {
+            ++rows[seen.value()].count;
+            continue;
+        }
+        if (rows.size() >= limit) {
+            continue;
+        }
+        index.insert(key, int(rows.size()));
+        rows.append(row);
+    }
+    std::sort(rows.begin(), rows.end(),
+              [](const ProcessNetConnection &left,
+                 const ProcessNetConnection &right) {
+                  const int byName =
+                      left.name.compare(right.name, Qt::CaseInsensitive);
+                  if (byName != 0) {
+                      return byName < 0;
+                  }
+                  if (left.pid != right.pid) {
+                      return left.pid < right.pid;
+                  }
+                  const int byRemote =
+                      left.remote.compare(right.remote, Qt::CaseInsensitive);
+                  if (byRemote != 0) {
+                      return byRemote < 0;
+                  }
+                  return left.local.compare(right.local, Qt::CaseInsensitive) <
+                         0;
+              });
+    return rows;
+}
+
 QList<quint16> processNetListenPorts(const QList<linuxproc::SocketInfo> &sockets,
                                      const QList<unsigned long long> &inodes) {
     QList<quint16> ports;
@@ -198,6 +284,19 @@ QString formatListenPorts(const QList<quint16> &ports) {
     QString text = shown.join(QStringLiteral(", "));
     if (ports.size() > maxShown) {
         text += QStringLiteral(" +%1").arg(ports.size() - maxShown);
+    }
+    return text;
+}
+
+QString processConnectionsNote(int rows, int unattributed) {
+    QString text = QStringLiteral(
+        "%1 grouped endpoint(s), tcp only; a wildcard peer is a listener")
+                       .arg(rows);
+    if (unattributed > 0) {
+        text += QStringLiteral(
+                    " - %1 socket(s) belong to other users and are not "
+                    "readable unprivileged")
+                    .arg(unattributed);
     }
     return text;
 }

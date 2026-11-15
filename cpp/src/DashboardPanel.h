@@ -726,6 +726,8 @@ private:
     TimeseriesChart *m_chartNetPage = nullptr;
     TimeseriesChart *m_chartConnRtt = nullptr;
     QLabel *m_talkers = nullptr;
+    QTreeWidget *m_procConns = nullptr;
+    QLabel *m_procConnsNote = nullptr;
     QLabel *m_talkerSummary = nullptr;
 
     // Datadog-style Network Path page (M61m): probe tiles + RTT history.
