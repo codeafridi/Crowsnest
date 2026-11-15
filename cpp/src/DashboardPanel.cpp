@@ -8709,23 +8709,31 @@ void DashboardPanel::updateFleetDetail() {
 void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
     const CloudSnapshot &cloud = snapshot.cloud;
     // Scope: a real instance describes itself ("this boot"); a host that only
-    // has a CLI identity describes the instance selected in the fleet listing.
-    // Without this the three tiles read "--" on every laptop, which looks
-    // broken rather than honest.
+    // has a CLI identity describes the account. For the account the tile leads
+    // with a RUNNING instance (the "current" one); with nothing running it
+    // falls back to the most recently launched row - the last one that ran -
+    // and names the state, so the age is never presented as if it were live.
     const bool hostScope = !cloud.identity.instanceId.isEmpty();
     const CloudFleetInstance *shown = nullptr;
     if (!hostScope && !cloud.fleet.rows.isEmpty()) {
-        int index = cloud.fleet.selfIndex >= 0 ? cloud.fleet.selfIndex : 0;
-        for (int i = 0; i < cloud.fleet.rows.size(); ++i) {
-            if (!m_cloudFleetSelectedId.isEmpty() &&
-                cloud.fleet.rows.at(i).instanceId == m_cloudFleetSelectedId) {
-                index = i;
-                break;
+        const CloudFleetInstance *newestRunning = nullptr;
+        const CloudFleetInstance *newestAny = nullptr;
+        for (const CloudFleetInstance &row : cloud.fleet.rows) {
+            const bool newer = newestAny == nullptr ||
+                               row.launchedAtMs > newestAny->launchedAtMs;
+            if (newer) {
+                newestAny = &row;
+            }
+            if (row.state == QLatin1String("running") &&
+                (newestRunning == nullptr ||
+                 row.launchedAtMs > newestRunning->launchedAtMs)) {
+                newestRunning = &row;
             }
         }
-        if (index >= 0 && index < cloud.fleet.rows.size()) {
-            shown = &cloud.fleet.rows.at(index);
-        }
+        // Running first (the "current" instance), else the most recently
+        // launched row: the last one that ran. The selection only drives the
+        // detail pane; the summary tile must not follow a click.
+        shown = newestRunning != nullptr ? newestRunning : newestAny;
     }
 
     const qint64 ageSec = hostScope ? cloud.instanceAgeSec
@@ -8757,11 +8765,14 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                       : QStringLiteral("COST (LAUNCH)"));
     }
     if (m_cloudTileAgeNote != nullptr) {
-        // Which instance the three numbers describe - the tile never leaves
-        // that to guesswork.
+        // Which instance the three numbers describe, and its state: a stopped
+        // or terminated row must never read like a live one.
         m_cloudTileAgeNote->setText(
-            hostScope ? QStringLiteral("this host")
-                      : (shown != nullptr ? shown->name : QStringLiteral("--")));
+            hostScope
+                ? QStringLiteral("this host")
+                : (shown != nullptr
+                       ? QStringLiteral("%1 · %2").arg(shown->name, shown->state)
+                       : QStringLiteral("no instances")));
     }
 
     m_cloudSummary->setText(cloudSummaryText(cloud));

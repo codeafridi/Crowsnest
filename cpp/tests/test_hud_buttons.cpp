@@ -2008,6 +2008,11 @@ int main(int argc, char *argv[]) {
         hud.findChild<QLabel *>(QStringLiteral("ddCloudTileMonthly"));
     auto *cloudAge =
         hud.findChild<QLabel *>(QStringLiteral("ddCloudTileAge"));
+    auto *cloudTileAgeNote =
+        cloudAge != nullptr
+            ? cloudAge->parentWidget()->findChild<QLabel *>(
+                  QStringLiteral("ddDelta"))
+            : nullptr;
     auto *cloudFleet =
         hud.findChild<QTreeWidget *>(QStringLiteral("ddCloudFleet"));
     auto *cloudFleetSummary =
@@ -2283,6 +2288,32 @@ int main(int argc, char *argv[]) {
               && cloudConsumers->topLevelItem(0)->text(0)
                      == QStringLiteral("cloud: unavailable"),
           "cloud consumer table states the gate, never an empty list");
+    {
+        // The AGE tile follows a running instance; with nothing running it
+        // falls back to the most recently launched row and names its state, so
+        // a stopped box never reads like a live one.
+        DisplaySnapshot cliScope = cloudSnap;
+        cliScope.cloud.identity.instanceId.clear();
+        cliScope.cloud.instanceAgeSec = -1;
+        cliScope.cloud.accruedUsd = -1.0;
+        cliScope.cloud.projectedMonthlyUsd = -1.0;
+        hud.setSnapshot(cliScope);
+        check(cloudAge->text() == QStringLiteral("3d 0h")
+                  && cloudTileAgeNote != nullptr
+                  && cloudTileAgeNote->text()
+                         == QStringLiteral("hud-box · running"),
+              "cloud tiles follow a running instance when the account has one");
+        for (CloudFleetInstance &row : cliScope.cloud.fleet.rows) {
+            row.state = QStringLiteral("stopped");
+        }
+        hud.setSnapshot(cliScope);
+        // "Last that ran" is the most recent launch, not the oldest row.
+        check(cloudAge->text() == QStringLiteral("3d 0h")
+                  && cloudTileAgeNote->text()
+                         == QStringLiteral("hud-box · stopped"),
+              "cloud tiles fall back to the last instance that ran, with its "
+              "state");
+    }
 
     if (moreButton2 && panel) {
         moreButton2->click();
