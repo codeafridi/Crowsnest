@@ -101,8 +101,14 @@ aws ec2 describe-instances --region <each> --output json \
   the line above the button states exactly which commands it will run and that
   no Cost Explorer request (which is billable) is part of it. Opening the Cloud
   page also refreshes the listing once if it is older than a minute; while the
-  page stays open the cadence is 5 minutes instead of 10, because a listing is
-  ~18 `aws` starts, not a live stream.
+  page stays open the full sweep runs every 5 minutes instead of 10.
+- **A state change does not wait for the next sweep.** While the Cloud page is
+  open, every 20 s Crowsnest re-lists **only the regions that already have a
+  row** (normally one `aws ec2 describe-instances` call) and replaces those
+  rows, so stopping or starting an instance shows up within seconds. A region
+  whose call fails keeps its last known rows rather than vanishing, and a
+  complete account sweep still runs on the 5/10-minute cadence to discover
+  instances in regions you have never used.
 - **Selecting an instance** shows everything the provider reported about it:
   id, name, type with its vCPU/memory, region/zone, state, launch time and age;
   the AMI and **the distribution** (the image's own description — "Amazon Linux

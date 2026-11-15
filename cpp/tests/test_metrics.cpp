@@ -6397,6 +6397,45 @@ int main(int argc, char *argv[]) {
                       "caller identity");
                 runner.stop();
             }
+
+            // A stopped instance must leave the table on its own: the targeted
+            // re-check lists only the regions that already have rows (one call
+            // instead of 18) and replaces their rows wholesale.
+            {
+                setFake(awsListing, QByteArray(), 0);
+                CloudFleetRunner runner;
+                CloudFleetOptions knownOptions = fanOptions;
+                knownOptions.knownCadenceMs = 1000;
+                runner.setOptions(knownOptions);
+                qint64 clock = cliNow;
+                for (int i = 0; i < 600; ++i) {
+                    runner.update(autoIdentity, clock);
+                    if (runner.status().fetchedAtMs > 0 &&
+                        runner.status().rows.size() == 2) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    clock += 10;
+                    QThread::msleep(5);
+                }
+                const bool seeded = runner.status().rows.size() == 2;
+                setFake(QByteArrayLiteral("[]"), QByteArray(), 0);
+                for (int i = 0; i < 600; ++i) {
+                    clock += 60;
+                    runner.update(autoIdentity, clock);
+                    if (runner.status().rows.isEmpty()) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    QThread::msleep(5);
+                }
+                check(seeded && runner.status().rows.isEmpty()
+                          && runner.status().note.contains(
+                              QStringLiteral("re-checked")),
+                      "aws: a stopped instance leaves the table on the targeted "
+                      "re-check");
+                runner.stop();
+            }
             qunsetenv("CROWSNEST_FAKE_STS");
             qunsetenv("CROWSNEST_FAKE_REGION");
             qunsetenv("CROWSNEST_FAKE_REGIONS");

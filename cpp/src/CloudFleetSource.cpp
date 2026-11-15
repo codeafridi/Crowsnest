@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QProcess>
+#include <QSet>
 #include <QStringList>
 
 #include <algorithm>
@@ -334,6 +335,10 @@ public:
         regionsRequested = false;
         singleRequested = false;
         detailsRequested = false;
+        knownCheck = false;
+        baseRows.clear();
+        okRegions.clear();
+        lastKnownCheckMs = 0;
         imageNames.clear();
         typeSpecs.clear();
         imageIdsByRegion.clear();
@@ -388,6 +393,9 @@ public:
         regionsRequested = false;
         singleRequested = false;
         detailsRequested = false;
+        knownCheck = false;
+        baseRows.clear();
+        okRegions.clear();
         imageIdsByRegion.clear();
         pendingImageRegions.clear();
         pendingTypes.clear();
@@ -591,6 +599,10 @@ public:
                              cloudAwsDescribeInstancesArguments(region), nowMs);
                 }
                 if (jobs.isEmpty() && pendingRegions.isEmpty()) {
+                    if (knownCheck) {
+                        finishKnownCheck(nowMs);
+                        return;
+                    }
                     phase = FleetPhase::Details;
                     continue;
                 }
@@ -745,11 +757,77 @@ public:
             }
             rows.append(row);
         }
+        okRegions.insert(job.region);
         applyDetails();
         // Publish the rows that have arrived instead of waiting for all 18
         // regions: the answer for the region this machine lives in is already
         // known, and the page should show it rather than a spinner for 20 s.
         publishPartial(nowMs);
+    }
+
+    void beginKnownCheck(const CloudIdentity &id, const CloudFleetOptions &opts,
+                         qint64 nowMs) {
+        abort();
+        identity = id;
+        options = opts;
+        knownCheck = true;
+        detailsRequested = true;
+        baseRows = rows;
+        rows.clear();
+        dropped = 0;
+        queriedRegions.clear();
+        okRegions.clear();
+        pendingRegions.clear();
+        regionFailures.clear();
+        regionError.clear();
+        identityResolved = status.identityResolved;
+        startedAtMs = nowMs;
+        wallStartedAtMs = QDateTime::currentMSecsSinceEpoch();
+        lastAttemptMs = status.fetchedAtMs > 0 ? status.fetchedAtMs : nowMs;
+        // Only the regions that already have a row: one call for the common
+        // case, and it catches a stop/start within the minute.
+        QStringList regions;
+        for (const CloudFleetInstance &row : baseRows) {
+            if (!row.region.isEmpty() && !regions.contains(row.region)) {
+                regions.append(row.region);
+            }
+        }
+        pendingRegions = regions;
+        status.note = QStringLiteral("fleet: re-checking %1 region(s) ...")
+                          .arg(regions.size());
+        phase = FleetPhase::Instances;
+        advance(nowMs);
+    }
+
+    void finishKnownCheck(qint64 nowMs) {
+        abort();
+        // The regions that answered are replaced wholesale; a region whose call
+        // failed keeps its last known rows rather than vanishing.
+        QList<CloudFleetInstance> merged;
+        for (const CloudFleetInstance &row : baseRows) {
+            if (okRegions.contains(row.region)) {
+                continue;
+            }
+            merged.append(row);
+        }
+        for (const CloudFleetInstance &row : rows) {
+            merged.append(row);
+        }
+        status.rows = merged;
+        fleetFinalize(status);
+        status.fetchedAtMs = nowMs;
+        status.note = regionFailures.isEmpty()
+                          ? QStringLiteral("fleet: re-checked %1 region(s) just "
+                                           "now")
+                                .arg(queriedRegions.size())
+                          : QStringLiteral("fleet: re-checked %1 region(s) - %2 "
+                                           "did not answer")
+                                .arg(queriedRegions.size() -
+                                     regionFailures.size())
+                                .arg(regionFailures.join(
+                                    QStringLiteral(", ")));
+        lastKnownCheckMs = nowMs;
+        phase = FleetPhase::Done;
     }
 
     void buildDetailPlan() {
@@ -822,7 +900,7 @@ public:
 
     void publishPartial(qint64 nowMs) {
         Q_UNUSED(nowMs);
-        if (phase != FleetPhase::Instances) {
+        if (phase != FleetPhase::Instances || knownCheck) {
             return;
         }
         // Replace the rows only when something has actually arrived: a refresh
@@ -951,6 +1029,7 @@ public:
         status.source = sourceText();
         fleetFinalize(status);
         fleetResolveAges(status, nowMs);
+        lastKnownCheckMs = nowMs;
 
         status.note = overrideNote;
         if (status.rows.isEmpty()) {
@@ -987,6 +1066,12 @@ public:
     bool regionsRequested = false;
     bool singleRequested = false;
     bool detailsRequested = false;
+    // A targeted re-check (see knownCadenceMs): only the regions that already
+    // have rows are listed again, and their rows are replaced wholesale.
+    bool knownCheck = false;
+    QList<CloudFleetInstance> baseRows;
+    QSet<QString> okRegions;
+    qint64 lastKnownCheckMs = 0;
     // AMI id -> description and instance type -> spec, kept across runs so a
     // second listing of the same account costs no enrichment call at all.
     QHash<QString, QString> imageNames;
@@ -1141,6 +1226,18 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
     }
     if (m_session->lastAttemptMs > 0 &&
         nowMs - m_session->lastAttemptMs < m_options.cadenceMs) {
+        // Between full sweeps, re-list only the regions that already have
+        // rows: one call catches a stopped or started instance in seconds,
+        // where the full 18-region sweep would cost 18 processes for the same
+        // answer.
+        if (m_options.knownCadenceMs > 0 && !m_session->status.rows.isEmpty() &&
+            m_session->lastKnownCheckMs > 0 &&
+            nowMs - m_session->lastKnownCheckMs >= m_options.knownCadenceMs) {
+            m_session->beginKnownCheck(identity, m_options, nowMs);
+            if (!m_session->active()) {
+                logFinished();
+            }
+        }
         return;
     }
     qInfo("[cloud] inventory starting (on cadence)");

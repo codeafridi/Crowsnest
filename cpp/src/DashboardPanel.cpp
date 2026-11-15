@@ -4920,12 +4920,19 @@ QWidget *DashboardPanel::buildCloudView() {
     tiles->setSpacing(10);
     tiles->addWidget(makeTile(QStringLiteral("PROVIDER"), m_cloudTileProvider,
                               nullptr, view), 1);
-    tiles->addWidget(makeTile(QStringLiteral("AGE"), m_cloudTileAge, nullptr,
-                              view), 1);
-    tiles->addWidget(makeTile(QStringLiteral("ACCRUED (BOOT)"),
-                              m_cloudTileAccrued, nullptr, view), 1);
+    tiles->addWidget(
+        makeTile(QStringLiteral("AGE"), m_cloudTileAge, &m_cloudTileAgeNote,
+                 view),
+        1);
+    auto *accruedTile = makeTile(QStringLiteral("ACCRUED (BOOT)"),
+                                 m_cloudTileAccrued, nullptr, view);
+    tiles->addWidget(accruedTile, 1);
     tiles->addWidget(makeTile(QStringLiteral("$/MONTH"), m_cloudTileMonthly,
                               nullptr, view), 1);
+    // The captions change with the scope: on a laptop the numbers describe the
+    // selected instance, not "this boot" (there is no this-boot cost).
+    m_cloudTileAccruedCaption =
+        accruedTile->findChild<QLabel *>(QStringLiteral("ddCardTitle"));
     layout->addLayout(tiles);
 
     // --- Identity from the instance metadata service (the same document the
@@ -8694,21 +8701,61 @@ void DashboardPanel::updateFleetDetail() {
 
 void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
     const CloudSnapshot &cloud = snapshot.cloud;
-    const bool priced = cloud.available && cloud.ratePerHour >= 0.0;
+    // Scope: a real instance describes itself ("this boot"); a host that only
+    // has a CLI identity describes the instance selected in the fleet listing.
+    // Without this the three tiles read "--" on every laptop, which looks
+    // broken rather than honest.
+    const bool hostScope = !cloud.identity.instanceId.isEmpty();
+    const CloudFleetInstance *shown = nullptr;
+    if (!hostScope && !cloud.fleet.rows.isEmpty()) {
+        int index = cloud.fleet.selfIndex >= 0 ? cloud.fleet.selfIndex : 0;
+        for (int i = 0; i < cloud.fleet.rows.size(); ++i) {
+            if (!m_cloudFleetSelectedId.isEmpty() &&
+                cloud.fleet.rows.at(i).instanceId == m_cloudFleetSelectedId) {
+                index = i;
+                break;
+            }
+        }
+        if (index >= 0 && index < cloud.fleet.rows.size()) {
+            shown = &cloud.fleet.rows.at(index);
+        }
+    }
+
+    const qint64 ageSec = hostScope ? cloud.instanceAgeSec
+                                    : (shown != nullptr ? shown->ageSec : -1);
+    double monthly = hostScope ? cloud.projectedMonthlyUsd
+                               : (shown != nullptr ? shown->monthlyUsd : -1.0);
+    double accrued = cloud.accruedUsd;
+    if (!hostScope) {
+        accrued = -1.0;
+        if (shown != nullptr && shown->ratePerHour >= 0.0 &&
+            shown->ageSec >= 0) {
+            accrued =
+                computeCloudCost(shown->ratePerHour, shown->ageSec).accruedUsd;
+        }
+    }
 
     m_cloudTileProvider->setText(
         cloud.available ? cloudProviderLabel(cloud.identity.provider)
                         : QStringLiteral("--"));
     m_cloudTileAccrued->setText(
-        priced && cloud.accruedUsd >= 0.0 ? formatCostMoney(cloud.accruedUsd)
-                                          : QStringLiteral("--"));
+        accrued >= 0.0 ? formatCostMoney(accrued) : QStringLiteral("--"));
     m_cloudTileMonthly->setText(
-        priced && cloud.projectedMonthlyUsd >= 0.0
-            ? formatCostMoney(cloud.projectedMonthlyUsd)
-            : QStringLiteral("--"));
+        monthly >= 0.0 ? formatCostMoney(monthly) : QStringLiteral("--"));
     m_cloudTileAge->setText(
-        cloud.instanceAgeSec >= 0 ? cloudUptimeText(cloud.instanceAgeSec)
-                                  : QStringLiteral("--"));
+        ageSec >= 0 ? cloudUptimeText(ageSec) : QStringLiteral("--"));
+    if (m_cloudTileAccruedCaption != nullptr) {
+        m_cloudTileAccruedCaption->setText(
+            hostScope ? QStringLiteral("ACCRUED (BOOT)")
+                      : QStringLiteral("COST (LAUNCH)"));
+    }
+    if (m_cloudTileAgeNote != nullptr) {
+        // Which instance the three numbers describe - the tile never leaves
+        // that to guesswork.
+        m_cloudTileAgeNote->setText(
+            hostScope ? QStringLiteral("this host")
+                      : (shown != nullptr ? shown->name : QStringLiteral("--")));
+    }
 
     m_cloudSummary->setText(cloudSummaryText(cloud));
     if (m_cloudFootprint != nullptr) {

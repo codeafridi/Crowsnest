@@ -344,7 +344,9 @@ private:
     TimeseriesChart *m_chartCost = nullptr;
     QLabel *m_cloudTileProvider = nullptr;
     QLabel *m_cloudTileAge = nullptr;
+    QLabel *m_cloudTileAgeNote = nullptr;
     QLabel *m_cloudTileAccrued = nullptr;
+    QLabel *m_cloudTileAccruedCaption = nullptr;
     QLabel *m_cloudTileMonthly = nullptr;
     QLabel *m_cloudSummary = nullptr;
     QLabel *m_cloudDetail = nullptr;

@@ -72,6 +72,10 @@ struct CloudFleetOptions {
     int accountTimeoutMs = 90000;
     // Poll cadence; the sampler shortens it while the Cloud page is visible.
     qint64 cadenceMs = 600000;
+    // Targeted re-check: re-list only the regions that already have rows, so
+    // a stopped or started instance shows up in seconds for one CLI call.
+    // 0 disables it (the sampler enables it only while the Cloud page is open).
+    qint64 knownCadenceMs = 0;
 };
 
 QString cloudFleetCli(CloudProvider provider);
