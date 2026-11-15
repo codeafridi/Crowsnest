@@ -94,10 +94,18 @@ void SamplerWorker::stop() {
 
 void SamplerWorker::setCloudPageVisible(bool visible) {
     m_cloudPageVisible = visible;
-    if (visible) {
-        // Opening the page asks for a fresh answer once. A 1-minute poll was
-        // the first shape and it meant ~18 aws processes a minute while the
-        // page stayed open: the listing is a 20 s job, not a live stream.
+    if (!visible) {
+        return;
+    }
+    // Opening the page asks for a fresh answer - but not when the listing on
+    // screen is seconds old, which would run 18 more aws processes for nothing
+    // (it did, right after launch).
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const CloudFleetStatus status =
+        m_cloudFleet != nullptr ? m_cloudFleet->status() : CloudFleetStatus{};
+    const bool fresh = status.fetchedAtMs > 0 &&
+                       now - status.fetchedAtMs < 60000;
+    if (!fresh) {
         m_cloudRefreshRequested = true;
         qInfo("[cloud] cloud page opened - refreshing the inventory");
     }

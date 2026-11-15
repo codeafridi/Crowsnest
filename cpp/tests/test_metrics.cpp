@@ -6234,8 +6234,11 @@ int main(int argc, char *argv[]) {
                              == QStringLiteral("configure get region")
                       && fanCalls.at(2)
                              == QStringLiteral("ec2 describe-regions --output "
-                                               "json --region eu-west-1"),
-                  "aws: identity, then region, then the region list");
+                                               "json --region eu-west-1")
+                      && fanCalls.at(3).startsWith(
+                          QStringLiteral("ec2 describe-instances --output json "
+                                         "--region eu-west-1")),
+                  "aws: identity, the region list, then the home region first");
             QStringList fanRowRegions;
             for (const CloudFleetInstance &row : fan.rows) {
                 fanRowRegions.append(row.region);

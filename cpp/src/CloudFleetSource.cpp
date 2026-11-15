@@ -603,6 +603,12 @@ public:
                 return;
             }
             pendingRegions = regions;
+            // The region this machine lives in is queried first: its row is
+            // usually the one being looked for, and a whole account takes ~20 s.
+            if (!homeRegion.isEmpty() &&
+                pendingRegions.removeAll(homeRegion) > 0) {
+                pendingRegions.prepend(homeRegion);
+            }
             return;
         }
         // instances
@@ -635,6 +641,32 @@ public:
             }
             rows.append(row);
         }
+        // Publish the rows that have arrived instead of waiting for all 18
+        // regions: the answer for the region this machine lives in is already
+        // known, and the page should show it rather than a spinner for 20 s.
+        publishPartial(nowMs);
+    }
+
+    void publishPartial(qint64 nowMs) {
+        if (phase != FleetPhase::Instances) {
+            return;
+        }
+        status.rows = rows;
+        status.dropped = dropped;
+        status.regions = queriedRegions;
+        status.regionFailures = regionFailures;
+        status.regionError = regionError;
+        status.homeRegion = homeRegion;
+        status.account = identity.accountId;
+        status.identityResolved = identityResolved;
+        status.fetchedAtMs = nowMs;
+        fleetFinalize(status);
+        status.note = QStringLiteral("fleet: listing %1 region(s) - %2 found "
+                                     "so far ...")
+                          .arg(queriedRegions.size() + pendingRegions.size())
+                          .arg(rows.size());
+        status.scope = QStringLiteral("all enabled regions (%1)")
+                           .arg(queriedRegions.size() + pendingRegions.size());
     }
 
     void stageFailure(const QString &stage, const QString &region,
