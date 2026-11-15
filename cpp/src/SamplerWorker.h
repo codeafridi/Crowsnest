@@ -44,6 +44,11 @@ public slots:
     void start();
     void stop();
     void sampleNow();
+    // The Cloud page being open shortens the inventory cadence to 60 s, and
+    // CHECK NOW asks for an immediate listing. Both are queued from the HUD
+    // thread; the sampler never blocks on either.
+    void setCloudPageVisible(bool visible);
+    void refreshCloudNow();
 
 signals:
     void snapshotReady(const DisplaySnapshot &snapshot);
@@ -58,6 +63,9 @@ private:
     void fillGpu(DisplaySnapshot &snapshot);
     void fillSensors(DisplaySnapshot &snapshot);
     void fillCloud(DisplaySnapshot &snapshot);
+    // The host's own non-loopback IPv4, used to recognise this machine in an
+    // account listing when the metadata service did not name it.
+    QString localIpv4() const;
 
     FocusedWindowProvider *m_provider;
     std::unique_ptr<SystemBackend> m_backend;
@@ -133,6 +141,8 @@ private:
     QString m_iacError;
     // M83: one polled CLI listing per 10 min; the sampler never waits on it.
     CloudFleetRunner *m_cloudFleet = nullptr;
+    bool m_cloudPageVisible = false;
+    bool m_cloudRefreshRequested = false;
     // M85: one polled cost query per 6 h (Cost Explorer requests are billable).
     CloudSpendRunner *m_cloudSpend = nullptr;
     GroupCache m_groupCache;

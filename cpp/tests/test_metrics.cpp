@@ -41,6 +41,7 @@
 #include "OverlayStatus.h"
 #include "SensorStatus.h"
 #include "CloudStatus.h"
+#include "CloudCli.h"
 #include "CloudPricing.h"
 #include "CloudFleetSource.h"
 #include "CloudSpendStatus.h"
@@ -5765,10 +5766,17 @@ int main(int argc, char *argv[]) {
                "\"%~dp0fake.ps1\" %*\r\n");
         const QByteArray ps1 =
             "$ErrorActionPreference = \'Stop\'\r\n"
+            "$key = ($args -join \' \')\r\n"
             "$out = $env:CROWSNEST_FAKE_STDOUT\r\n"
             "if ($env:CROWSNEST_FAKE_ALT_MATCH -and $args.Count -ge 2 -and "
             "$args[1] -eq $env:CROWSNEST_FAKE_ALT_MATCH) { $out = "
             "$env:CROWSNEST_FAKE_ALT_STDOUT }\r\n"
+            "elseif ($key -like \'sts get-caller-identity*\') { $out = "
+            "$env:CROWSNEST_FAKE_STS }\r\n"
+            "elseif ($key -like \'configure get region*\') { $out = "
+            "$env:CROWSNEST_FAKE_REGION }\r\n"
+            "elseif ($key -like \'ec2 describe-regions*\') { $out = "
+            "$env:CROWSNEST_FAKE_REGIONS }\r\n"
             "Add-Content -Path $env:CROWSNEST_FAKE_ARGV_LOG -Value ($args -join "
             "' ')\r\n"
             "if ($env:CROWSNEST_FAKE_STDERR) { "
@@ -5785,8 +5793,14 @@ int main(int argc, char *argv[]) {
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" >> \"$CROWSNEST_FAKE_ARGV_LOG\"\n"
             "if [ -n \"${CROWSNEST_FAKE_SLEEP:-}\" ]; then sleep \"$CROWSNEST_FAKE_SLEEP\"; fi\n"
+            "out=\"${CROWSNEST_FAKE_STDOUT:-}\"\n"
+            "case \"$*\" in\n"
+            "  \"sts get-caller-identity\"*) if [ -n \"${CROWSNEST_FAKE_STS:-}\" ]; then out=\"$CROWSNEST_FAKE_STS\"; fi ;;\n"
+            "  \"configure get region\"*) if [ -n \"${CROWSNEST_FAKE_REGION:-}\" ]; then out=\"$CROWSNEST_FAKE_REGION\"; fi ;;\n"
+            "  \"ec2 describe-regions\"*) if [ -n \"${CROWSNEST_FAKE_REGIONS:-}\" ]; then out=\"$CROWSNEST_FAKE_REGIONS\"; fi ;;\n"
+            "esac\n"
             "if [ -n \"${CROWSNEST_FAKE_STDERR:-}\" ]; then cat \"$CROWSNEST_FAKE_STDERR\" >&2; fi\n"
-            "if [ -n \"${CROWSNEST_FAKE_STDOUT:-}\" ]; then cat \"$CROWSNEST_FAKE_STDOUT\"; fi\n"
+            "if [ -n \"$out\" ]; then cat \"$out\"; fi\n"
             "exit \"${CROWSNEST_FAKE_EXIT:-0}\"\n";
         const QString suffix;
 #endif
@@ -5997,21 +6011,35 @@ int main(int argc, char *argv[]) {
                   && hungMs >= 1800 && hungMs < 6000,
               "cloud cli: a hanging CLI is killed at the budget");
 
-        // No CLI on PATH at all: the gate names the package to install.
-        // (The fake dir is dropped and the real PATH is replaced too:
-        // a developer box may well have a working `aws` installed.)
+        // A CLI installed outside PATH (a LaunchAgent or a systemd unit
+        // inherits a narrow PATH) is still found through the install
+        // directories, and CROWSNEST_CLI_DIRS makes that deterministic.
         const QString emptyDir = binDir + QStringLiteral("/empty");
         QDir().mkpath(emptyDir);
+        const QString probeName = QStringLiteral("crowsnest-cli-probe");
+        check(writeFile(binDir + QLatin1Char('/') + probeName + suffix, script,
+                        true),
+              "cloud cli: a probe binary for the search-dir rule");
         qputenv("PATH", emptyDir.toUtf8());
-        // Path resolution is what this case is about, so the pinned CLI from
-        // the cases above has to be dropped for it.
+        qputenv("CROWSNEST_CLI_DIRS", binDir.toUtf8());
+        check(cloudCliResolve(probeName) == binDir + QLatin1Char('/') + probeName
+                                                 + suffix,
+              "cloud cli: a CLI outside PATH is still found");
+        // And when it is nowhere at all, the gate names the package. An
+        // explicit path that does not exist is a refusal, never a silent
+        // fall-through to whatever else is installed.
+        qputenv("CROWSNEST_CLI_DIRS",
+                (binDir + QStringLiteral("/nowhere")).toUtf8());
+        check(cloudCliResolve(QStringLiteral("crowsnest-cli-absent")).isEmpty(),
+              "cloud cli: an absent CLI resolves to nothing");
         CloudFleetOptions missingOptions = cliOptions;
-        missingOptions.cliPath.clear();
+        missingOptions.cliPath = binDir + QStringLiteral("/no-such-aws");
         const CloudFleetStatus missing =
             probeCloudFleet(awsId, missingOptions, cliNow);
         check(!missing.available
                   && missing.note == fleetCliMissingText(QStringLiteral("aws")),
               "cloud cli: a missing CLI states the gate and the fix");
+        qunsetenv("CROWSNEST_CLI_DIRS");
         qputenv("PATH", fakePath(binDir, oldPath).toUtf8());
 
         // The HUD's path: the polled runner must deliver the same rows without
@@ -6045,6 +6073,229 @@ int main(int argc, char *argv[]) {
             check(worstUpdateMs < 1200,
                   "cloud cli: no runner update blocks the sampler thread");
             runner.stop();
+        }
+
+        // ---- the AWS whole-account listing --------------------------------
+        {
+            QString account;
+            QString arn;
+            check(parseAwsCallerIdentity(
+                      QByteArrayLiteral("{\"UserId\":\"AIDAEXAMPLE\","
+                                        "\"Account\":\"123456789012\","
+                                        "\"Arn\":\"arn:aws:iam::123456789012:"
+                                        "user/x\"}"),
+                      &account, &arn)
+                      && account == QStringLiteral("123456789012")
+                      && arn.startsWith(QStringLiteral("arn:aws:iam::")),
+                  "aws: sts get-caller-identity names the account and the arn");
+            check(!parseAwsCallerIdentity(
+                      QByteArrayLiteral("{\"UserId\":\"AIDAEXAMPLE\"}"), &account,
+                      &arn)
+                      && !parseAwsCallerIdentity(QByteArrayLiteral("not json"),
+                                                 &account, &arn),
+                  "aws: an sts answer without an account is refused");
+
+            QStringList regions;
+            check(parseAwsRegionList(
+                      QByteArrayLiteral(
+                          "{\"Regions\":[{\"RegionName\":\"us-west-2\"},"
+                          "{\"RegionName\":\"eu-west-1\"},"
+                          "{\"RegionName\":\"ap-south-1\"}]}"),
+                      &regions)
+                      && regions
+                             == QStringList({QStringLiteral("ap-south-1"),
+                                             QStringLiteral("eu-west-1"),
+                                             QStringLiteral("us-west-2")}),
+                  "aws: describe-regions is sorted, so the order cannot drift");
+            check(!parseAwsRegionList(QByteArrayLiteral("{\"Regions\":[]}"),
+                                      &regions)
+                      && !parseAwsRegionList(QByteArrayLiteral("nope"),
+                                             &regions),
+                  "aws: an empty region list is refused");
+
+            check(cloudIdentityAutoRequested(QStringLiteral("AUTO"))
+                      && cloudIdentityAutoRequested(QStringLiteral(" auto "))
+                      && !cloudIdentityAutoRequested(
+                          QStringLiteral("aws/eu-west-1")),
+                  "aws: identity=auto is recognised and nothing else is");
+            CloudIdentity autoIdentity;
+            QString autoError;
+            check(parseCloudIdentityOverride(QStringLiteral("auto"),
+                                             &autoIdentity, &autoError)
+                      && autoIdentity.provider == CloudProvider::Aws
+                      && autoIdentity.region.isEmpty()
+                      && cloudIdentityOverrideText(autoIdentity)
+                             == QStringLiteral("auto"),
+                  "aws: identity=auto parses to an AWS identity with no region");
+
+            CloudFleetOptions planOptions;
+            planOptions.identityAuto = true;
+            planOptions.regionConcurrency = 3;
+            CloudIdentity awsPlan;
+            awsPlan.provider = CloudProvider::Aws;
+            const QString awsPlanText =
+                cloudFleetPlanText(awsPlan, planOptions);
+            check(awsPlanText.contains(
+                      QStringLiteral("sts get-caller-identity"))
+                      && awsPlanText.contains(
+                          QStringLiteral("configure get region"))
+                      && awsPlanText.contains(QStringLiteral("3 at a time"))
+                      && awsPlanText.contains(QStringLiteral("no Cost Explorer")),
+                  "aws: CHECK NOW states every call and excludes Cost Explorer");
+
+            // This host recognises itself by its own address when the
+            // metadata service named neither the id nor the name.
+            CloudFleetStatus byIp = parseAwsDescribeInstances(QByteArrayLiteral(
+                "[{\"InstanceId\":\"i-0aaa\",\"InstanceType\":\"t4g.small\","
+                "\"State\":{\"Name\":\"running\"},"
+                "\"PrivateIpAddress\":\"10.9.9.9\","
+                "\"Placement\":{\"AvailabilityZone\":\"eu-west-1a\"}}]"));
+            CloudIdentity ipIdentity;
+            ipIdentity.provider = CloudProvider::Aws;
+            ipIdentity.privateIp = QStringLiteral("10.9.9.9");
+            check(fleetMarkSelf(byIp, ipIdentity) == 0
+                      && byIp.rows.first().isSelf,
+                  "aws: the self row is matched by private address");
+
+            // End to end: identity, region, then one call per region.
+            const QString stsPath =
+                binDir + QStringLiteral("/sts.json");
+            const QString regionPath =
+                binDir + QStringLiteral("/region.txt");
+            const QString regionsPath =
+                binDir + QStringLiteral("/regions.json");
+            bool wroteFan = writeFile(
+                stsPath,
+                QByteArrayLiteral("{\"UserId\":\"AIDAEXAMPLE\","
+                                  "\"Account\":\"123456789012\","
+                                  "\"Arn\":\"arn:aws:iam::123456789012:user/x\"}"),
+                false);
+            wroteFan = wroteFan
+                       && writeFile(regionPath, QByteArrayLiteral("eu-west-1\n"),
+                                    false);
+            wroteFan = wroteFan
+                       && writeFile(
+                           regionsPath,
+                           QByteArrayLiteral(
+                               "{\"Regions\":[{\"RegionName\":\"us-west-2\"},"
+                               "{\"RegionName\":\"eu-west-1\"}]}"),
+                           false);
+            check(wroteFan, "aws: the identity fixtures are written");
+            setFake(awsListing, QByteArray(), 0);
+            qputenv("CROWSNEST_FAKE_STS", stsPath.toUtf8());
+            qputenv("CROWSNEST_FAKE_REGION", regionPath.toUtf8());
+            qputenv("CROWSNEST_FAKE_REGIONS", regionsPath.toUtf8());
+            CloudFleetOptions fanOptions;
+            fanOptions.timeoutMs = 15000;
+            fanOptions.cliPath = binDir + QStringLiteral("/aws") + suffix;
+            fanOptions.identityAuto = true;
+            fanOptions.regionConcurrency = 2;
+            fanOptions.accountTimeoutMs = 30000;
+            const CloudFleetStatus fan =
+                probeCloudFleet(autoIdentity, fanOptions, cliNow);
+            QStringList fanCalls;
+            {
+                QFile log(argvLog);
+                if (log.open(QIODevice::ReadOnly)) {
+                    fanCalls = QString::fromUtf8(log.readAll())
+                                   .split(QLatin1Char('\n'),
+                                          Qt::SkipEmptyParts);
+                }
+            }
+            check(fan.identityResolved
+                      && fan.account == QStringLiteral("123456789012")
+                      && fan.homeRegion == QStringLiteral("eu-west-1")
+                      && fan.identitySource
+                             == QStringLiteral("aws sts get-caller-identity"),
+                  "aws: the CLI names the account and the home region");
+            check(fanCalls.size() == 5
+                      && fanCalls.at(0)
+                             == QStringLiteral(
+                                 "sts get-caller-identity --output json")
+                      && fanCalls.at(1)
+                             == QStringLiteral("configure get region")
+                      && fanCalls.at(2)
+                             == QStringLiteral("ec2 describe-regions --output "
+                                               "json --region eu-west-1"),
+                  "aws: identity, then region, then the region list");
+            QStringList fanRowRegions;
+            for (const CloudFleetInstance &row : fan.rows) {
+                fanRowRegions.append(row.region);
+            }
+            fanRowRegions.sort();
+            check(fan.regions
+                          == QStringList({QStringLiteral("eu-west-1"),
+                                          QStringLiteral("us-west-2")})
+                      && fan.wholeAccount
+                      && fan.scope
+                             == QStringLiteral("all enabled regions (2)")
+                      && fan.rows.size() == 2
+                      && fanRowRegions
+                             == QStringList({QStringLiteral("eu-west-1"),
+                                             QStringLiteral("us-west-2")}),
+                  "aws: one describe-instances per region, each row stamped");
+            check(fan.available
+                      && fan.note.isEmpty()
+                      && fan.source.contains(QStringLiteral("per region (2)")),
+                  "aws: the whole-account listing is summarised as one account");
+
+            // The HUD's path over several ticks: the same plan, polled, so the
+            // step machine is proven with and without an event loop.
+            setFake(awsListing, QByteArray(), 0);
+            {
+                CloudFleetRunner runner;
+                runner.setOptions(fanOptions);
+                for (int i = 0; i < 600; ++i) {
+                    runner.update(autoIdentity,
+                                  QDateTime::currentMSecsSinceEpoch());
+                    if (runner.status().fetchedAtMs > 0
+                        && runner.status().rows.size() == 2) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    QThread::msleep(10);
+                }
+                check(runner.status().identityResolved
+                          && runner.status().rows.size() == 2
+                          && runner.status().regions.size() == 2
+                          && runner.status().account
+                                 == QStringLiteral("123456789012"),
+                      "aws: the polled runner completes the whole-account plan");
+                runner.stop();
+            }
+            qunsetenv("CROWSNEST_FAKE_STS");
+            qunsetenv("CROWSNEST_FAKE_REGION");
+            qunsetenv("CROWSNEST_FAKE_REGIONS");
+
+            // A key that may read instances but not list regions still lists
+            // the home region, and says why that is all it listed.
+            qputenv("CROWSNEST_FAKE_REGION", regionPath.toUtf8());
+            qputenv("CROWSNEST_FAKE_STS", stsPath.toUtf8());
+            qunsetenv("CROWSNEST_FAKE_REGIONS");
+            setFake(awsListing, QByteArray(), 0);
+            const CloudFleetStatus noRegions =
+                probeCloudFleet(autoIdentity, fanOptions, cliNow);
+            check(noRegions.regionListRefused && !noRegions.regionListError.isEmpty()
+                      && noRegions.rows.size() == 1
+                      && noRegions.scope == QStringLiteral("eu-west-1"),
+                  "aws: a refused describe-regions lists the home region only");
+            qunsetenv("CROWSNEST_FAKE_REGION");
+            qunsetenv("CROWSNEST_FAKE_STS");
+
+            // A logged-out CLI fails at sts, which needs no permission, so the
+            // refusal is the login and the fix is named.
+            setFake(QByteArray(),
+                    QByteArrayLiteral("Unable to locate credentials. You can "
+                                      "configure credentials by running \"aws "
+                                      "configure\".\n"),
+                    255);
+            const CloudFleetStatus fanRefused =
+                probeCloudFleet(autoIdentity, fanOptions, cliNow);
+            check(!fanRefused.available
+                      && fanRefused.note
+                             == fleetCredentialsText(CloudProvider::Aws),
+                  "aws: identity=auto names the login when it is missing");
+            setFake(awsListing, QByteArray(), 0);
         }
 
         // `crowsnest --cloud-prices` end to end: the fake aws answers a Price

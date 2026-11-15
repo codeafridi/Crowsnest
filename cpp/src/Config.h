@@ -263,6 +263,13 @@ struct CloudConfig {
     bool spend = true;
     // [cloud] spend_timeout_ms: budget per cost query.
     int spendTimeoutMs = 30000;
+    // [cloud] region_concurrency: how many `aws ec2 describe-instances` calls
+    // run at once for the whole-account listing. Each aws spawn is 1-2 s of
+    // Python startup and an account has ~30 enabled regions.
+    int regionConcurrency = 4;
+    // [cloud] account_timeout_ms: the budget for the whole-account listing
+    // (identity + regions + every region's instances), separate from one call.
+    int accountTimeoutMs = 90000;
     // [cloud] terraform_state: the file `terraform show -json` wrote (or a raw
     // .tfstate). Empty means IaC drift is off and nothing is read.
     QString terraformStatePath;

@@ -1,5 +1,6 @@
 #include "CloudSpendSource.h"
 
+#include "CloudCli.h"
 #include "CloudFleetSource.h"
 
 #include <QDateTime>
@@ -20,22 +21,6 @@ QString firstLine(const QString &text) {
     const QString trimmed = text.trimmed();
     return trimmed.isEmpty() ? QString()
                              : trimmed.section(QLatin1Char('\n'), 0, 0).trimmed();
-}
-
-QString cliExecutable(const QString &cli) {
-    QString path = QStandardPaths::findExecutable(cli);
-#if defined(Q_OS_WIN)
-    if (path.isEmpty()) {
-        for (const char *extension : {"cmd", "bat", "exe"}) {
-            path = QStandardPaths::findExecutable(
-                cli + QLatin1Char('.') + QLatin1String(extension));
-            if (!path.isEmpty()) {
-                break;
-            }
-        }
-    }
-#endif
-    return path;
 }
 
 void startProcess(QProcess *process, const QString &cliPath,
@@ -196,9 +181,7 @@ CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,
     }
 
     const QString cli = cloudFleetCli(identity.provider);
-    const QString cliPath = options.cliPath.isEmpty()
-                                ? cliExecutable(cli)
-                                : options.cliPath;
+    const QString cliPath = cloudCliResolve(cli, options.cliPath);
     if (cliPath.isEmpty()) {
         return failure(identity, cloudSpendCliMissingText(cli), nowMs);
     }
@@ -347,9 +330,7 @@ void CloudSpendRunner::begin(const CloudIdentity &identity, qint64 nowMs) {
     m_status.note = QStringLiteral("billed spend: asking %1 for the month to date ...")
                         .arg(m_status.cliName);
 
-    const QString cliPath = m_options.cliPath.isEmpty()
-                                ? cliExecutable(m_status.cliName)
-                                : m_options.cliPath;
+    const QString cliPath = cloudCliResolve(m_status.cliName, m_options.cliPath);
     if (cliPath.isEmpty()) {
         fail(cloudSpendCliMissingText(m_status.cliName), nowMs);
         return;
@@ -375,9 +356,7 @@ void CloudSpendRunner::advance(qint64 nowMs) {
         finish(nowMs);
         return;
     }
-    const QString cliPath = m_options.cliPath.isEmpty()
-                                ? cliExecutable(m_status.cliName)
-                                : m_options.cliPath;
+    const QString cliPath = cloudCliResolve(m_status.cliName, m_options.cliPath);
     auto *process = new QProcess(this);
     startProcess(process, cliPath, cloudSpendArguments(m_identity, m_step, nowMs));
     m_process = process;

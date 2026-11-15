@@ -737,17 +737,31 @@ QString dumpReportJson(int maxProcs) {
         // self-tests that every runner can assert.
         CloudFleetOptions fleetOptions;
         fleetOptions.timeoutMs = 8000;
+        fleetOptions.identityAuto =
+            cloudIdentityAutoRequested(dumpConfig.cloud.identityOverride);
+        fleetOptions.regionConcurrency =
+            dumpConfig.cloud.regionConcurrency;
+        fleetOptions.accountTimeoutMs = 30000;
         const CloudFleetStatus listing =
             probeCloudFleet(identity, fleetOptions);
         QJsonObject fleet;
         fleet.insert(QStringLiteral("attempted"), listing.attempted);
         fleet.insert(QStringLiteral("available"), listing.available);
         fleet.insert(QStringLiteral("cli"), listing.cliName);
+        fleet.insert(QStringLiteral("cliPath"), listing.cliPath);
         fleet.insert(QStringLiteral("scope"), listing.scope);
         fleet.insert(QStringLiteral("note"), fleetSummaryText(listing));
         fleet.insert(QStringLiteral("rows"), listing.rows.size());
         fleet.insert(QStringLiteral("running"), listing.running);
         fleet.insert(QStringLiteral("selfIndex"), listing.selfIndex);
+        fleet.insert(QStringLiteral("identityAuto"), fleetOptions.identityAuto);
+        fleet.insert(QStringLiteral("identityResolved"),
+                     listing.identityResolved);
+        fleet.insert(QStringLiteral("account"), listing.account);
+        fleet.insert(QStringLiteral("homeRegion"), listing.homeRegion);
+        fleet.insert(QStringLiteral("regions"), listing.regions.size());
+        fleet.insert(QStringLiteral("regionFailures"),
+                     listing.regionFailures.size());
 
         const qint64 fleetNow = 1'700'000'000'000LL;
         const CloudFleetStatus awsFixture = parseAwsDescribeInstances(
@@ -801,6 +815,45 @@ QString dumpReportJson(int maxProcs) {
                          && pricedFleet.running == 1
                          && pricedFleet.unpriced == 0
                          && qAbs(pricedFleet.monthlyUsd - 0.2920 * 730.0) < 1e-9);
+        // The whole-account fan-out (identity + regions + one call per region)
+        // is proven here from documents the CLI really returns, so a runner
+        // with no credentials still asserts the parsers and the plan text.
+        QString account;
+        QString arn;
+        fleet.insert(
+            QStringLiteral("fleetIdentityOk"),
+            parseAwsCallerIdentity(
+                QByteArrayLiteral("{\"UserId\":\"AIDAEXAMPLE\","
+                                  "\"Account\":\"123456789012\","
+                                  "\"Arn\":\"arn:aws:iam::123456789012:user/x\"}"),
+                &account, &arn)
+                && account == QStringLiteral("123456789012")
+                && arn.startsWith(QStringLiteral("arn:aws:iam::")));
+        QStringList regions;
+        fleet.insert(
+            QStringLiteral("fleetRegionOk"),
+            parseAwsRegionList(
+                QByteArrayLiteral(
+                    "{\"Regions\":[{\"RegionName\":\"us-west-2\"},"
+                    "{\"RegionName\":\"eu-west-1\"},"
+                    "{\"RegionName\":\"ap-south-1\"}]}"),
+                &regions)
+                && regions.size() == 3
+                && regions.at(0) == QStringLiteral("ap-south-1")
+                && regions.at(2) == QStringLiteral("us-west-2"));
+        CloudIdentity planIdentity;
+        planIdentity.provider = CloudProvider::Aws;
+        CloudFleetOptions planOptions;
+        planOptions.identityAuto = true;
+        const QString planText = cloudFleetPlanText(planIdentity, planOptions);
+        fleet.insert(QStringLiteral("fleetPlanOk"),
+                     planText.contains(QStringLiteral("sts get-caller-identity"))
+                         && planText.contains(
+                             QStringLiteral("ec2 describe-regions"))
+                         && planText.contains(
+                             QStringLiteral("ec2 describe-instances"))
+                         && planText.contains(
+                             QStringLiteral("no Cost Explorer")));
         cloud.insert(QStringLiteral("fleet"), fleet);
 
         // M85: the billed-spend query. Same shape as the inventory: the real

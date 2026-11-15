@@ -895,6 +895,12 @@ int main(int argc, char *argv[]) {
     worker->moveToThread(thread);
     QObject::connect(thread, &QThread::started, worker, &SamplerWorker::start);
     QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    // The Cloud page being open (and CHECK NOW) drive the account listing
+    // cadence; both cross into the sampler thread, so they are queued.
+    QObject::connect(&hud, &HudWindow::cloudPageVisibleChanged, worker,
+                     &SamplerWorker::setCloudPageVisible);
+    QObject::connect(&hud, &HudWindow::cloudRefreshRequested, worker,
+                     &SamplerWorker::refreshCloudNow);
 
     // One server, two routes: /metrics for a scraper, /api/v1/snapshot for a
     // peer. It exists when EITHER switch is on, so turning off the scrape

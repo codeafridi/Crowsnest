@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QProcessEnvironment>
 #include <QStringList>
 #include <QTimeZone>
 
@@ -425,6 +426,75 @@ CloudFleetStatus parseCloudFleetJson(CloudProvider provider,
     return CloudFleetStatus{};
 }
 
+bool parseAwsCallerIdentity(const QByteArray &body, QString *account,
+                            QString *arn) {
+    if (account != nullptr) {
+        account->clear();
+    }
+    if (arn != nullptr) {
+        arn->clear();
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(body);
+    if (!document.isObject()) {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    const QString parsedAccount = field(object, "Account");
+    if (parsedAccount.isEmpty()) {
+        return false;
+    }
+    if (account != nullptr) {
+        *account = parsedAccount;
+    }
+    if (arn != nullptr) {
+        *arn = field(object, "Arn");
+    }
+    return true;
+}
+
+bool parseAwsRegionList(const QByteArray &body, QStringList *regions) {
+    if (regions != nullptr) {
+        regions->clear();
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(body);
+    if (!document.isObject()) {
+        return false;
+    }
+    const QJsonArray array =
+        document.object().value(QStringLiteral("Regions")).toArray();
+    QStringList names;
+    for (const QJsonValue &value : array) {
+        const QString name = field(value.toObject(), "RegionName");
+        if (!name.isEmpty() && !names.contains(name)) {
+            names.append(name);
+        }
+    }
+    // "The order of the elements ... might vary", so the list is sorted to
+    // keep the scope line, the failure list and the tests deterministic.
+    std::sort(names.begin(), names.end());
+    if (names.isEmpty()) {
+        return false;
+    }
+    if (regions != nullptr) {
+        *regions = names;
+    }
+    return true;
+}
+
+QString cloudAwsDefaultRegion() {
+    const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    const QString region = env.value(QStringLiteral("AWS_REGION")).trimmed();
+    if (!region.isEmpty()) {
+        return region;
+    }
+    const QString fallback =
+        env.value(QStringLiteral("AWS_DEFAULT_REGION")).trimmed();
+    if (!fallback.isEmpty()) {
+        return fallback;
+    }
+    return QStringLiteral("us-east-1");
+}
+
 QString fleetState(CloudProvider provider, const QString &rawState) {
     const QString raw = rawState.trimmed().toLower();
     if (raw.isEmpty()) {
@@ -532,6 +602,20 @@ int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity) {
             }
         }
     }
+    // A CLI-resolved identity (no metadata service) knows neither the instance
+    // id nor its name, but this host does know its own address, and the
+    // listing carries each instance's private address. That is the only
+    // reliable key left, so it is used rather than guessing from a hostname.
+    if (index < 0 && !identity.privateIp.isEmpty()) {
+        for (int i = 0; i < fleet.rows.size(); ++i) {
+            if (!fleet.rows[i].privateIp.isEmpty() &&
+                fleet.rows[i].privateIp.compare(identity.privateIp,
+                                                Qt::CaseInsensitive) == 0) {
+                index = i;
+                break;
+            }
+        }
+    }
     if (index < 0) {
         fleet.selfIndex = -1;
         return -1;
@@ -547,6 +631,10 @@ int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity) {
     }
     fleet.selfIndex = index;
     return index;
+}
+
+void fleetFinalize(CloudFleetStatus &fleet) {
+    finishFleet(fleet);
 }
 
 QString fleetSummaryText(const CloudFleetStatus &fleet) {
@@ -574,6 +662,13 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
         first += QStringLiteral("   %1").arg(fleet.scope);
     }
     QStringList lines{first};
+    if (!fleet.account.isEmpty()) {
+        QString line = QStringLiteral("account   %1").arg(fleet.account);
+        if (!fleet.identitySource.isEmpty()) {
+            line += QStringLiteral(" (%1)").arg(fleet.identitySource);
+        }
+        lines.append(line);
+    }
     if (fleet.selfIndex >= 0 &&
         fleet.selfIndex < fleet.rows.size()) {
         const CloudFleetInstance &self = fleet.rows.at(fleet.selfIndex);
@@ -592,6 +687,29 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
             "self      not in this listing - age unavailable (the provider "
             "did not report this instance)"));
     }
+    if (fleet.regionListRefused) {
+        QString line = QStringLiteral("regions   describe-regions was refused - "
+                                      "listed %1 only")
+                           .arg(fleet.scope.isEmpty()
+                                    ? QStringLiteral("the home region")
+                                    : fleet.scope);
+        if (!fleet.regionListError.isEmpty()) {
+            line += QStringLiteral(" (%1)").arg(fleet.regionListError);
+        }
+        lines.append(line);
+    } else if (!fleet.regionFailures.isEmpty()) {        QString line = QStringLiteral("regions   %1 of %2 did not answer - %3")
+                           .arg(fleet.regionFailures.size())
+                           .arg(fleet.regions.size())
+                           .arg(fleet.regionFailures.join(
+                               QStringLiteral(", ")));
+        if (!fleet.regionError.isEmpty()) {
+            line += QStringLiteral(" (%1)").arg(fleet.regionError);
+        }
+        lines.append(line);
+    }
+    if (!fleet.note.isEmpty()) {
+        lines.append(QStringLiteral("note      %1").arg(fleet.note));
+    }
     if (fleet.dropped > 0) {
         lines.append(QStringLiteral("showing   first %1 of %2 rows")
                          .arg(fleet.rows.size())
@@ -604,8 +722,7 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
         const qint64 ageSec = fleetAgeSeconds(
             fleet.fetchedAtMs, QDateTime::currentMSecsSinceEpoch());
         if (ageSec >= 0) {
-            lines.append(QStringLiteral("listed    %1 ago, refreshed every 10 "
-                                        "min")
+            lines.append(QStringLiteral("listed    %1 ago")
                              .arg(cloudUptimeText(ageSec)));
         }
     }
@@ -616,7 +733,8 @@ QString fleetTableNote() {
     return QStringLiteral(
         "* this instance (matched by provider id) - age from the provider's "
         "creation time - $/MO sums running rows only, so a stopped-but-"
-        "allocated vm still bills");
+        "allocated vm still bills - a region the CLI could not read is named "
+        "in the summary, never guessed");
 }
 
 QString fleetDisabledText() {

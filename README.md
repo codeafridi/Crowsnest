@@ -125,7 +125,11 @@ Problem pods and their events are surfaced before the whole page.
 
 **The box itself, priced.** Instance identity comes from the local metadata
 service, rates from a file you import, spend from the provider CLI you already
-logged in to. The card states where each number came from.
+logged in to. On AWS the inventory is the **whole account**: `sts` names it,
+`describe-regions` finds the enabled regions and one `describe-instances` runs
+per region, so an instance started anywhere appears. `[cloud] identity=auto`
+takes the account from that same login, which is what makes it work on a
+laptop. The card states where each number came from.
 
 ## Platforms
 

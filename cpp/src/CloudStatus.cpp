@@ -697,12 +697,22 @@ QString cloudFootprintText(const CloudFootprint &footprint) {
     }
     lines.append(budget);
     if (footprint.inventory) {
-        lines.append(
-            QStringLiteral("inventory  %1 every 10 min, %2 ms budget - the "
-                           "CLI's own login, no credential is read")
+        QString inventoryText =
+            QStringLiteral("inventory  %1%2 every 10 min, %3 ms budget")
                 .arg(footprint.cliName.isEmpty() ? QStringLiteral("provider cli")
                                                  : footprint.cliName)
-                .arg(footprint.inventoryTimeoutMs));
+                .arg(footprint.cliPath.isEmpty()
+                         ? QString()
+                         : QStringLiteral(" (%1)").arg(footprint.cliPath))
+                .arg(footprint.inventoryTimeoutMs);
+        if (footprint.fleetRegions > 1) {
+            inventoryText += QStringLiteral(" - %1 aws regions in one listing")
+                                 .arg(footprint.fleetRegions);
+        }
+        inventoryText += QStringLiteral(
+            " - the CLI's own login, no credential is read; 1 min while this "
+            "page is open");
+        lines.append(inventoryText);
     } else {
         lines.append(QStringLiteral(
             "inventory  off ([cloud] inventory=false) - no provider CLI is "
@@ -748,6 +758,18 @@ bool parseCloudIdentityOverride(const QString &text, CloudIdentity *out,
     // provider/region[/account]. A trailing slash is tolerated, and the
     // account is optional because Azure/GCP account ids are long and often
     // unknown offline.
+    if (trimmed.compare(QLatin1String("auto"), Qt::CaseInsensitive) == 0) {
+        CloudIdentity identity;
+        identity.provider = CloudProvider::Aws;
+        identity.note = QStringLiteral(
+            "identity: [cloud] identity=auto - the account and region are read "
+            "from the CLI's own login (aws sts get-caller-identity, aws "
+            "configure get region)");
+        if (out != nullptr) {
+            *out = identity;
+        }
+        return true;
+    }
     QStringList parts = trimmed.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     if (parts.size() < 2) {
         if (error != nullptr) {
@@ -785,12 +807,21 @@ bool parseCloudIdentityOverride(const QString &text, CloudIdentity *out,
 }
 
 QString cloudIdentityOverrideText(const CloudIdentity &identity) {
+    if (identity.provider == CloudProvider::Aws &&
+        identity.region.isEmpty() && identity.accountId.isEmpty()) {
+        return QStringLiteral("auto");
+    }
     QString text = cloudProviderName(identity.provider)
                    + QLatin1Char('/') + identity.region;
     if (!identity.accountId.isEmpty()) {
         text += QLatin1Char('/') + identity.accountId;
     }
     return text;
+}
+
+bool cloudIdentityAutoRequested(const QString &overrideText) {
+    return overrideText.trimmed().compare(QLatin1String("auto"),
+                                          Qt::CaseInsensitive) == 0;
 }
 
 QString cloudIdentityFallbackNote(const CloudIdentity &identity) {

@@ -109,6 +109,9 @@ signals:
     void teamAckRequested(const TeamIncident &incident);
     void teamCloseRequested(const TeamIncident &incident);
     void teamSilenceRequested(const TeamIncident &incident, int minutes);
+    // Cloud page visibility and CHECK NOW, forwarded to the sampler thread.
+    void cloudPageVisibleChanged(bool visible);
+    void cloudRefreshRequested();
     // M97: one report's worth of bytes. Emitted with the sample id already
     // fixed, so a retry of the same envelope cannot mint a second report.
     void remoteEnvelopeReady(const RemoteEnvelope &envelope);

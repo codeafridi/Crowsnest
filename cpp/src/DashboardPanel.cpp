@@ -6,6 +6,7 @@
 #include "platform/PlatformFactory.h"
 
 #include "CostModel.h"
+#include "CloudFleetSource.h"
 #include "HistoryLog.h"
 #include "LogParser.h"
 #include "MemoryFormat.h"
@@ -520,7 +521,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     m_views->addWidget(buildHistoryView());
     m_views->addWidget(buildTimelineView());
     m_views->addWidget(buildCostView());
-    m_views->addWidget(buildCloudView());
+    m_cloudPageIndex = m_views->addWidget(buildCloudView());
     m_views->addWidget(buildFleetView());
     m_views->addWidget(buildTeamView());
     m_views->addWidget(buildSettingsView());
@@ -534,6 +535,14 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     connect(m_views, &QStackedWidget::currentChanged, this, [this](int index) {
         if (index == m_processesPageIndex && m_procs != nullptr) {
             populateProcessTree(m_lastProcessRows);
+        }
+        // The account listing is 30 CLI calls; while the Cloud page is open it
+        // is polled every minute instead of every ten, and the sampler is told
+        // so it can stop doing that the moment the page is left.
+        const bool visible = index == m_cloudPageIndex;
+        if (visible != m_cloudPageVisible) {
+            m_cloudPageVisible = visible;
+            emit cloudPageVisibleChanged(visible);
         }
     });
 
@@ -733,12 +742,14 @@ QString DashboardPanel::consoleStyleSheet() const {
         "#ddKubeDiagnosis, #ddKubeTimeline { color: %DIM%; }"
         "#ddSettingsLabel { color: %DIM%; }"
         "#ddSettingsPath { color: %MUTED%; font-size: 9px; }"
-        "#ddCopy, #ddSilenceAdd, #ddSilenceExpire, #ddTeamAck, #ddTeamClose,"
+        "#ddCopy, #ddCloudRefresh, #ddSilenceAdd, #ddSilenceExpire,"
+        " #ddTeamAck, #ddTeamClose,"
         " #ddTeamSilence { color: %DIM%;"
         "  background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px;"
         "  padding: 2px 10px; font-size: 9px; }"
-        "#ddCopy:hover, #ddSilenceAdd:hover, #ddSilenceExpire:hover,"
+        "#ddCopy:hover, #ddCloudRefresh:hover, #ddSilenceAdd:hover,"
+        " #ddSilenceExpire:hover,"
         " #ddTeamAck:hover, #ddTeamClose:hover, #ddTeamSilence:hover {"
         "  color: %TEXT%; border-color: %MUTED%; }"
         "#ddSilenceAdd, #ddTeamAck { color: %ACCENT%; }"
@@ -4957,6 +4968,26 @@ QWidget *DashboardPanel::buildCloudView() {
 
     layout->addWidget(makeBanner(QStringLiteral("FLEET INVENTORY"),
                                  ui_theme::banner(), view));
+    auto *fleetHead = new QHBoxLayout;
+    fleetHead->setSpacing(8);
+    m_cloudPreflight = new QLabel(QStringLiteral("--"), view);
+    m_cloudPreflight->setObjectName(QStringLiteral("ddCloudPreflight"));
+    m_cloudPreflight->setFont(monoFont(9));
+    m_cloudPreflight->setWordWrap(true);
+    m_cloudPreflight->setMinimumWidth(1);
+    fleetHead->addWidget(m_cloudPreflight, 1);
+    m_cloudRefresh = new QPushButton(QStringLiteral("CHECK NOW"), view);
+    m_cloudRefresh->setObjectName(QStringLiteral("ddCloudRefresh"));
+    m_cloudRefresh->setFont(monoFont(10));
+    m_cloudRefresh->setCursor(Qt::PointingHandCursor);
+    m_cloudRefresh->setFocusPolicy(Qt::NoFocus);
+    m_cloudRefresh->setToolTip(
+        QStringLiteral("list the account now instead of waiting for the next "
+                       "poll"));
+    connect(m_cloudRefresh, &QPushButton::clicked, this,
+            &DashboardPanel::cloudRefreshRequested);
+    fleetHead->addWidget(m_cloudRefresh, 0);
+    layout->addLayout(fleetHead);
     layout->addWidget(makeChartCard(
         QStringLiteral("running instances"), m_chartCloudFleet, view));
     layout->addWidget(
@@ -4964,9 +4995,10 @@ QWidget *DashboardPanel::buildCloudView() {
 
     m_cloudFleet = new QTreeWidget(view);
     m_cloudFleet->setObjectName(QStringLiteral("ddCloudFleet"));
-    m_cloudFleet->setColumnCount(5);
+    m_cloudFleet->setColumnCount(6);
     m_cloudFleet->setHeaderLabels({QStringLiteral("NAME"),
                                    QStringLiteral("TYPE"),
+                                   QStringLiteral("REGION"),
                                    QStringLiteral("STATE"),
                                    QStringLiteral("AGE"),
                                    QStringLiteral("$/MO")});
@@ -4974,7 +5006,7 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudFleet->setSelectionMode(QAbstractItemView::NoSelection);
     m_cloudFleet->setFocusPolicy(Qt::NoFocus);
     m_cloudFleet->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    for (int column = 1; column < 5; ++column) {
+    for (int column = 1; column < 6; ++column) {
         m_cloudFleet->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
@@ -8696,6 +8728,18 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
     const QString fleetText =
         cloud.available ? fleetSummaryText(fleet) : fleetNoProviderText();
     m_cloudFleetSummary->setText(fleetText);
+    if (m_cloudPreflight != nullptr) {
+        // The button must never be a surprise: this line is exactly what the
+        // next listing runs, and what it will not run (Cost Explorer is
+        // billable, so it is stated as excluded).
+        CloudFleetOptions planOptions;
+        planOptions.enabled = cloud.footprint.inventory;
+        planOptions.timeoutMs = cloud.footprint.inventoryTimeoutMs;
+        planOptions.identityAuto = cloud.footprint.identityAuto;
+        planOptions.regionConcurrency = cloud.footprint.regionConcurrency;
+        m_cloudPreflight->setText(
+            cloudFleetPlanText(cloud.identity, planOptions));
+    }
     if (m_cloudIac != nullptr) {
         // The sampler sets the note on every tick, so what is shown is exactly
         // what the last state read produced (gate, parse error, or the diff).
@@ -8713,19 +8757,21 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             item->setText(
                 1, row.instanceType.isEmpty() ? QStringLiteral("--")
                                               : row.instanceType);
+            item->setText(
+                2, row.region.isEmpty() ? QStringLiteral("--") : row.region);
             QString state = row.state;
             if (row.spot && state == QLatin1String("running")) {
                 state = QStringLiteral("running (spot)");
             }
-            item->setText(2, state);
+            item->setText(3, state);
             item->setText(
-                3, row.ageSec >= 0 ? cloudUptimeText(row.ageSec)
+                4, row.ageSec >= 0 ? cloudUptimeText(row.ageSec)
                                    : QStringLiteral("--"));
             item->setText(
-                4, row.monthlyUsd >= 0.0 ? formatCostMoney(row.monthlyUsd)
+                5, row.monthlyUsd >= 0.0 ? formatCostMoney(row.monthlyUsd)
                                          : QStringLiteral("--"));
-            item->setTextAlignment(3, Qt::AlignRight | Qt::AlignVCenter);
             item->setTextAlignment(4, Qt::AlignRight | Qt::AlignVCenter);
+            item->setTextAlignment(5, Qt::AlignRight | Qt::AlignVCenter);
             if (row.isSelf) {
                 item->setForeground(0, QColor(ui_theme::accent()));
             }
@@ -8740,7 +8786,7 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                        row.state == QLatin1String("suspended")) {
                 stateColor = QColor(ui_theme::dim());
             }
-            item->setForeground(2, stateColor);
+            item->setForeground(3, stateColor);
         }
         if (fleet.rows.isEmpty()) {
             auto *item = new QTreeWidgetItem(m_cloudFleet);

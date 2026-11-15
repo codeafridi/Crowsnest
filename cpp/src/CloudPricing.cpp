@@ -1,5 +1,6 @@
 #include "CloudPricing.h"
 
+#include "CloudCli.h"
 #include "CloudProbe.h"
 #include "Config.h"
 
@@ -288,10 +289,11 @@ int cloudPriceRun(int argc, char **argv) {
         region = QStringLiteral("us-east-1");
     }
 
-    const QString aws = QStandardPaths::findExecutable(QStringLiteral("aws"));
+    const QString aws = cloudCliResolve(QStringLiteral("aws"));
     if (aws.isEmpty()) {
         std::fprintf(stderr,
-                     "crowsnest: the `aws` CLI is not on PATH - install it "
+                     "crowsnest: the `aws` CLI was not found on PATH or in the "
+                     "usual install directories - install it "
                      "(https://docs.aws.amazon.com/cli/) and run again, or add "
                      "the rate by hand:\n  aws/%s = <usd per hour>\n",
                      qUtf8Printable(instanceType));

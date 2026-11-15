@@ -447,6 +447,18 @@ Config loadConfig(const QString &path, QString *errorMessage) {
             config.cloud.spendTimeoutMs =
                 qBound(5000, spendTimeout, 180000);
         }
+        const int regionConcurrency =
+            settings.value(QStringLiteral("region_concurrency")).toInt();
+        if (regionConcurrency > 0) {
+            config.cloud.regionConcurrency =
+                qBound(1, regionConcurrency, 8);
+        }
+        const int accountTimeout =
+            settings.value(QStringLiteral("account_timeout_ms")).toInt();
+        if (accountTimeout > 0) {
+            config.cloud.accountTimeoutMs =
+                qBound(10000, accountTimeout, 300000);
+        }
         config.cloud.terraformStatePath =
             settings.value(QStringLiteral("terraform_state"))
                 .toString()

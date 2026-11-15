@@ -334,6 +334,13 @@ DashboardPanel *HudWindow::ensureConsole() {
             &HudWindow::serviceRestartRequested);
     connect(m_panel, &DashboardPanel::containerActionRequested, this,
             &HudWindow::containerActionRequested);
+    // The cloud listing is 30 CLI calls; the sampler shortens its cadence only
+    // while the Cloud page is the one being watched, and CHECK NOW asks for an
+    // immediate listing. Both cross threads, so they are signals.
+    connect(m_panel, &DashboardPanel::cloudRefreshRequested, this,
+            &HudWindow::cloudRefreshRequested);
+    connect(m_panel, &DashboardPanel::cloudPageVisibleChanged, this,
+            &HudWindow::cloudPageVisibleChanged);
     connect(m_panel, &DashboardPanel::teamAckRequested, this,
             &HudWindow::teamAckRequested);
     connect(m_panel, &DashboardPanel::teamCloseRequested, this,

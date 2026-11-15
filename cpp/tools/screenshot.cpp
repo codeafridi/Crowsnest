@@ -505,10 +505,15 @@ DisplaySnapshot demoSnapshot(int tick) {
     fleet.available = true;
     fleet.provider = CloudProvider::Aws;
     fleet.cliName = QStringLiteral("aws");
-    fleet.scope = QStringLiteral("eu-west-1");
-    fleet.source = QStringLiteral("aws ec2 describe-instances --output json "
-                                  "--region eu-west-1 --query "
-                                  "Reservations[].Instances[]");
+    fleet.scope = QStringLiteral("all enabled regions (3)");
+    fleet.source = QStringLiteral("aws ec2 describe-regions + aws ec2 "
+                                  "describe-instances per region (3)");
+    fleet.account = QStringLiteral("123456789012");
+    fleet.homeRegion = QStringLiteral("eu-west-1");
+    fleet.regions = {QStringLiteral("ap-south-1"), QStringLiteral("eu-west-1"),
+                     QStringLiteral("us-west-2")};
+    fleet.wholeAccount = true;
+    fleet.identitySource = QStringLiteral("aws sts get-caller-identity");
     fleet.fetchedAtMs = shotNow - 180000;
 
     const auto fleetRow = [&shotNow](const char *id, const char *name,
@@ -529,13 +534,13 @@ DisplaySnapshot demoSnapshot(int tick) {
         fleetRow("i-0123456789abcdef0", "hud-box", "c7g.2xlarge", "running",
                  96, "eu-west-1b"),
         fleetRow("i-0feedfacecafe0001", "web-2", "t4g.small", "running", 12,
-                 "eu-west-1a"),
+                 "us-west-2a"),
         fleetRow("i-0feedfacecafe0002", "web-3", "t4g.small", "running", 12,
-                 "eu-west-1a"),
+                 "us-west-2a"),
         fleetRow("i-0feedfacecafe0003", "api-edge", "m7g.large", "running", 3,
-                 "eu-west-1c"),
+                 "ap-south-1c"),
         fleetRow("i-0deadbeefdeadbe01", "batch-old", "t4g.small", "stopped",
-                 47, "eu-west-1b"),
+                 47, "ap-south-1b"),
     };
     fleetApplyRates(
         fleet,

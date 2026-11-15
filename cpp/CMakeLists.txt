@@ -208,6 +208,8 @@ add_library(crowsnest_core STATIC
     src/CloudStatus.cpp
     src/CloudStatus.h
     src/CloudProvider.h
+    src/CloudCli.cpp
+    src/CloudCli.h
     src/CloudProbe.cpp
     src/CloudProbe.h
     src/CloudFleetStatus.cpp

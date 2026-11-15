@@ -66,6 +66,51 @@ says `listing in progress` / `stale` while a refresh is in flight.
 
 `[cloud] inventory=false` disables it entirely: no CLI is spawned at all.
 
+#### AWS: the whole account, not one region
+
+`ec2 describe-instances` is region-scoped, so a single call sees only the
+region the metadata service named. Starting an instance in another region would
+never show up. For AWS the listing is therefore a small plan:
+
+```sh
+aws sts get-caller-identity --output json          # which account
+aws configure get region                           # the CLI's home region
+aws ec2 describe-regions --output json \
+    --region <home>                                # every enabled region
+aws ec2 describe-instances --region <each> --output json \
+    --query "Reservations[].Instances[]"           # one call per region
+```
+
+- `[cloud] identity=auto` runs the first two steps and takes the account and
+  region from **your CLI login**. That is what makes the page work on a laptop
+  — or on a host whose link-local address is blocked — where the metadata
+  service answers nothing. On a real instance the metadata answer always wins;
+  `identity=auto` only fills in what it left empty.
+- The region list defaults to the **enabled** regions (the CLI's own default;
+  `--all-regions` is deliberately not passed).
+- If IAM allows `DescribeInstances` but denies `DescribeRegions`, the listing
+  falls back to the home region and the card says exactly why it lists one.
+- One region failing never hides the rest: the summary names the regions that
+  did not answer.
+- `[cloud] region_concurrency` (default 4, clamp 1–8) is how many
+  `describe-instances` calls run at once — each `aws` start is 1–2 s of Python
+  and an account has ~30 regions.
+- `[cloud] account_timeout_ms` (default 90000, clamp 10000–300000) is the
+  whole-plan budget, separate from one call's `inventory_timeout_ms`.
+- **CHECK NOW** on the FLEET INVENTORY banner runs the plan immediately, and
+  the line above the button states exactly which commands it will run and that
+  no Cost Explorer request (which is billable) is part of it. While the Cloud
+  page is open the listing is polled every minute instead of every ten.
+
+The CLI itself is resolved like a login shell would: `PATH` first, then the
+directories the providers install into (`/opt/homebrew/bin`,
+`/usr/local/aws-cli/v2/current/bin`, `/snap/bin`,
+`~/google-cloud-sdk/bin`, `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2`, …). A
+LaunchAgent or a systemd user unit inherits a narrow `PATH`, so without this an
+`aws` that works in your terminal was reported as missing.
+`CROWSNEST_CLI_DIRS` (a `PATH`-style list) prepends explicit directories.
+
+
 ## Billed spend (what the provider actually charged)
 
 The estimate above is a rate × time projection. **Billed spend** is the other
@@ -140,7 +185,8 @@ drift from what the sampler is actually doing:
 metadata   169.254.169.254 (aws/azure/gcp) + 169.254.0.23 (oci), link-local only, read only
 cadence    every 5 min while an instance is identified, every 15 min otherwise
 budget     450 ms for the whole sweep, last 62 ms / 4 request(s)
-inventory  aws every 10 min, 25000 ms budget - the CLI's own login, no credential is read
+inventory  aws (/opt/homebrew/bin/aws) every 10 min, 25000 ms budget - 30 aws
+           regions in one listing - the CLI's own login, no credential is read
 prices     on demand only: `crowsnest --cloud-prices` asks the AWS Price List API
            with your aws(1) credentials, never from a tick
 rates      /home/you/.config/crowsnest/cloud-rates.txt
@@ -151,7 +197,7 @@ writes     none - no credential is read or stored, no instance is ever
 | Action | Destination | When | Can it be turned off |
 |---|---|---|---|
 | IMDS identity read | `169.254.169.254`, `169.254.0.23` | every 5/15 min | `[cloud] enabled=false` |
-| Account listing | the provider CLI, to the provider API | every 10 min | `[cloud] inventory=false` |
+| Account listing | the provider CLI, to the provider API | every 10 min (every 1 min while the Cloud page is open) | `[cloud] inventory=false` |
 | Price import | AWS Price List API via `aws` | only when you run `--cloud-prices` | it never runs otherwise |
 
 There is no other outbound path in the cloud feature — no telemetry, no

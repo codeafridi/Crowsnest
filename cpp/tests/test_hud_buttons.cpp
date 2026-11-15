@@ -1877,10 +1877,17 @@ int main(int argc, char *argv[]) {
     fleetStory.available = true;
     fleetStory.provider = CloudProvider::Aws;
     fleetStory.cliName = QStringLiteral("aws");
-    fleetStory.scope = QStringLiteral("eu-west-1");
+    fleetStory.scope = QStringLiteral("all enabled regions (3)");
     fleetStory.source =
-        QStringLiteral("aws ec2 describe-instances --output json --region "
-                       "eu-west-1");
+        QStringLiteral("aws ec2 describe-regions + aws ec2 "
+                       "describe-instances per region (3)");
+    fleetStory.account = QStringLiteral("123456789012");
+    fleetStory.homeRegion = QStringLiteral("eu-west-1");
+    fleetStory.regions = {QStringLiteral("ap-south-1"),
+                          QStringLiteral("eu-west-1"),
+                          QStringLiteral("us-west-2")};
+    fleetStory.wholeAccount = true;
+    fleetStory.identitySource = QStringLiteral("aws sts get-caller-identity");
     fleetStory.fetchedAtMs = fleetNow - 120000;
     CloudFleetInstance fleetSelf;
     fleetSelf.instanceId = QStringLiteral("i-0123456789abcdef0");
@@ -1890,6 +1897,7 @@ int main(int argc, char *argv[]) {
     fleetSelf.rawState = QStringLiteral("running");
     fleetSelf.region = QStringLiteral("eu-west-1");
     fleetSelf.zone = QStringLiteral("eu-west-1b");
+    fleetSelf.privateIp = QStringLiteral("10.0.3.17");
     fleetSelf.launchedAtMs = fleetNow - 3 * 86400LL * 1000LL;
     CloudFleetInstance fleetWeb;
     fleetWeb.instanceId = QStringLiteral("i-0feedface");
@@ -1897,6 +1905,7 @@ int main(int argc, char *argv[]) {
     fleetWeb.instanceType = QStringLiteral("t4g.small");
     fleetWeb.state = QStringLiteral("running");
     fleetWeb.rawState = QStringLiteral("running");
+    fleetWeb.region = QStringLiteral("us-west-2");
     fleetWeb.launchedAtMs = fleetNow - 5 * 86400LL * 1000LL;
     CloudFleetInstance fleetOld;
     fleetOld.instanceId = QStringLiteral("i-0deadbeef");
@@ -1904,6 +1913,7 @@ int main(int argc, char *argv[]) {
     fleetOld.instanceType = QStringLiteral("t4g.small");
     fleetOld.state = QStringLiteral("stopped");
     fleetOld.rawState = QStringLiteral("stopped");
+    fleetOld.region = QStringLiteral("ap-south-1");
     fleetOld.launchedAtMs = fleetNow - 12 * 86400LL * 1000LL;
     fleetStory.rows = {fleetSelf, fleetWeb, fleetOld};
     fleetApplyRates(
@@ -2031,25 +2041,32 @@ int main(int argc, char *argv[]) {
               && cloudDetail->text().contains(QStringLiteral("launched "))
               && cloudDetail->text().contains(QStringLiteral("UTC")),
           "cloud detail card states the provider launch time");
-    check(cloudFleet != nullptr && cloudFleet->topLevelItemCount() == 3
+    check(cloudFleet != nullptr && cloudFleet->columnCount() == 6
+              && cloudFleet->topLevelItemCount() == 3
               && cloudFleet->topLevelItem(0)->text(0)
                      == QStringLiteral("* hud-box")
               && cloudFleet->topLevelItem(0)->text(1)
                      == QStringLiteral("c7g.2xlarge")
               && cloudFleet->topLevelItem(0)->text(2)
-                     == QStringLiteral("running")
+                     == QStringLiteral("eu-west-1")
               && cloudFleet->topLevelItem(0)->text(3)
-                     == QStringLiteral("3d 0h")
+                     == QStringLiteral("running")
               && cloudFleet->topLevelItem(0)->text(4)
+                     == QStringLiteral("3d 0h")
+              && cloudFleet->topLevelItem(0)->text(5)
                      == QStringLiteral("$213.16"),
-          "cloud fleet table leads with this instance, its age and its monthly "
-          "rate");
+          "cloud fleet table leads with this instance, its region, age and "
+          "monthly rate");
     check(cloudFleet->topLevelItem(1)->text(0) == QStringLiteral("web-2")
-              && cloudFleet->topLevelItem(1)->text(4)
+              && cloudFleet->topLevelItem(1)->text(2)
+                     == QStringLiteral("us-west-2")
+              && cloudFleet->topLevelItem(1)->text(5)
                      == QStringLiteral("$15.18")
               && cloudFleet->topLevelItem(2)->text(0)
                      == QStringLiteral("batch-old")
-              && cloudFleet->topLevelItem(2)->text(4) == QStringLiteral("--"),
+              && cloudFleet->topLevelItem(2)->text(2)
+                     == QStringLiteral("ap-south-1")
+              && cloudFleet->topLevelItem(2)->text(5) == QStringLiteral("--"),
           "cloud fleet table prices running rows only and dashes a stopped one");
     check(cloudFleetSummary != nullptr
               && cloudFleetSummary->text().contains(
@@ -2061,9 +2078,47 @@ int main(int argc, char *argv[]) {
               && cloudFleetSummary->text().contains(
                   QStringLiteral("$228.34/month"))
               && cloudFleetSummary->text().contains(
+                  QStringLiteral("all enabled regions (3)"))
+              && cloudFleetSummary->text().contains(
+                  QStringLiteral("account   123456789012 (aws sts "
+                                 "get-caller-identity)"))
+              && cloudFleetSummary->text().contains(
                   QStringLiteral("self      hud-box")),
-          "cloud fleet summary counts the listing, the running rows and the "
-          "self row");
+          "cloud fleet summary counts the listing, names the account and the "
+          "region scope, and states the self row");
+    auto *cloudPreflight =
+        hud.findChild<QLabel *>(QStringLiteral("ddCloudPreflight"));
+    auto *cloudRefresh =
+        hud.findChild<QPushButton *>(QStringLiteral("ddCloudRefresh"));
+    check(cloudPreflight != nullptr
+              && cloudPreflight->text().contains(
+                  QStringLiteral("ec2 describe-regions"))
+              && cloudPreflight->text().contains(
+                  QStringLiteral("ec2 describe-instances"))
+              && cloudPreflight->text().contains(
+                  QStringLiteral("no Cost Explorer"))
+              && cloudRefresh != nullptr
+              && cloudRefresh->text() == QStringLiteral("CHECK NOW"),
+          "cloud page states exactly what CHECK NOW runs and what it will not");
+    {
+        auto *rail = hud.findChild<QListWidget *>(QStringLiteral("ddRail"));
+        auto state = std::make_shared<std::pair<bool, bool>>(false, false);
+        const auto refreshConn = QObject::connect(
+            &hud, &HudWindow::cloudRefreshRequested,
+            [state]() { state->first = true; });
+        const auto visibleConn = QObject::connect(
+            &hud, &HudWindow::cloudPageVisibleChanged,
+            [state](bool visible) { state->second = visible; });
+        cloudRefresh->click();
+        if (rail != nullptr) {
+            rail->setCurrentRow(0);
+            rail->setCurrentRow(30);
+        }
+        QObject::disconnect(refreshConn);
+        QObject::disconnect(visibleConn);
+        check(state->first && state->second,
+              "cloud page: CHECK NOW and page visibility reach the sampler");
+    }
     check(cloudFleetChart != nullptr && cloudFleetChart->sampleCount() == 2,
           "cloud fleet chart follows the running count per tick");
     auto *cloudFleetNote =

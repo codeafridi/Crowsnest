@@ -290,6 +290,34 @@ int main(int argc, char *argv[]) {
         const Config bare = defaultConfig();
         check(bare.cloud.identityOverride.isEmpty(),
               "cloud: no identity override by default");
+        check(bare.cloud.regionConcurrency == 4
+                  && bare.cloud.accountTimeoutMs == 90000,
+              "cloud: one listing uses 4 regions at a time and 90 s");
+    }
+
+    {
+        // The whole-account fan-out is tunable, and both clamps are refused
+        // out of range instead of silently accepted.
+        QTemporaryDir dirFan;
+        const QString path = writeConfig(dirFan, QByteArrayLiteral(
+            "[cloud]\n"
+            "identity=auto\n"
+            "region_concurrency=2\n"
+            "account_timeout_ms=45000\n"));
+        QString error;
+        const Config c = loadConfig(path, &error);
+        check(c.cloud.identityOverride == QStringLiteral("auto")
+                  && c.cloud.regionConcurrency == 2
+                  && c.cloud.accountTimeoutMs == 45000,
+              "cloud: identity=auto and the fan-out budget load");
+        const QString clamped = writeConfig(dirFan, QByteArrayLiteral(
+            "[cloud]\n"
+            "region_concurrency=99\n"
+            "account_timeout_ms=1000\n"));
+        const Config low = loadConfig(clamped, &error);
+        check(low.cloud.regionConcurrency == 8
+                  && low.cloud.accountTimeoutMs == 10000,
+              "cloud: the region pool and the account budget are clamped");
     }
 
     {

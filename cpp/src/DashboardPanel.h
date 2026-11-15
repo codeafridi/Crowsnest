@@ -208,6 +208,9 @@ signals:
     void processActionRequested(const ProcessAction &action);
     void serviceRestartRequested(const QString &unit);
     void containerActionRequested(const QString &id, const QString &verb);
+    // Cloud page: CHECK NOW, and whether the page is the one being watched.
+    void cloudRefreshRequested();
+    void cloudPageVisibleChanged(bool visible);
 
 private:
     void updateOverviewText(const DisplaySnapshot &snapshot);
@@ -347,6 +350,10 @@ private:
     QLabel *m_cloudDetail = nullptr;
     QLabel *m_cloudFleetSummary = nullptr;
     QLabel *m_cloudFleetNote = nullptr;
+    QLabel *m_cloudPreflight = nullptr;
+    QPushButton *m_cloudRefresh = nullptr;
+    int m_cloudPageIndex = -1;
+    bool m_cloudPageVisible = false;
     QLabel *m_cloudIac = nullptr;
     QTreeWidget *m_cloudFleet = nullptr;
     TimeseriesChart *m_chartCloudFleet = nullptr;

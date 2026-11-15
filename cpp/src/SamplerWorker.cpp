@@ -92,6 +92,30 @@ void SamplerWorker::stop() {
     }
 }
 
+void SamplerWorker::setCloudPageVisible(bool visible) {
+    m_cloudPageVisible = visible;
+}
+
+void SamplerWorker::refreshCloudNow() {
+    m_cloudRefreshRequested = true;
+}
+
+QString SamplerWorker::localIpv4() const {
+    for (const HostNetworkInfo &iface : m_hostInfo.interfaces) {
+        if (iface.ipv4.isEmpty()) {
+            continue;
+        }
+        const QString address =
+            iface.ipv4.section(QLatin1Char('/'), 0, 0).trimmed();
+        if (address.isEmpty() || address.startsWith(QLatin1String("127.")) ||
+            address.startsWith(QLatin1String("169.254."))) {
+            continue;
+        }
+        return address;
+    }
+    return QString();
+}
+
 void SamplerWorker::sampleNow() {
     // M84: bracket the whole tick. The section list is rebuilt per tick and
     // the bounded total window keeps the memory cost flat for a HUD that runs
@@ -1002,20 +1026,109 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
                                                       : m_cloud.ratesPath;
     footprint.spend = m_cloud.spend;
     footprint.spendTimeoutMs = m_cloud.spendTimeoutMs;
-    footprint.spendCommand = m_cloudBase.available
-                                 ? cloudSpendCommandText(m_cloudBase.identity)
-                                 : QString();
+    footprint.identityAuto =
+        cloudIdentityAutoRequested(m_cloud.identityOverride);
+    footprint.regionConcurrency = m_cloud.regionConcurrency;
     footprint.identified = m_cloudBase.available;
     if (!m_cloudProbed) {
         cloud.note = cloudProbingText();
     }
     cloud.vcpus = QThread::idealThreadCount();
     cloud.uptimeSec = cloudHostUptimeSeconds();
+
+    // M83: the account inventory runs before the cost maths. On a host where
+    // the metadata service answered nothing, the listing is the only place the
+    // instance type, the region and the launch time exist - and
+    // [cloud] identity=auto makes that listing the identity. The CLI is
+    // polled, never waited on.
+    if (m_cloudFleet != nullptr) {
+        CloudFleetOptions fleetOptions;
+        fleetOptions.enabled = m_cloud.inventory;
+        fleetOptions.timeoutMs = m_cloud.inventoryTimeoutMs;
+        fleetOptions.identityAuto =
+            cloudIdentityAutoRequested(m_cloud.identityOverride);
+        fleetOptions.regionConcurrency = m_cloud.regionConcurrency;
+        fleetOptions.accountTimeoutMs = m_cloud.accountTimeoutMs;
+        fleetOptions.cadenceMs = m_cloudPageVisible ? 60000 : 600000;
+        m_cloudFleet->setOptions(fleetOptions);
+        if (m_cloudRefreshRequested) {
+            m_cloudRefreshRequested = false;
+            m_cloudFleet->refreshNow();
+        }
+        if (cloud.identity.instanceId.isEmpty()) {
+            cloud.identity.privateIp = localIpv4();
+        }
+        m_cloudFleet->update(cloud.identity, now);
+        CloudFleetStatus fleet = m_cloudFleet->status();
+        if (fleet.identityResolved) {
+            if (cloud.identity.accountId.isEmpty()) {
+                cloud.identity.accountId = fleet.account;
+            }
+            if (cloud.identity.region.isEmpty()) {
+                cloud.identity.region = fleet.homeRegion;
+            }
+            if (cloud.note.isEmpty()) {
+                cloud.note = QStringLiteral(
+                                 "cloud: identity from `aws sts "
+                                 "get-caller-identity` ([cloud] identity=auto) "
+                                 "- account %1, region %2")
+                                 .arg(cloud.identity.accountId.isEmpty()
+                                          ? QStringLiteral("unknown")
+                                          : cloud.identity.accountId,
+                                      cloud.identity.region.isEmpty()
+                                          ? fleet.homeRegion
+                                          : cloud.identity.region);
+            }
+        }
+        fleetResolveAges(fleet, now);
+        fleetApplyRates(fleet, m_cloudRates, kCostHoursPerMonth);
+        fleetMarkSelf(fleet, cloud.identity);
+        cloud.fleet = fleet;
+        footprint.fleetAttempted = fleet.attempted;
+        footprint.cliName = fleet.cliName;
+        footprint.cliPath = fleet.cliPath;
+        footprint.fleetRegions = fleet.regions.size();
+        if (cloud.identity.provider != CloudProvider::None) {
+            footprint.spendCommand = cloudSpendCommandText(cloud.identity);
+        }
+        if (fleet.selfIndex >= 0 && fleet.selfIndex < fleet.rows.size()) {
+            const CloudFleetInstance &self = fleet.rows.at(fleet.selfIndex);
+            if (cloud.identity.instanceType.isEmpty()) {
+                cloud.identity.instanceId = self.instanceId;
+                cloud.identity.instanceName = self.name;
+                cloud.identity.instanceType = self.instanceType;
+            }
+            if (cloud.identity.region.isEmpty()) {
+                cloud.identity.region = self.region;
+            }
+            if (cloud.identity.zone.isEmpty()) {
+                cloud.identity.zone = self.zone;
+            }
+            cloud.launchedAtMs = self.launchedAtMs;
+            cloud.instanceAgeSec = self.ageSec;
+            if (cloud.ratePerHour < 0.0 && !self.instanceType.isEmpty()) {
+                cloud.rateKey =
+                    cloudRateKey(cloud.identity.provider, self.instanceType);
+                cloud.ratePerHour = cloudRateFor(
+                    m_cloudRates, cloud.identity.provider, self.instanceType);
+                cloud.rateSource = m_cloudRatesPath;
+                cloud.rateImportDate = m_cloudRates.importDate;
+                cloud.rateStaleDays =
+                    cloudRateStaleDays(m_cloudRates.importDate, now);
+            }
+        }
+    }
+
     if (cloud.available) {
         const CloudCostMath math =
             computeCloudCost(cloud.ratePerHour, cloud.uptimeSec);
         cloud.accruedUsd = math.accruedUsd;
         cloud.projectedMonthlyUsd = math.projectedMonthlyUsd;
+        if (cloud.instanceAgeSec >= 0 && cloud.ratePerHour >= 0.0) {
+            cloud.accruedLaunchUsd =
+                computeCloudCost(cloud.ratePerHour, cloud.instanceAgeSec)
+                    .accruedUsd;
+        }
 
         cloud.appName = snapshot.appName;
         cloud.appPid = snapshot.pid.toInt();
@@ -1035,34 +1148,6 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         }
         cloud.consumers =
             cloudTopConsumers(rows, cloud.ratePerHour, cloud.vcpus, 8);
-    }
-
-    // M83: instance age and the account inventory. The CLI is polled, never
-    // waited on; ages and the since-launch cost are recomputed from the cached
-    // launch time on every tick.
-    if (m_cloudFleet != nullptr) {
-        CloudFleetOptions fleetOptions;
-        fleetOptions.enabled = m_cloud.inventory;
-        fleetOptions.timeoutMs = m_cloud.inventoryTimeoutMs;
-        m_cloudFleet->setOptions(fleetOptions);
-        m_cloudFleet->update(cloud.identity, now);
-        CloudFleetStatus fleet = m_cloudFleet->status();
-        fleetResolveAges(fleet, now);
-        fleetApplyRates(fleet, m_cloudRates, kCostHoursPerMonth);
-        fleetMarkSelf(fleet, cloud.identity);
-        cloud.fleet = fleet;
-        footprint.fleetAttempted = fleet.attempted;
-        footprint.cliName = fleet.cliName;
-        if (fleet.selfIndex >= 0 && fleet.selfIndex < fleet.rows.size()) {
-            const CloudFleetInstance &self = fleet.rows.at(fleet.selfIndex);
-            cloud.launchedAtMs = self.launchedAtMs;
-            cloud.instanceAgeSec = self.ageSec;
-            if (cloud.instanceAgeSec >= 0 && cloud.ratePerHour >= 0.0) {
-                cloud.accruedLaunchUsd =
-                    computeCloudCost(cloud.ratePerHour, cloud.instanceAgeSec)
-                        .accruedUsd;
-            }
-        }
     }
     // M85: what the provider actually billed. Polled like the inventory, on a
     // much slower cadence because cost data lags and the API call is billable.

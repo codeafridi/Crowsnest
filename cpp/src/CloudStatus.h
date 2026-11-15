@@ -113,6 +113,22 @@ struct CloudFleetStatus {
     int dropped = 0;
     double monthlyUsd = -1.0;
     int selfIndex = -1;
+    // AWS whole-account listing: the account sts named, the home region the
+    // CLI config supplied, every region that was queried, and the regions that
+    // failed (one bad region never hides the rest).
+    QString account;
+    QString homeRegion;
+    QStringList regions;
+    QStringList regionFailures;
+    QString regionError;
+    QString regionListError;
+    bool regionListRefused = false;
+    bool identityResolved = false;
+    bool wholeAccount = false;
+    QString identitySource;
+    // The binary the resolver actually chose, so "not on PATH" and "ran this"
+    // are both answerable from the page.
+    QString cliPath;
 };
 
 // M84: the outbound footprint, in one struct, so the page can state every
@@ -134,6 +150,12 @@ struct CloudFootprint {
     int spendTimeoutMs = 30000;
     QString spendCommand;
     QString cliName;
+    // Absolute path the resolver chose for the CLI, so "not on PATH" and "ran
+    // this binary" are both answerable from the page.
+    QString cliPath;
+    int fleetRegions = 0;
+    bool identityAuto = false;
+    int regionConcurrency = 4;
     QString ratesPath;
 };
 
@@ -149,6 +171,11 @@ struct CloudFootprint {
 // nothing, so a stale config file can never relabel a real instance.
 bool parseCloudIdentityOverride(const QString &text, CloudIdentity *out,
                                 QString *error);
+// "[cloud] identity=auto": the account and region are resolved through the
+// CLI's own login (`aws sts get-caller-identity`, `aws configure get region`)
+// instead of the metadata service, which is what makes a laptop - or a host
+// whose link-local address is blocked - able to list the account at all.
+bool cloudIdentityAutoRequested(const QString &overrideText);
 QString cloudIdentityOverrideText(const CloudIdentity &identity);
 QString cloudIdentityFallbackNote(const CloudIdentity &identity);
 
@@ -304,12 +331,41 @@ CloudFleetStatus parseOciInstanceList(const QByteArray &body);
 CloudFleetStatus parseCloudFleetJson(CloudProvider provider,
                                      const QByteArray &body);
 
+// --- AWS whole-account listing --------------------------------------------
+// `aws ec2 describe-instances` is region-scoped, so a listing of the whole
+// account is `sts get-caller-identity` (who/which account) +
+// `ec2 describe-regions` (which regions are enabled) + one
+// `describe-instances` per region. Grounding (aws-cli 2.34.53 + botocore
+// 1.43.120, kept /home/nullchan/aws/dist/awscli/botocore):
+//   sts/2011-06-15 service-2.json: GetCallerIdentity output members
+//     `UserId`/`Account`/`Arn`; the operation help states "No permissions are
+//     required to perform this operation." - so identity works on a key that
+//     cannot list anything.
+//   ec2/2016-11-15: DescribeRegions "Describes the Regions that are enabled
+//     for your account, or all Regions."; `Region` members
+//     `OptInStatus`/`Geography`/`RegionName`/`Endpoint`; filter
+//     `opt-in-status` values `opt-in-not-required | opted-in |
+//     not-opted-in`. The CLI defaults to enabled regions only (`--all-regions`
+//     opts in to the rest), which is exactly the set a listing wants.
+//     "The order of the elements in the response ... might vary."
+bool parseAwsCallerIdentity(const QByteArray &body, QString *account,
+                            QString *arn);
+bool parseAwsRegionList(const QByteArray &body, QStringList *regions);
+// The region a bare `aws` command would use: AWS_REGION, then
+// AWS_DEFAULT_REGION, then us-east-1. `aws ec2 describe-regions` itself needs
+// a region to sign its request.
+QString cloudAwsDefaultRegion();
+
 QString fleetState(CloudProvider provider, const QString &rawState);
 qint64 fleetAgeSeconds(qint64 launchedAtMs, qint64 nowMs);
 void fleetResolveAges(CloudFleetStatus &fleet, qint64 nowMs);
 void fleetApplyRates(CloudFleetStatus &fleet, const CloudRateTable &table,
                      double hoursPerMonth);
 int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity);
+// Sorts the merged rows (self first, then running, then by name) and recomputes
+// the running count and `available`. Exposed because the AWS whole-account
+// listing merges one document per region before it can be sorted.
+void fleetFinalize(CloudFleetStatus &fleet);
 
 QString fleetSummaryText(const CloudFleetStatus &fleet);
 QString fleetTableNote();
