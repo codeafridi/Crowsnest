@@ -40,6 +40,9 @@ class SloTracker {
 public:
     explicit SloTracker(double keepHours = 720.0);
     void record(bool good, qint64 atMs);
+    // No focused app means there is no availability to measure. Recording a
+    // bad sample would turn "nothing to watch" into an outage and page for it.
+    void skip(qint64 atMs);
     void reset();
     SloReport report(const SloSpec &spec) const;
 

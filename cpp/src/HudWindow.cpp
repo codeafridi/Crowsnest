@@ -553,6 +553,26 @@ void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
     } else {
         m_alertInput.cloudSpendValid = false;
     }
+    // The SLO's fastest-burning window. A report with no samples yet cannot
+    // burn anything, so it is not a valid reading.
+    if (snapshot.slo.available && !snapshot.slo.windows.isEmpty()
+        && snapshot.slo.total > 0) {
+        m_alertInput.sloBurnValid = true;
+        double worst = 0.0;
+        QString window;
+        for (const SloWindow &entry : snapshot.slo.windows) {
+            if (entry.burnRate > worst) {
+                worst = entry.burnRate;
+                window = entry.label;
+            }
+        }
+        m_alertInput.sloBurnWorst = worst;
+        m_alertInput.sloBurnWindow = window;
+        m_alertInput.sloBudgetPct =
+            qBound(0.0, snapshot.slo.budgetRemaining, 1.0);
+    } else {
+        m_alertInput.sloBurnValid = false;
+    }
     if (snapshot.kernelLimits.available && snapshot.kernelLimits.fdMax > 0) {
         m_alertInput.kernelFdValid = true;
         m_alertInput.kernelFdPct =

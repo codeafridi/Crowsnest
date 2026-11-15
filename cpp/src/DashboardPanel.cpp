@@ -3472,6 +3472,7 @@ QWidget *DashboardPanel::buildSettingsView() {
         {"battery_low", 0.0, 100.0, 0},
         {"cloud_spend", 0.0, 1000000.0, 2},
         {"cloud_forecast", 0.0, 1000000.0, 2},
+        {"slo_burn", 0.0, 1000.0, 1},
     };
     auto boundsFor = [](const QString &id) {
         for (const MonitorBounds &b : monitorBounds) {
@@ -3498,6 +3499,8 @@ QWidget *DashboardPanel::buildSettingsView() {
                 : QStringLiteral("color: %1;").arg(ui_theme::warn()));
 
         auto *threshold = new QDoubleSpinBox(monitorsCard);
+        // Named so a test can assert the per-rule bounds the editor carries.
+        threshold->setObjectName(QStringLiteral("ddMonitorSpin_") + rule.id);
         threshold->setRange(b.min, b.max);
         threshold->setDecimals(b.decimals);
         threshold->setFixedWidth(96);

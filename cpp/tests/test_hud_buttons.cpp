@@ -982,8 +982,20 @@ int main(int argc, char *argv[]) {
         }
         panel->setMonitors(monitorRules);
         check(silenceTarget->count() == monitorRules.size()
-                  && silenceTarget->findText(QStringLiteral("host_cpu")) >= 0,
+                  && silenceTarget->findText(QStringLiteral("host_cpu")) >= 0
+                  && silenceTarget->findText(QStringLiteral("slo_burn")) >= 0,
               "panel silence picker lists every editable monitor");
+
+        {
+            // The SLO burn rule is editable like any other monitor, and its
+            // editor keeps a fraction (a burn rate is not a percentage).
+            QDoubleSpinBox *burn =
+                panel->findChild<QDoubleSpinBox *>(
+                    QStringLiteral("ddMonitorSpin_slo_burn"));
+            check(burn != nullptr && burn->decimals() == 1
+                      && burn->maximum() == 1000.0,
+                  "the slo burn monitor has an editor with burn-rate bounds");
+        }
 
         bool banded = false;
         for (TimeseriesChart *chart :
@@ -2803,6 +2815,45 @@ int main(int argc, char *argv[]) {
         check(alertsText != nullptr
                   && alertsText->text().contains(QStringLiteral("#d1685f")),
               "alert severity marker colorized");
+
+        {
+            // The SLO burn monitor reads the tracked SLO, not a made-up
+            // number: a hot window fires it on the Alerts page.
+            DisplaySnapshot sloSnap = withProcs;
+            sloSnap.slo.available = true;
+            sloSnap.slo.total = 500;
+            sloSnap.slo.good = 480;
+            sloSnap.slo.bad = 20;
+            sloSnap.slo.budgetRemaining = 0.32;
+            SloWindow hotWindow;
+            hotWindow.label = QStringLiteral("1h");
+            hotWindow.hours = 1.0;
+            hotWindow.burnRate = 9.5;
+            SloWindow calmWindow;
+            calmWindow.label = QStringLiteral("3d");
+            calmWindow.hours = 72.0;
+            calmWindow.burnRate = 1.1;
+            sloSnap.slo.windows = {hotWindow, calmWindow};
+            hud.setSnapshot(sloSnap);
+            hud.setSnapshot(sloSnap);
+            auto *sloAlerts =
+                hud.findChild<QLabel *>(QStringLiteral("ddAlerts"));
+            check(sloAlerts != nullptr
+                      && sloAlerts->text().contains(
+                          QStringLiteral("burning too fast"))
+                      && sloAlerts->text().contains(
+                          QStringLiteral("9.5x burn on the 1h window")),
+                  "the slo burn monitor fires from the tracked slo");
+            DisplaySnapshot recovered = sloSnap;
+            hotWindow.burnRate = 0.5;
+            recovered.slo.windows = {hotWindow, calmWindow};
+            for (int i = 0; i < 8; ++i) {
+                hud.setSnapshot(recovered);
+            }
+            check(!sloAlerts->text().contains(
+                      QStringLiteral("burning too fast")),
+                  "a recovered slo clears the burn alert");
+        }
 
         {
             // A monitor's runbook is a link on the alert row.

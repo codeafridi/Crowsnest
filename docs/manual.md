@@ -45,10 +45,11 @@ telemetry** — nothing leaves your machine unless you point a scraper at it.
   Profiles, Databases (PostgreSQL), Security, History, Timeline, Cost, Cloud,
   Fleet, Team, Settings.
 - **Alerts & incidents** — local thresholds (CPU, memory, FD-table, steal,
-  failed services, journal errors) shown on the Alerts page with an incident
-  timeline. No desktop popups, by design — a HUD that steals focus is worse
-  than no HUD; point `[webhook]` at your own receiver if you want to be
-  paged.
+  failed services, journal errors, sensor temperature, battery, cloud burn,
+  cloud month to date and month end, SLO error-budget burn) shown on the
+  Alerts page with an incident timeline. No desktop popups, by design — a HUD
+  that steals focus is worse than no HUD; point `[webhook]` at your own
+  receiver if you want to be paged.
 - **Docker & Kubernetes** — containers, problem pods, node capacity, cost
   model, deprecated-API detection.
 
@@ -382,6 +383,33 @@ macOS need the privileged SMC helper and on Windows a kernel driver, so those
 two report the battery (which is a normal, permission-free API) and print the
 reason on the thermal side instead of showing an empty card. Battery charge,
 energy and AC state never need root anywhere.
+
+## The SLO and its burn monitor
+
+The SLO page measures the one thing a desktop can measure about itself: how
+often the focused application was **OK** rather than degraded, against an
+objective and a window you set:
+
+```ini
+[slo]
+objective = 0.999        ; 99.9 % of samples must be OK
+window_hours = 720       ; 30 days
+```
+
+Three burn windows (1h, 6h, 3d) answer the only question that matters about an
+error budget — *how fast is it being spent right now*. A burn rate of 1 spends
+the budget exactly over the SLO window; 14.4 spends a 30-day budget in about
+two days.
+
+The **`slo_burn`** monitor turns that into an alert: critical, fires above
+**6x** for 2 consecutive samples, and its row names the window it came from
+("9.5x burn on the 1h window, 32% of the error budget left"). It is editable
+in Settings → MONITORS like every other rule.
+
+With no focused app there is no availability to measure, so no sample is
+recorded — the page says `collecting availability samples` instead of
+inventing an outage. That is deliberate: a machine sitting on a login screen
+has not breached its SLO.
 
 Prometheus exports the same numbers as `crowsnest_sensor_celsius{chip,sensor,kind}`,
 `crowsnest_sensor_limit_celsius`, `crowsnest_sensor_fan_rpm`,

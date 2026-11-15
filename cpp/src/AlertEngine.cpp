@@ -52,13 +52,17 @@ bool metricFor(const AlertRule &rule, const AlertInput &input, double &value,
     } else if (rule.id == QLatin1String("cloud_forecast")) {
         value = input.cloudSpendProjectedUsd;
         valid = input.cloudSpendValid;
+    } else if (rule.id == QLatin1String("slo_burn")) {
+        value = input.sloBurnWorst;
+        valid = input.sloBurnValid;
     } else {
         valid = false;
     }
     return valid;
 }
 
-Alert makeAlert(const AlertRule &rule, double value, qint64 nowMs) {
+Alert makeAlert(const AlertRule &rule, double value, qint64 nowMs,
+                const QString &note = QString()) {
     Alert alert;
     alert.id = rule.id;
     alert.title = rule.title;
@@ -71,9 +75,9 @@ Alert makeAlert(const AlertRule &rule, double value, qint64 nowMs) {
     // Money reads with cents; everything else with one decimal.
     const int decimals =
         rule.unit == QStringLiteral(" USD") ? 2 : 1;
-    alert.detail = QStringLiteral("%1%2")
+    alert.detail = QStringLiteral("%1%2%3")
                        .arg(value, 0, 'f', decimals)
-                       .arg(rule.unit);
+                       .arg(rule.unit, note);
     return alert;
 }
 
@@ -135,6 +139,8 @@ QList<AlertRule> defaultAlertRules() {
              true, 1, QStringLiteral(" USD"), "cost"),
         make("cloud_forecast", "Cloud month end over budget", "warning", 50.0,
              true, 1, QStringLiteral(" USD"), "cost"),
+        make("slo_burn", "SLO error budget burning too fast", "critical", 6.0,
+             true, 2, QStringLiteral("x burn"), "slo"),
     };
 }
 
@@ -158,11 +164,21 @@ QList<Alert> AlertEngine::update(const AlertInput &input, qint64 nowMs) {
         }
 
         if (breach && state.streak >= rule.sustained) {
+            // The burn rule is the one monitor whose number is meaningless
+            // without the window it came from, so the detail names it.
+            QString note;
+            if (rule.id == QLatin1String("slo_burn")
+                && !input.sloBurnWindow.isEmpty()) {
+                note = QStringLiteral(" on the %1 window, %2% of the error "
+                                      "budget left")
+                           .arg(input.sloBurnWindow)
+                           .arg(input.sloBudgetPct * 100.0, 0, 'f', 0);
+            }
             if (!state.firing) {
                 state.firing = true;
-                fired.append(makeAlert(rule, value, nowMs));
+                fired.append(makeAlert(rule, value, nowMs, note));
             }
-            stillActive.append(makeAlert(rule, value, nowMs));
+            stillActive.append(makeAlert(rule, value, nowMs, note));
         } else {
             state.firing = false;
         }

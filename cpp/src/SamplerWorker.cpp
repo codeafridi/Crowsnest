@@ -201,7 +201,10 @@ DisplaySnapshot SamplerWorker::buildSnapshot(const FocusSample &focus) {
         m_cpuIdentity = ProcessIdentity{};
         m_healthIdentity = ProcessIdentity{};
         m_health.reset();
-        m_slo.record(false, QDateTime::currentMSecsSinceEpoch());
+        // No focused app, no availability to measure: skipping keeps "nothing
+        // to watch" out of the SLI (a fabricated bad sample would collapse it
+        // and page a burn alert about a machine that is simply idle).
+        m_slo.skip(QDateTime::currentMSecsSinceEpoch());
         snap.slo = m_slo.report(m_sloSpec);
         QList<linuxproc::SocketInfo> sockets;
         {

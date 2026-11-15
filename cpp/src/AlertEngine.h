@@ -77,6 +77,12 @@ struct AlertInput {
     bool cloudSpendValid = false;
     double cloudSpendMonthUsd = 0.0;
     double cloudSpendProjectedUsd = 0.0;
+    // The SLO's worst active burn window: how many times faster than the
+    // budget allows errors are being spent right now.
+    bool sloBurnValid = false;
+    double sloBurnWorst = 0.0;
+    QString sloBurnWindow;   // "1h", "6h", "3d"
+    double sloBudgetPct = 1.0;
 };
 
 class AlertEngine {

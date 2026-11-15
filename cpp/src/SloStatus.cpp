@@ -86,6 +86,10 @@ void SloTracker::record(bool good, qint64 atMs) {
     prune(atMs);
 }
 
+void SloTracker::skip(qint64 atMs) {
+    prune(atMs);
+}
+
 void SloTracker::reset() {
     m_samples.clear();
 }

@@ -432,6 +432,43 @@ int main(int argc, char *argv[]) {
         check(noSpend.active().isEmpty(),
               "alert: a refused cost query never fires a budget rule");
 
+        // SLO burn: the fastest-burning window is the number, and the detail
+        // names the window and the budget it is spending.
+        {
+            AlertEngine burnRule;
+            AlertInput slo;
+            slo.sloBurnValid = true;
+            slo.sloBurnWorst = 9.5;
+            slo.sloBurnWindow = QStringLiteral("1h");
+            slo.sloBudgetPct = 0.32;
+            const QList<Alert> one = burnRule.update(slo, 50);
+            const QList<Alert> two = burnRule.update(slo, 51);
+            check(one.isEmpty() && two.size() == 1
+                      && two.first().id == QStringLiteral("slo_burn")
+                      && two.first().severity == QStringLiteral("critical")
+                      && two.first().group == QStringLiteral("slo")
+                      && two.first().detail
+                             == QStringLiteral("9.5x burn on the 1h window, "
+                                               "32% of the error budget left"),
+                  "alert: slo burn fires at the sustained count");
+
+            slo.sloBurnWorst = 1.2;
+            burnRule.update(slo, 52);
+            burnRule.update(slo, 53);
+            check(burnRule.active().isEmpty(),
+                  "alert: a healthy burn clears the slo rule");
+
+            AlertEngine noSlo;
+            AlertInput unmeasured;
+            unmeasured.sloBurnValid = false;
+            unmeasured.sloBurnWorst = 999.0;
+            for (int i = 0; i < 5; ++i) {
+                noSlo.update(unmeasured, 60 + i);
+            }
+            check(noSlo.active().isEmpty(),
+                  "alert: no slo samples never fire a burn alert");
+        }
+
         AlertEngine underBudget;
         AlertInput small;
         small.cloudSpendValid = true;
@@ -1290,6 +1327,19 @@ int main(int argc, char *argv[]) {
               "slo: detail shows budget state");
         check(breached.windows.at(0).burnRate > 1.0,
               "slo: burn rate exceeds 1 when over budget");
+
+        // No focused app is not an outage: skipping records nothing, and the
+        // old samples still age out.
+        SloTracker quiet(1.0);
+        quiet.record(true, base);
+        quiet.skip(base + 5000);
+        SloReport quietReport = quiet.report(spec);
+        check(quietReport.total == 1 && quietReport.bad == 0,
+              "slo: a skipped tick records no sample");
+        quiet.skip(base + 2 * 3600 * 1000);
+        quietReport = quiet.report(spec);
+        check(quietReport.total == 0 && quietReport.available,
+              "slo: skipped ticks still age the window out");
     }
 
     {
