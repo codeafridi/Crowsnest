@@ -37,8 +37,37 @@ struct WebhookEvent {
     qint64 endsAtMs = 0;
 };
 
+// The receiver decides the shape. generic is Alertmanager v4 (works with
+// Alertmanager, and with anything that already parses it); slack, discord and
+// teams are the chat receivers people actually run at home; ntfy is the
+// self-hosted push service; telegram puts the bot token in the URL and the
+// chat id in the body.
+enum class WebhookFormat {
+    Generic,
+    Slack,
+    Ntfy,
+    Telegram,
+    Discord,
+    Teams,
+};
+
+WebhookFormat parseWebhookFormat(const QString &text);
+QString webhookFormatName(WebhookFormat format);
+QList<QPair<QString, QString>> webhookFormatChoices();
+
 QByteArray alertmanagerWebhookPayload(const QList<WebhookEvent> &events);
 QByteArray slackWebhookPayload(const QList<WebhookEvent> &events);
+QByteArray webhookPayload(WebhookFormat format,
+                          const QList<WebhookEvent> &events,
+                          const QString &chatId = QString());
+QByteArray webhookContentType(WebhookFormat format);
+// Extra request headers a receiver needs (ntfy's Title/Priority/Tags).
+QList<QPair<QByteArray, QByteArray>> webhookHeaders(
+    WebhookFormat format, const QList<WebhookEvent> &events);
+// Telegram carries the bot token in the path and the chat id as a query item;
+// it is split out so the id travels in the body and the URL log stays short.
+QString webhookPostUrl(WebhookFormat format, const QString &url,
+                       QString *chatId);
 QString webhookConfigLine(const WebhookConfig &config);
 
 class AlertWebhook : public QObject {
@@ -56,6 +85,10 @@ public:
                        qint64 nowMs);
 
     QString statusLine() const;
+
+    // One synthetic event through the configured receiver, so the operator
+    // finds out the token or the URL is wrong before an incident does.
+    void sendTest();
 
 signals:
     void deliveryFinished(bool ok, const QString &error);

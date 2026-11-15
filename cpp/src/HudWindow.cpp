@@ -341,6 +341,8 @@ DashboardPanel *HudWindow::ensureConsole() {
             &HudWindow::cloudRefreshRequested);
     connect(m_panel, &DashboardPanel::cloudPageVisibleChanged, this,
             &HudWindow::cloudPageVisibleChanged);
+    connect(m_panel, &DashboardPanel::webhookTestRequested, this,
+            &HudWindow::sendWebhookTest);
     connect(m_panel, &DashboardPanel::teamAckRequested, this,
             &HudWindow::teamAckRequested);
     connect(m_panel, &DashboardPanel::teamCloseRequested, this,
@@ -741,6 +743,16 @@ void HudWindow::setJournalSnapshot(const JournalSnapshot &snapshot) {
 void HudWindow::setWebhookConfig(const WebhookConfig &config) {
     if (m_webhook != nullptr) {
         m_webhook->setConfig(config);
+    }
+}
+
+void HudWindow::sendWebhookTest() {
+    if (m_webhook == nullptr) {
+        return;
+    }
+    m_webhook->sendTest();
+    if (m_panel != nullptr) {
+        m_panel->setWebhookLine(m_webhook->statusLine());
     }
 }
 

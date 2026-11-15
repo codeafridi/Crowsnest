@@ -211,6 +211,8 @@ signals:
     // Cloud page: CHECK NOW, and whether the page is the one being watched.
     void cloudRefreshRequested();
     void cloudPageVisibleChanged(bool visible);
+    // Settings -> Remote: one synthetic alert through the webhook.
+    void webhookTestRequested();
 
 private:
     void updateOverviewText(const DisplaySnapshot &snapshot);

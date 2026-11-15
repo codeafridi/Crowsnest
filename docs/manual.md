@@ -714,18 +714,29 @@ POST fired/resolved alert events out of the HUD (nothing is sent until you set
 [webhook]
 enabled = true
 url = https://alerts.example.com/crowsnest
-format = generic        ; generic | slack
+format = generic        ; generic | slack | discord | teams | ntfy | telegram
 timeout_ms = 5000
 ```
 
 `format=generic` sends the Prometheus Alertmanager webhook **v4** schema
 (`version`, `groupKey`, `truncatedAlerts`, `status`, `alerts[]` with
 `labels`/`annotations`/`startsAt`/`endsAt`/`fingerprint`), so any receiver that
-understands Alertmanager webhooks works unchanged. `format=slack` sends a Slack
-incoming-webhook message (`text` + `attachments[]` with `color`, `title`,
-`fields`, `mrkdwn_in`). One POST per tick per group (firing batch, resolved
-batch); alerts that clear between ticks produce a `resolved` event. The Settings
-view shows the configured target and the last delivery result.
+understands Alertmanager webhooks works unchanged. The chat receivers are
+built in:
+
+| format | url | body |
+|---|---|---|
+| `slack` | the incoming webhook | `text` + `attachments[]` with `color`, `title`, `fields`, `mrkdwn_in` |
+| `discord` | the channel webhook | `{"content": "..."}` |
+| `teams` | the connector webhook | a `MessageCard` with a severity `themeColor` |
+| `ntfy` | `https://ntfy.sh/<topic>` | the message as the **body**, `Title`/`Priority`/`Tags` as headers |
+| `telegram` | `https://api.telegram.org/bot<token>/sendMessage?chat_id=<id>` | `{"chat_id","text"}`; the chat id is moved out of the url before the POST |
+
+One POST per tick per group (firing batch, resolved batch); alerts that clear
+between ticks produce a `resolved` event. The Settings view shows the configured
+target (a Telegram bot token is printed as `bot<token>`), the last delivery
+result, and a **SEND TEST** button that sends one synthetic alert so a wrong
+url or token is found before an incident is.
 
 **Process / unit / container actions** — on by default, and refused loudly
 rather than silently when a permission or an OS does not allow a verb. Every

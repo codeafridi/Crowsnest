@@ -2731,6 +2731,24 @@ int main(int argc, char *argv[]) {
                   && softwareInfo->text().contains(QStringLiteral("bad key")),
               "settings info applied to the SOFTWARE card");
 
+        {
+            // Settings -> Remote: SEND TEST reaches the window (one synthetic
+            // alert through the configured receiver).
+            auto *test = hud.findChild<QPushButton *>(
+                QStringLiteral("ddWebhookTest"));
+            auto seen = std::make_shared<bool>(false);
+            const auto conn = QObject::connect(
+                panel, &DashboardPanel::webhookTestRequested,
+                [seen]() { *seen = true; });
+            if (test != nullptr) {
+                test->click();
+            }
+            QObject::disconnect(conn);
+            check(test != nullptr
+                      && test->text() == QStringLiteral("SEND TEST") && *seen,
+                  "settings remote card can send a webhook test");
+        }
+
         const QList<Alert> richAlerts = {Alert{
             QStringLiteral("id-1"), QStringLiteral("host cpu"),
             QStringLiteral("95%"), QStringLiteral("high"), 95.0, 0}};

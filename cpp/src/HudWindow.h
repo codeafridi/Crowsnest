@@ -119,6 +119,8 @@ signals:
 public:
 
     void setWebhookConfig(const WebhookConfig &config);
+    // One synthetic alert to the configured receiver (Settings -> Remote).
+    void sendWebhookTest();
 
     void setExportIntervalMs(int intervalMs);
 

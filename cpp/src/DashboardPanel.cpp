@@ -753,13 +753,15 @@ QString DashboardPanel::consoleStyleSheet() const {
         "#ddKubeDiagnosis, #ddKubeTimeline { color: %DIM%; }"
         "#ddSettingsLabel { color: %DIM%; }"
         "#ddSettingsPath { color: %MUTED%; font-size: 9px; }"
-        "#ddCopy, #ddCloudRefresh, #ddSilenceAdd, #ddSilenceExpire,"
+        "#ddCopy, #ddCloudRefresh, #ddWebhookTest, #ddSilenceAdd,"
+        " #ddSilenceExpire,"
         " #ddTeamAck, #ddTeamClose,"
         " #ddTeamSilence { color: %DIM%;"
         "  background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px;"
         "  padding: 2px 10px; font-size: 9px; }"
-        "#ddCopy:hover, #ddCloudRefresh:hover, #ddSilenceAdd:hover,"
+        "#ddCopy:hover, #ddCloudRefresh:hover, #ddWebhookTest:hover,"
+        " #ddSilenceAdd:hover,"
         " #ddSilenceExpire:hover,"
         " #ddTeamAck:hover, #ddTeamClose:hover, #ddTeamSilence:hover {"
         "  color: %TEXT%; border-color: %MUTED%; }"
@@ -3570,8 +3572,26 @@ QWidget *DashboardPanel::buildSettingsView() {
     m_settingsRemote->setTextFormat(Qt::RichText);
     m_settingsRemote->setWordWrap(true);
 
-    remotePage->addWidget(makeCard(QStringLiteral("delivery"),
-                                   m_settingsRemote, view));
+    auto *deliveryBox = new QWidget(view);
+    auto *deliveryLayout = new QVBoxLayout(deliveryBox);
+    deliveryLayout->setContentsMargins(0, 0, 0, 0);
+    deliveryLayout->setSpacing(8);
+    deliveryLayout->addWidget(m_settingsRemote);
+    auto *webhookTest = new QPushButton(QStringLiteral("SEND TEST"), deliveryBox);
+    webhookTest->setObjectName(QStringLiteral("ddWebhookTest"));
+    webhookTest->setCursor(Qt::PointingHandCursor);
+    webhookTest->setFocusPolicy(Qt::NoFocus);
+    webhookTest->setToolTip(
+        QStringLiteral("send one synthetic alert to the configured receiver"));
+    connect(webhookTest, &QPushButton::clicked, this,
+            &DashboardPanel::webhookTestRequested);
+    auto *testRow = new QHBoxLayout;
+    testRow->setContentsMargins(0, 0, 0, 0);
+    testRow->addWidget(webhookTest, 0);
+    testRow->addStretch(1);
+    deliveryLayout->addLayout(testRow);
+    remotePage->addWidget(makeCard(QStringLiteral("delivery"), deliveryBox,
+                                   view));
     remotePage->addWidget(makeCard(QStringLiteral("what would leave this host"),
                                    m_remoteReport, view));
 

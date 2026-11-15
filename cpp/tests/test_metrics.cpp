@@ -2715,6 +2715,113 @@ int main(int argc, char *argv[]) {
         check(webhookConfigLine(slackCfg)
                   == QStringLiteral("slack -> https://example.test/hook"),
               "webhook: config line enabled");
+
+        // --- the chat receivers ------------------------------------------
+        check(parseWebhookFormat(QStringLiteral(" ntfy ")) == WebhookFormat::Ntfy
+                  && parseWebhookFormat(QStringLiteral("Telegram"))
+                         == WebhookFormat::Telegram
+                  && parseWebhookFormat(QStringLiteral("discord"))
+                         == WebhookFormat::Discord
+                  && parseWebhookFormat(QStringLiteral("teams"))
+                         == WebhookFormat::Teams
+                  && parseWebhookFormat(QStringLiteral("nonsense"))
+                         == WebhookFormat::Generic
+                  && webhookFormatName(WebhookFormat::Ntfy)
+                         == QStringLiteral("ntfy"),
+              "webhook: the receiver names parse, unknown falls back to generic");
+        WebhookEvent critEvent;
+        critEvent.id = QStringLiteral("host_cpu");
+        critEvent.title = QStringLiteral("Host CPU high");
+        critEvent.detail = QStringLiteral("97% >= 95%");
+        critEvent.severity = QStringLiteral("critical");
+        critEvent.status = QStringLiteral("firing");
+        critEvent.group = QStringLiteral("compute");
+        WebhookEvent okEvent;
+        okEvent.id = QStringLiteral("app_cpu");
+        okEvent.title = QStringLiteral("Focused app CPU high");
+        okEvent.detail = QStringLiteral("92% >= 90%");
+        okEvent.severity = QStringLiteral("warning");
+        okEvent.status = QStringLiteral("resolved");
+        const QList<WebhookEvent> batch{critEvent, okEvent};
+
+        const QByteArray ntfyBody =
+            webhookPayload(WebhookFormat::Ntfy, batch);
+        check(webhookContentType(WebhookFormat::Ntfy).startsWith(
+                  "text/plain")
+                  && ntfyBody.startsWith("Crowsnest: 1 firing, 1 resolved")
+                  && ntfyBody.contains("[CRIT] Host CPU high")
+                  && ntfyBody.contains("(compute)")
+                  && ntfyBody.contains("[OK] Focused app CPU high"),
+              "webhook: ntfy carries a plain text message");
+        const QList<QPair<QByteArray, QByteArray>> ntfyHeaders =
+            webhookHeaders(WebhookFormat::Ntfy, batch);
+        QHash<QByteArray, QByteArray> headerMap;
+        for (const auto &pair : ntfyHeaders) {
+            headerMap.insert(pair.first, pair.second);
+        }
+        check(headerMap.value("Title")
+                  == QByteArrayLiteral("Crowsnest: 1 firing")
+                  && headerMap.value("Priority") == QByteArrayLiteral("5")
+                  && headerMap.value("Tags")
+                         == QByteArrayLiteral("rotating_light"),
+              "webhook: ntfy headers carry title, priority and tag");
+
+        const QByteArray discord = webhookPayload(WebhookFormat::Discord, batch);
+        const QJsonObject discordJson =
+            QJsonDocument::fromJson(discord).object();
+        check(discordJson.value(QStringLiteral("content"))
+                  .toString()
+                  .startsWith(QStringLiteral("Crowsnest: 1 firing")),
+              "webhook: discord carries the message as content");
+
+        const QByteArray telegram =
+            webhookPayload(WebhookFormat::Telegram, batch,
+                           QStringLiteral("424242"));
+        const QJsonObject telegramJson =
+            QJsonDocument::fromJson(telegram).object();
+        check(telegramJson.value(QStringLiteral("chat_id")).toString()
+                      == QStringLiteral("424242")
+                  && telegramJson.value(QStringLiteral("text"))
+                         .toString()
+                         .contains(QStringLiteral("Host CPU high")),
+              "webhook: telegram carries the chat id and the text");
+
+        const QJsonObject teams =
+            QJsonDocument::fromJson(
+                webhookPayload(WebhookFormat::Teams, batch))
+                .object();
+        check(teams.value(QStringLiteral("@type")).toString()
+                      == QStringLiteral("MessageCard")
+                  && teams.value(QStringLiteral("themeColor")).toString()
+                         == QStringLiteral("d1685f")
+                  && teams.value(QStringLiteral("text"))
+                         .toString()
+                         .contains(QStringLiteral("<br/>")),
+              "webhook: teams carries a MessageCard with a severity colour");
+
+        QString chatId;
+        check(webhookPostUrl(WebhookFormat::Telegram,
+                             QStringLiteral("https://api.telegram.org/"
+                                            "bot123:ABC/sendMessage?chat_id=77"),
+                             &chatId)
+                      == QStringLiteral("https://api.telegram.org/"
+                                        "bot123:ABC/sendMessage")
+                  && chatId == QStringLiteral("77")
+                  && webhookPostUrl(WebhookFormat::Discord,
+                                    QStringLiteral("https://d/hook"), &chatId)
+                         == QStringLiteral("https://d/hook")
+                  && chatId.isEmpty(),
+              "webhook: telegram splits the chat id out of the url");
+        WebhookConfig telegramCfg;
+        telegramCfg.enabled = true;
+        telegramCfg.format = QStringLiteral("telegram");
+        telegramCfg.url = QStringLiteral("https://api.telegram.org/"
+                                         "bot123:ABC/sendMessage?chat_id=77");
+        check(webhookConfigLine(telegramCfg).contains(
+                  QStringLiteral("bot<token>"))
+                  && !webhookConfigLine(telegramCfg).contains(
+                      QStringLiteral("ABC")),
+              "webhook: the config line never prints the bot token");
     }
 
     // --- alert webhooks (M69): live loopback delivery
@@ -2796,6 +2903,25 @@ int main(int argc, char *argv[]) {
               "webhook: live body carries v4 payload");
         check(hook.statusLine().contains(QStringLiteral("1 sent, 0 failed")),
               "webhook: live status line counts sent");
+
+        // ntfy: the message is the body, Title/Priority/Tags are headers.
+        {
+            received.clear();
+            WebhookConfig ntfy = config;
+            ntfy.format = QStringLiteral("ntfy");
+            hook.setConfig(ntfy);
+            hook.sendTest();
+            bool testOk = false;
+            QString testError;
+            const bool testDone = waitDelivery(hook, testOk, testError);
+            check(testDone && testOk, "webhook: a test send reaches the receiver");
+            check(received.toLower().contains("content-type: text/plain")
+                      && received.contains("\r\nTitle: Crowsnest: 1 firing")
+                      && received.contains("\r\nPriority: 4")
+                      && received.contains("Test notification"),
+                  "webhook: ntfy test carries its headers and a plain body");
+            hook.setConfig(config);
+        }
 
         statusOk = false;
         Alert second;

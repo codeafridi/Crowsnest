@@ -12,6 +12,8 @@
 #include <QSet>
 #include <QTime>
 #include <QUrl>
+#include <QUrlQuery>
+#include <QRegularExpression>
 
 namespace {
 
@@ -179,6 +181,239 @@ QByteArray slackWebhookPayload(const QList<WebhookEvent> &events) {
     return QJsonDocument(message).toJson(QJsonDocument::Compact);
 }
 
+// --- receiver shapes -------------------------------------------------------
+//
+// Wire contracts, published by the receivers themselves (Tier B): ntfy takes
+// the message as the request body and Title/Priority/Tags as headers; Discord
+// takes {"content"}; Telegram takes {"chat_id","text"} with the bot token in
+// the path; Teams takes a MessageCard (the same shape the relay's notifier
+// sends, so one receiver configuration parses both).
+
+WebhookFormat parseWebhookFormat(const QString &text) {
+    const QString value = text.trimmed().toLower();
+    if (value == QLatin1String("slack")) {
+        return WebhookFormat::Slack;
+    }
+    if (value == QLatin1String("ntfy")) {
+        return WebhookFormat::Ntfy;
+    }
+    if (value == QLatin1String("telegram")) {
+        return WebhookFormat::Telegram;
+    }
+    if (value == QLatin1String("discord")) {
+        return WebhookFormat::Discord;
+    }
+    if (value == QLatin1String("teams")) {
+        return WebhookFormat::Teams;
+    }
+    return WebhookFormat::Generic;
+}
+
+QString webhookFormatName(WebhookFormat format) {
+    switch (format) {
+    case WebhookFormat::Slack:
+        return QStringLiteral("slack");
+    case WebhookFormat::Ntfy:
+        return QStringLiteral("ntfy");
+    case WebhookFormat::Telegram:
+        return QStringLiteral("telegram");
+    case WebhookFormat::Discord:
+        return QStringLiteral("discord");
+    case WebhookFormat::Teams:
+        return QStringLiteral("teams");
+    case WebhookFormat::Generic:
+        break;
+    }
+    return QStringLiteral("generic");
+}
+
+QList<QPair<QString, QString>> webhookFormatChoices() {
+    return {
+        {QStringLiteral("generic"),
+         QStringLiteral("Alertmanager webhook v4 (works with anything that "
+                        "parses it)")},
+        {QStringLiteral("slack"), QStringLiteral("Slack incoming webhook")},
+        {QStringLiteral("discord"), QStringLiteral("Discord webhook")},
+        {QStringLiteral("teams"), QStringLiteral("Microsoft Teams MessageCard")},
+        {QStringLiteral("ntfy"),
+         QStringLiteral("ntfy topic (https://ntfy.sh/<topic>)")},
+        {QStringLiteral("telegram"),
+         QStringLiteral("Telegram bot sendMessage (add ?chat_id= to the url)")},
+    };
+}
+
+QString webhookSeverityWord(const WebhookEvent &event) {
+    if (event.status == QLatin1String("resolved")) {
+        return QStringLiteral("OK");
+    }
+    const QString severity = event.severity.toLower();
+    if (severity == QLatin1String("critical")
+        || severity == QLatin1String("high")) {
+        return QStringLiteral("CRIT");
+    }
+    if (severity == QLatin1String("warning")
+        || severity == QLatin1String("warn")) {
+        return QStringLiteral("WARN");
+    }
+    return QStringLiteral("INFO");
+}
+
+// One plain-text message, used by every chat receiver. Truncated well inside
+// Discord's 2000 character limit; the tail says how many were left out.
+QString webhookMessageText(const QList<WebhookEvent> &events) {
+    int firing = 0;
+    int resolved = 0;
+    for (const WebhookEvent &event : events) {
+        if (event.status == QLatin1String("resolved")) {
+            ++resolved;
+        } else {
+            ++firing;
+        }
+    }
+    QString head = QStringLiteral("Crowsnest");
+    if (firing > 0) {
+        head += QStringLiteral(": %1 firing").arg(firing);
+    }
+    if (resolved > 0) {
+        head += QStringLiteral("%1%2 resolved")
+                    .arg(firing > 0 ? QStringLiteral(", ") : QStringLiteral(": "))
+                    .arg(resolved);
+    }
+    QStringList lines{head};
+    int included = 0;
+    for (const WebhookEvent &event : events) {
+        QString line = QStringLiteral("[%1] %2 - %3")
+                           .arg(webhookSeverityWord(event), event.title,
+                                event.detail);
+        if (!event.group.isEmpty()) {
+            line += QStringLiteral(" (%1)").arg(event.group);
+        }
+        if (lines.join(QLatin1Char('\n')).size() + line.size() > 1800) {
+            break;
+        }
+        lines.append(line);
+        ++included;
+    }
+    if (included < events.size()) {
+        lines.append(QStringLiteral("... %1 more")
+                         .arg(events.size() - included));
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+QByteArray webhookPayload(WebhookFormat format,
+                          const QList<WebhookEvent> &events,
+                          const QString &chatId) {
+    switch (format) {
+    case WebhookFormat::Slack:
+        return slackWebhookPayload(events);
+    case WebhookFormat::Ntfy:
+        return webhookMessageText(events).toUtf8();
+    case WebhookFormat::Discord:
+        return QJsonDocument(QJsonObject{
+                                 {QStringLiteral("content"),
+                                  webhookMessageText(events)}})
+            .toJson(QJsonDocument::Compact);
+    case WebhookFormat::Telegram:
+        return QJsonDocument(QJsonObject{
+                                 {QStringLiteral("chat_id"), chatId},
+                                 {QStringLiteral("text"),
+                                  webhookMessageText(events)},
+                                 {QStringLiteral("disable_web_page_preview"),
+                                  true}})
+            .toJson(QJsonDocument::Compact);
+    case WebhookFormat::Teams: {
+        QString color = QStringLiteral("4f9d6f");
+        for (const WebhookEvent &event : events) {
+            if (event.status == QLatin1String("resolved")) {
+                continue;
+            }
+            const QString severity = event.severity.toLower();
+            if (severity == QLatin1String("critical")
+                || severity == QLatin1String("high")) {
+                color = QStringLiteral("d1685f");
+                break;
+            }
+            color = QStringLiteral("d9a04a");
+        }
+        QString body = webhookMessageText(events);
+        body.replace(QLatin1Char('\n'), QStringLiteral("<br/>"));
+        QJsonObject card{
+            {QStringLiteral("@type"), QStringLiteral("MessageCard")},
+            {QStringLiteral("@context"),
+             QStringLiteral("https://schema.org/extensions")},
+            {QStringLiteral("summary"), QStringLiteral("Crowsnest alert")},
+            {QStringLiteral("themeColor"), color},
+            {QStringLiteral("title"), QStringLiteral("Crowsnest")},
+            {QStringLiteral("text"), body}};
+        return QJsonDocument(card).toJson(QJsonDocument::Compact);
+    }
+    case WebhookFormat::Generic:
+        break;
+    }
+    return alertmanagerWebhookPayload(events);
+}
+
+QByteArray webhookContentType(WebhookFormat format) {
+    if (format == WebhookFormat::Ntfy) {
+        return QByteArrayLiteral("text/plain; charset=utf-8");
+    }
+    return QByteArrayLiteral("application/json");
+}
+
+QList<QPair<QByteArray, QByteArray>> webhookHeaders(
+    WebhookFormat format, const QList<WebhookEvent> &events) {
+    QList<QPair<QByteArray, QByteArray>> headers;
+    if (format != WebhookFormat::Ntfy) {
+        return headers;
+    }
+    int firing = 0;
+    bool critical = false;
+    bool warning = false;
+    for (const WebhookEvent &event : events) {
+        if (event.status == QLatin1String("resolved")) {
+            continue;
+        }
+        ++firing;
+        const QString severity = event.severity.toLower();
+        if (severity == QLatin1String("critical")
+            || severity == QLatin1String("high")) {
+            critical = true;
+        } else if (severity == QLatin1String("warning")
+                   || severity == QLatin1String("warn")) {
+            warning = true;
+        }
+    }
+    headers.append({QByteArrayLiteral("Title"),
+                    QStringLiteral("Crowsnest: %1 firing").arg(firing)
+                        .toUtf8()});
+    headers.append({QByteArrayLiteral("Priority"),
+                    QByteArray::number(critical ? 5 : (warning ? 4 : 3))});
+    const QByteArray tags = critical ? QByteArrayLiteral("rotating_light")
+                            : warning ? QByteArrayLiteral("warning")
+                                      : QByteArrayLiteral("white_check_mark");
+    headers.append({QByteArrayLiteral("Tags"), tags});
+    return headers;
+}
+
+QString webhookPostUrl(WebhookFormat format, const QString &url,
+                       QString *chatId) {
+    if (chatId != nullptr) {
+        chatId->clear();
+    }
+    if (format != WebhookFormat::Telegram) {
+        return url;
+    }
+    QUrl parsed(url);
+    QUrlQuery query(parsed);
+    if (chatId != nullptr && query.hasQueryItem(QStringLiteral("chat_id"))) {
+        *chatId = query.queryItemValue(QStringLiteral("chat_id"));
+        query.removeAllQueryItems(QStringLiteral("chat_id"));
+    }
+    parsed.setQuery(query);
+    return parsed.toString();
+}
+
 QString webhookConfigLine(const WebhookConfig &config) {
     if (!config.enabled) {
         return QStringLiteral("off ([webhook] enabled=false)");
@@ -186,7 +421,14 @@ QString webhookConfigLine(const WebhookConfig &config) {
     if (config.url.isEmpty()) {
         return QStringLiteral("no url ([webhook] url= missing)");
     }
-    return QStringLiteral("%1 -> %2").arg(config.format, config.url);
+    // A bot token lives in the URL; never print it into a card or a log.
+    QString url = config.url;
+    if (parseWebhookFormat(config.format) == WebhookFormat::Telegram) {
+        url.replace(QRegularExpression(QStringLiteral("bot[^/]+")),
+                    QStringLiteral("bot<token>"));
+    }
+    return QStringLiteral("%1 -> %2")
+        .arg(webhookFormatName(parseWebhookFormat(config.format)), url);
 }
 
 AlertWebhook::AlertWebhook(QObject *parent)
@@ -204,6 +446,25 @@ const WebhookConfig &AlertWebhook::config() const {
 
 bool AlertWebhook::ready() const {
     return m_config.enabled && !m_config.url.isEmpty();
+}
+
+void AlertWebhook::sendTest() {
+    if (!ready()) {
+        m_lastOk = false;
+        m_lastResult = QStringLiteral("test not sent: %1")
+                           .arg(webhookConfigLine(m_config));
+        emit deliveryFinished(false, m_lastResult);
+        return;
+    }
+    WebhookEvent event;
+    event.id = QStringLiteral("crowsnest.test");
+    event.title = QStringLiteral("Test notification");
+    event.detail = QStringLiteral("sent from the Remote settings card");
+    event.severity = QStringLiteral("warning");
+    event.status = QStringLiteral("firing");
+    event.group = QStringLiteral("crowsnest");
+    event.startsAtMs = QDateTime::currentMSecsSinceEpoch();
+    post({event});
 }
 
 void AlertWebhook::processEvents(const QList<Alert> &fired,
@@ -269,14 +530,18 @@ void AlertWebhook::post(const QList<WebhookEvent> &events) {
         return;
     }
 
-    const QByteArray payload =
-        m_config.format == QLatin1String("slack")
-            ? slackWebhookPayload(events)
-            : alertmanagerWebhookPayload(events);
+    const WebhookFormat format = parseWebhookFormat(m_config.format);
+    QString chatId;
+    const QString postUrl = webhookPostUrl(format, m_config.url, &chatId);
+    const QByteArray payload = webhookPayload(format, events, chatId);
 
-    QNetworkRequest request{QUrl(m_config.url)};
+    QNetworkRequest request{QUrl(postUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader,
-                      QStringLiteral("application/json"));
+                      QString::fromLatin1(webhookContentType(format)));
+    for (const QPair<QByteArray, QByteArray> &header :
+         webhookHeaders(format, events)) {
+        request.setRawHeader(header.first, header.second);
+    }
     request.setTransferTimeout(m_config.timeoutMs);
     QNetworkReply *reply = m_network->post(request, payload);
     connect(reply, &QNetworkReply::finished, this, [this, reply, events]() {
