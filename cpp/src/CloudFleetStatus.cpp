@@ -1045,10 +1045,8 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
 
 QString fleetTableNote() {
     return QStringLiteral(
-        "* this instance (matched by provider id) - age from the provider's "
-        "creation time - $/MO sums running rows only, so a stopped-but-"
-        "allocated vm still bills - a region the CLI could not read is named "
-        "in the summary, never guessed");
+        "* this instance - age from the provider's launch time - $/MO counts "
+        "running rows only");
 }
 
 QString fleetDisabledText() {

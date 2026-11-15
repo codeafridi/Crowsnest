@@ -1067,9 +1067,9 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         fleetOptions.accountTimeoutMs = m_cloud.accountTimeoutMs;
         fleetOptions.cadenceMs = m_cloudPageVisible ? 300000 : 600000;
         // While the page is open, re-list the regions that already have rows
-        // every 20 s: one aws call, so a stop/start shows up without waiting
-        // for the next full sweep.
-        fleetOptions.knownCadenceMs = m_cloudPageVisible ? 20000 : 0;
+        // every 10 s: one aws call, so a change made in the AWS console shows
+        // up in seconds instead of waiting for the next full sweep.
+        fleetOptions.knownCadenceMs = m_cloudPageVisible ? 10000 : 0;
         m_cloudFleet->setOptions(fleetOptions);
         if (m_cloudRefreshRequested) {
             m_cloudRefreshRequested = false;

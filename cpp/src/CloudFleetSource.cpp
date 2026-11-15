@@ -292,25 +292,19 @@ QString cloudFleetPlanText(const CloudIdentity &identity,
             .arg(options.timeoutMs);
     }
     QStringList steps;
-    if (options.identityAuto && identity.accountId.isEmpty()) {
-        steps << QStringLiteral("`aws sts get-caller-identity` (1 call - names "
-                                "the account)");
+    if (options.identityAuto) {
+        steps << QStringLiteral("`aws sts get-caller-identity`")
+              << QStringLiteral("`aws configure get region`");
     }
-    if (options.identityAuto && identity.region.isEmpty()) {
-        steps << QStringLiteral("`aws configure get region` (1 call - or "
-                                "us-east-1)");
-    }
-    steps << QStringLiteral("`aws ec2 describe-regions` (1 call - the enabled "
-                            "regions)");
-    steps << QStringLiteral("`aws ec2 describe-instances` (1 call per region, "
-                            "%1 at a time)")
+    steps << QStringLiteral("`aws ec2 describe-regions`")
+          << QStringLiteral("one `aws ec2 describe-instances` per region (%1 at "
+                            "a time)")
                  .arg(qBound(1, options.regionConcurrency,
                              kCloudFleetRegionConcurrencyMax));
     return QStringLiteral(
-               "check now runs %1 - read-only EC2/STS calls, no Cost Explorer "
-               "request (that would be billable), and no instance is ever "
-               "started, stopped or changed")
-        .arg(steps.join(QStringLiteral("; ")));
+               "check now: %1 - read-only, no Cost Explorer, nothing started or "
+               "stopped")
+        .arg(steps.join(QStringLiteral(" + ")));
 }
 
 QString cloudWindowsCmdLine(const QString &program,

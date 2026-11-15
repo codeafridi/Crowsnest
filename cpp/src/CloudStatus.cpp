@@ -525,11 +525,13 @@ QString cloudDetailText(const CloudSnapshot &snapshot) {
     if (!id.instanceName.isEmpty()) {
         lines.append(QStringLiteral("name       %1").arg(id.instanceName));
     }
-    QString type = orDash(id.instanceType);
-    if (snapshot.vcpus > 0) {
-        type += QStringLiteral("  (%1 vCPU)").arg(snapshot.vcpus);
+    if (!id.instanceType.isEmpty()) {
+        QString type = id.instanceType;
+        if (snapshot.vcpus > 0) {
+            type += QStringLiteral("  (%1 vCPU)").arg(snapshot.vcpus);
+        }
+        lines.append(QStringLiteral("type       %1").arg(type));
     }
-    lines.append(QStringLiteral("type       %1").arg(type));
     QString where = orDash(id.region);
     if (!id.zone.isEmpty() && id.zone != id.region) {
         where += QStringLiteral("  %1").arg(id.zone);
@@ -538,7 +540,9 @@ QString cloudDetailText(const CloudSnapshot &snapshot) {
     if (!id.accountId.isEmpty()) {
         lines.append(QStringLiteral("account    %1").arg(id.accountId));
     }
-    lines.append(QStringLiteral("private ip %1").arg(orDash(id.privateIp)));
+    if (!id.privateIp.isEmpty()) {
+        lines.append(QStringLiteral("private ip %1").arg(id.privateIp));
+    }
     if (!id.imageId.isEmpty() || !id.architecture.isEmpty()) {
         QString image = id.imageId.isEmpty() ? QStringLiteral("--") : id.imageId;
         if (!id.architecture.isEmpty()) {

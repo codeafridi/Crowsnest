@@ -103,24 +103,25 @@ aws ec2 describe-instances --region <each> --output json \
   page also refreshes the listing once if it is older than a minute; while the
   page stays open the full sweep runs every 5 minutes instead of 10.
 - **A state change does not wait for the next sweep.** While the Cloud page is
-  open, every 20 s Crowsnest re-lists **only the regions that already have a
+  open, every 10 s Crowsnest re-lists **only the regions that already have a
   row** (normally one `aws ec2 describe-instances` call) and replaces those
-  rows, so stopping or starting an instance shows up within seconds. A region
-  whose call fails keeps its last known rows rather than vanishing, and a
-  complete account sweep still runs on the 5/10-minute cadence to discover
-  instances in regions you have never used.
+  rows, so a stop, start or terminate done in the AWS console shows up within
+  seconds. A region whose call fails keeps its last known rows rather than
+  vanishing, and a complete account sweep still runs on the 5/10-minute cadence
+  to discover instances in regions you have never used.
 - **Selecting an instance** shows everything the provider reported about it:
   id, name, type with its vCPU/memory, region/zone, state, launch time and age;
   the AMI and **the distribution** (the image's own description — "Amazon Linux
   2023 AMI …", "Ubuntu 22.04 LTS …"), architecture, platform and
-  virtualization; key pair, IAM instance profile and security groups; VPC,
-  subnet, private and public address; tenancy, monitoring, **IMDSv2** state
-  (`HttpTokens`), CPU credit mode and tags. Everything except the image name
-  and the type spec comes from the same `describe-instances` answer the table
-  already uses. Those two are one extra read-only call each per listing
-  (`ec2:DescribeImages` for the AMIs seen, `ec2:DescribeInstanceTypes` once for
-  the types seen) and are cached, so a second listing costs none. If IAM denies
-  them the detail simply shows `--` for that field; the listing is unaffected.
+  virtualization; key pair, the IAM role **name**, security groups; VPC,
+  subnet, private and public address and both DNS names; the root disk with its
+  size and type; tenancy, monitoring, **IMDSv2** state (`HttpTokens`), CPU
+  credit mode and tags. Everything except the image name, the type spec and the
+  root volume size comes from the same `describe-instances` answer the table
+  already uses. Those three are one extra read-only call each per listing
+  (`ec2:DescribeImages` per region with rows, `ec2:DescribeInstanceTypes` once,
+  `ec2:DescribeVolumes` per region with rows) and are cached, so a second
+  listing costs none. If IAM denies one, only that field shows `--`.
 - **A refresh never blanks the table**: the previous answer stays on screen
   while the new one is being read, with the note saying `listing N region(s) -
   M found so far`. Collapsing and reopening the console therefore keeps the
