@@ -2109,7 +2109,9 @@ int main(int argc, char *argv[]) {
         const auto visibleConn = QObject::connect(
             &hud, &HudWindow::cloudPageVisibleChanged,
             [state](bool visible) { state->second = visible; });
-        cloudRefresh->click();
+        if (cloudRefresh != nullptr) {
+            cloudRefresh->click();
+        }
         if (rail != nullptr) {
             rail->setCurrentRow(0);
             rail->setCurrentRow(30);

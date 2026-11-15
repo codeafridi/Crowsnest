@@ -50,7 +50,6 @@ void addDir(QStringList &dirs, const QString &dir) {
 QStringList cloudCliSearchDirs() {
     QStringList dirs;
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    const QString home = env.value(QStringLiteral("HOME"));
     // An operator (or a test) can name the directories explicitly. Listed
     // first so it wins over the conventional install locations below.
 #if defined(Q_OS_WIN)
@@ -58,6 +57,7 @@ QStringList cloudCliSearchDirs() {
         env.value(QStringLiteral("CROWSNEST_CLI_DIRS")).split(
             QLatin1Char(';'), Qt::SkipEmptyParts);
 #else
+    const QString home = env.value(QStringLiteral("HOME"));
     const QStringList extra =
         env.value(QStringLiteral("CROWSNEST_CLI_DIRS")).split(
             QLatin1Char(':'), Qt::SkipEmptyParts);
