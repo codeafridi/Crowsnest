@@ -6197,9 +6197,12 @@ int main(int argc, char *argv[]) {
             {
                 QFile log(argvLog);
                 if (log.open(QIODevice::ReadOnly)) {
-                    fanCalls = QString::fromUtf8(log.readAll())
-                                   .split(QLatin1Char('\n'),
-                                          Qt::SkipEmptyParts);
+                    const QStringList raw = QString::fromUtf8(log.readAll())
+                                                .split(QLatin1Char('\n'),
+                                                       Qt::SkipEmptyParts);
+                    for (const QString &line : raw) {
+                        fanCalls.append(line.trimmed());
+                    }
                 }
             }
             check(fan.identityResolved
