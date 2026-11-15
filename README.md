@@ -4,7 +4,7 @@
 
 # Crowsnest
 
-### A local first HUD that follows the app you are using, and a console with 33 views for everything the machine does.
+### A local first HUD that follows the app you are using, and a console with 34 views for everything the machine does.
 
 [![latest release](https://img.shields.io/github/v/release/codeafridi/Crowsnest)](https://github.com/codeafridi/Crowsnest/releases)
 [![license](https://img.shields.io/github/license/codeafridi/Crowsnest)](LICENSE)
@@ -89,7 +89,7 @@ History, Timeline, Cost, Cloud, Fleet, Team, Settings.
 <tr><td><b>Hardware</b></td><td>GPU utilization, VRAM and per process GPU use; temperatures, fans, power, battery</td><td>yes</td><td>partial</td><td>partial</td></tr>
 <tr><td><b>Security</b></td><td>Sandbox exposure and hardening findings, file integrity, log based threats</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>History and timeline</b></td><td>A bounded ring you can rewind, one stream of every change, CSV and JSON export</td><td>yes</td><td>yes</td><td>yes</td></tr>
-<tr><td><b>Cost and cloud</b></td><td>Cluster cost model and right sizing, cloud identity, billed spend, account inventory</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><b>Cost and cloud</b></td><td>Cluster cost model and right sizing, cloud identity, the whole account with per instance detail, billed spend</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Fleet</b></td><td>Several machines polling each other, shown in one console</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Team</b></td><td>The relay's fleet and incident queue, read with the machine's own token, with acknowledge, close and silence from the HUD</td><td>yes</td><td>yes</td><td>yes</td></tr>
 </table>
@@ -121,15 +121,21 @@ so the spike and its cause are read together.
 deprecated APIs and a cost model read through the kubectl you already have.
 Problem pods and their events are surfaced before the whole page.
 
-<img src="docs/shots/cloud.webp" alt="Cloud page with instance identity, accrued cost and fleet inventory" width="1000" />
+<img src="docs/shots/cloud.webp" alt="Cloud page showing the account inventory, its chart and the selected instance detail" width="1000" />
 
-**The box itself, priced.** Instance identity comes from the local metadata
-service, rates from a file you import, spend from the provider CLI you already
-logged in to. On AWS the inventory is the **whole account**: `sts` names it,
-`describe-regions` finds the enabled regions and one `describe-instances` runs
-per region, so an instance started anywhere appears. `[cloud] identity=auto`
-takes the account from that same login, which is what makes it work on a
-laptop. The card states where each number came from.
+**The box itself, priced, and the whole account beside it.** Instance identity
+comes from the local metadata service, rates from a file you import, spend from
+the provider CLI you already logged in to. On AWS the inventory is the whole
+account: one call names the account, another lists the enabled regions, then one
+`describe-instances` per region, so an instance started anywhere appears.
+`[cloud] identity=auto` takes the account from that same CLI login, which is
+what makes the page work on a laptop with no metadata service. Selecting an
+instance shows what the provider reported: the AMI and the distribution it
+runs, vCPU and memory, the key pair, the IAM role, security groups, VPC,
+subnet, both addresses, the root device, tenancy, monitoring, IMDSv2 state, CPU
+credit mode and tags. The page never starts, stops or terminates an instance,
+never reads or stores credentials, and the line above CHECK NOW states exactly
+what it runs.
 
 ## Platforms
 
@@ -175,9 +181,14 @@ url = https://your.receiver/hook
 enabled = false
 url = https://relay.example.com
 token = your ingest token
+
+[cloud]
+enabled = true
+identity = auto
 ```
 
-`[cloud]` turns the metadata read and the provider CLI on or off, `[fleet]`
+`[cloud]` turns the metadata read and the provider CLI on or off, and
+`identity = auto` takes the AWS account and region from the CLI login, `[fleet]`
 carries peers, `[overlay]` the strip position, `[alerts]` the monitor thresholds
 and `[theme]` the accent and backdrop. The full key list is in
 [docs/manual.md](docs/manual.md).
@@ -206,6 +217,17 @@ metadata read that the Cloud page documents and can switch off.
 Shared state that outlives a closed laptop: fleet history, rules, paging,
 on call rotas, members and billing. The desktop app is free and not gated, and
 the reporter is off until you enable it. See [docs/remote.md](docs/remote.md).
+</details>
+
+<details>
+<summary><strong>What does the Cloud page need?</strong></summary>
+
+The provider's own CLI, already logged in: `aws login` for a console session,
+or `aws configure` for an IAM user. Six read permissions cover everything it
+asks for, listed in [docs/cloud.md](docs/cloud.md). Crowsnest never reads or
+stores the credentials, and no verb in it starts, stops or terminates an
+instance. A console session expires after a while; running `aws login` again
+restores it.
 </details>
 
 <details>
