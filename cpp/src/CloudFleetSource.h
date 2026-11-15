@@ -98,6 +98,10 @@ QStringList cloudAwsDescribeImagesArguments(const QString &region,
                                             const QStringList &imageIds);
 QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
                                                    const QStringList &types);
+// The root disk is the one spec the console shows beside the instance that the
+// describe-instances answer does not carry (it has the id only).
+QStringList cloudAwsDescribeVolumesArguments(const QString &region,
+                                             const QStringList &volumeIds);
 
 // What "CHECK NOW" runs, in words: every command, how many times, and the two
 // promises (read only; Cost Explorer is not called).

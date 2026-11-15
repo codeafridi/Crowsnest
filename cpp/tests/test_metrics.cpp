@@ -5557,6 +5557,11 @@ int main(int argc, char *argv[]) {
                 "\"CreditSpecification\":{\"CpuCredits\":\"standard\"},"
                 "\"StateTransitionReason\":\"User initiated (2026-11-15 "
                 "06:30:00 GMT)\","
+                "\"PrivateDnsName\":\"ip-172-31-4-9.ap-south-1.compute.internal\","
+                "\"PublicDnsName\":\"ec2-13-244-18-9.ap-south-1.compute.amazonaws.com\","
+                "\"RootDeviceName\":\"/dev/xvda\","
+                "\"BlockDeviceMappings\":[{\"DeviceName\":\"/dev/xvda\","
+                "\"Ebs\":{\"VolumeId\":\"vol-0abc\"}}],"
                 "\"LaunchTime\":\"2026-11-15T06:30:00Z\","
                 "\"Tags\":[{\"Key\":\"Name\",\"Value\":\"sample 1\"}]}]"));
         const CloudFleetInstance &detail = detailed.rows.first();
@@ -5571,7 +5576,12 @@ int main(int argc, char *argv[]) {
                       QStringLiteral("launch-wizard-1 (sg-789)"))
                   && detail.httpTokens == QStringLiteral("required")
                   && detail.creditSpec == QStringLiteral("standard")
-                  && detail.stateReason.startsWith(QStringLiteral("User initiated")),
+                  && detail.stateReason.startsWith(QStringLiteral("User initiated"))
+                  && detail.iamProfileName == QStringLiteral("app")
+                  && detail.privateDns.startsWith(QStringLiteral("ip-172"))
+                  && detail.publicDns.startsWith(QStringLiteral("ec2-13"))
+                  && detail.rootDevice == QStringLiteral("/dev/xvda")
+                  && detail.rootVolumeId == QStringLiteral("vol-0abc"),
               "fleet: describe-instances carries the launch settings");
         const QHash<QString, QString> imageNames = parseAwsImageNames(
             QByteArrayLiteral(
@@ -5589,9 +5599,18 @@ int main(int argc, char *argv[]) {
                   && typeSpecs.value(QStringLiteral("m7g.large"))
                          == QStringLiteral("2 vCPU, 8 GiB"),
               "fleet: the AMI description and the type spec parse");
+        const QHash<QString, QString> volumes = parseAwsVolumeSpecs(
+            QByteArrayLiteral(
+                "[{\"id\":\"vol-0abc\",\"size\":8,\"type\":\"gp3\","
+                "\"iops\":3000}]"));
+        check(volumes.value(QStringLiteral("vol-0abc"))
+                      == QStringLiteral("8 GiB gp3 3000 IOPS")
+                  && parseAwsVolumeSpecs(QByteArrayLiteral("{}")).isEmpty(),
+              "fleet: the root volume's size and type parse");
         CloudFleetInstance enriched = detail;
         enriched.imageName = imageNames.value(QStringLiteral("ami-0abc"));
         enriched.typeSpec = typeSpecs.value(QStringLiteral("t3.micro"));
+        enriched.rootVolume = volumes.value(QStringLiteral("vol-0abc"));
         const QString detailText = fleetInstanceDetailText(enriched);
         check(detailText.contains(QStringLiteral("Ubuntu 22.04 LTS"))
                   && detailText.contains(
@@ -5601,6 +5620,8 @@ int main(int argc, char *argv[]) {
                   && detailText.contains(
                       QStringLiteral("launch-wizard-1 (sg-789)"))
                   && detailText.contains(QStringLiteral("vpc-123"))
+                  && detailText.contains(QStringLiteral("8 GiB gp3 3000 IOPS"))
+                  && detailText.contains(QStringLiteral("ip-172-31-4-9"))
                   && !detailText.contains(QStringLiteral("--")),
               "fleet: the detail pane names the OS, the type spec and the "
               "launch settings");

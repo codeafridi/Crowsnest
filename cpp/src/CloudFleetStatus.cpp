@@ -284,6 +284,30 @@ CloudFleetStatus parseAwsDescribeInstances(const QByteArray &body) {
         row.creditSpec =
             nestedField(object, "CreditSpecification", "CpuCredits");
         row.stateReason = field(object, "StateTransitionReason");
+        row.privateDns = field(object, "PrivateDnsName");
+        row.publicDns = field(object, "PublicDnsName");
+        const int profileAt = row.iamProfile.lastIndexOf(
+            QLatin1Char('/'));
+        if (profileAt >= 0) {
+            row.iamProfileName = row.iamProfile.mid(profileAt + 1);
+        }
+        row.rootDevice = field(object, "RootDeviceName");
+        const QJsonArray mappings =
+            object.value(QStringLiteral("BlockDeviceMappings")).toArray();
+        for (const QJsonValue &value : mappings) {
+            const QJsonObject mapping = value.toObject();
+            const QString device = field(mapping, "DeviceName");
+            if (!row.rootDevice.isEmpty() && device != row.rootDevice) {
+                continue;
+            }
+            row.rootVolumeId = nestedField(mapping, "Ebs", "VolumeId");
+            if (!row.rootVolumeId.isEmpty()) {
+                if (row.rootDevice.isEmpty()) {
+                    row.rootDevice = device;
+                }
+                break;
+            }
+        }
         if (row.rawState.isEmpty()) {
             row.rawState = QStringLiteral("unknown");
         }
@@ -771,6 +795,54 @@ QHash<QString, QString> parseAwsInstanceTypeSpecs(const QByteArray &body) {
     return specs;
 }
 
+QHash<QString, QString> parseAwsVolumeSpecs(const QByteArray &body) {
+    QHash<QString, QString> specs;
+    const QJsonDocument document = QJsonDocument::fromJson(body);
+    QJsonArray volumes;
+    if (document.isArray()) {
+        volumes = document.array();
+    } else if (document.isObject()) {
+        volumes =
+            document.object().value(QStringLiteral("Volumes")).toArray();
+    }
+    for (const QJsonValue &value : volumes) {
+        const QJsonObject object = value.toObject();
+        QString id = field(object, "VolumeId");
+        if (id.isEmpty()) {
+            id = field(object, "id");
+        }
+        if (id.isEmpty()) {
+            continue;
+        }
+        qint64 size = qint64(object.value(QStringLiteral("Size")).toDouble());
+        if (size <= 0) {
+            size = qint64(object.value(QStringLiteral("size")).toDouble());
+        }
+        QString type = field(object, "VolumeType");
+        if (type.isEmpty()) {
+            type = field(object, "type");
+        }
+        qint64 iops = qint64(object.value(QStringLiteral("Iops")).toDouble());
+        if (iops <= 0) {
+            iops = qint64(object.value(QStringLiteral("iops")).toDouble());
+        }
+        QStringList parts;
+        if (size > 0) {
+            parts.append(QStringLiteral("%1 GiB").arg(size));
+        }
+        if (!type.isEmpty()) {
+            parts.append(type);
+        }
+        if (iops > 0) {
+            parts.append(QStringLiteral("%1 IOPS").arg(iops));
+        }
+        if (!parts.isEmpty()) {
+            specs.insert(id, parts.join(QLatin1Char(' ')));
+        }
+    }
+    return specs;
+}
+
 QString fleetInstanceDetailText(const CloudFleetInstance &row) {
     QStringList lines;
     const auto add = [&lines](const QString &label, const QString &value) {
@@ -823,14 +895,24 @@ QString fleetInstanceDetailText(const CloudFleetInstance &row) {
         }
     }
     add(QStringLiteral("platform"), platform);
-    if (!row.rootDeviceType.isEmpty()) {
-        add(QStringLiteral("root"), row.rootDeviceType);
+    if (!row.rootDeviceType.isEmpty() || !row.rootVolume.isEmpty()) {
+        QString root = row.rootDevice;
+        if (!row.rootVolumeId.isEmpty() && !root.isEmpty()) {
+            root += QStringLiteral("  ");
+        }
+        root += row.rootVolume;
+        if (!row.rootDeviceType.isEmpty()) {
+            root += root.isEmpty() ? QStringLiteral("ebs")
+                                   : QStringLiteral(" %1").arg(row.rootDeviceType);
+        }
+        add(QStringLiteral("root"), root.simplified());
     }
     add(QStringLiteral("reason"), row.stateReason);
     lines.append(QString());
 
     add(QStringLiteral("key"), row.keyName);
-    add(QStringLiteral("iam"), row.iamProfile);
+    add(QStringLiteral("iam"),
+        row.iamProfileName.isEmpty() ? row.iamProfile : row.iamProfileName);
     add(QStringLiteral("security"), row.securityGroups.join(QStringLiteral(", ")));
     lines.append(QString());
 
@@ -838,6 +920,8 @@ QString fleetInstanceDetailText(const CloudFleetInstance &row) {
     add(QStringLiteral("subnet"), row.subnetId);
     add(QStringLiteral("private"), row.privateIp);
     add(QStringLiteral("public"), row.publicIp);
+    add(QStringLiteral("dns"), row.privateDns);
+    add(QStringLiteral("public dns"), row.publicDns);
     lines.append(QString());
 
     add(QStringLiteral("tenancy"), row.tenancy);

@@ -1914,6 +1914,11 @@ int main(int argc, char *argv[]) {
     fleetSelf.tenancy = QStringLiteral("default");
     fleetSelf.httpTokens = QStringLiteral("required");
     fleetSelf.rootDeviceType = QStringLiteral("ebs");
+    fleetSelf.rootDevice = QStringLiteral("/dev/xvda");
+    fleetSelf.rootVolumeId = QStringLiteral("vol-0abc");
+    fleetSelf.rootVolume = QStringLiteral("8 GiB gp3");
+    fleetSelf.privateDns = QStringLiteral("ip-10-0-3-17.eu-west-1.compute.internal");
+    fleetSelf.iamProfileName = QStringLiteral("hud");
     CloudFleetInstance fleetWeb;
     fleetWeb.instanceId = QStringLiteral("i-0feedface");
     fleetWeb.name = QStringLiteral("web-2");
@@ -2158,7 +2163,11 @@ int main(int argc, char *argv[]) {
               && cloudFleetDetail->text().contains(
                   QStringLiteral("8 vCPU, 16 GiB"))
               && cloudFleetDetail->text().contains(QStringLiteral("hud-key"))
-              && cloudFleetDetail->text().contains(QStringLiteral("required")),
+              && cloudFleetDetail->text().contains(QStringLiteral("required"))
+              && cloudFleetDetail->text().contains(
+                  QStringLiteral("8 GiB gp3 ebs"))
+              && cloudFleetDetail->text().contains(
+                  QStringLiteral("ip-10-0-3-17")),
           "cloud fleet detail names the OS, the type spec and the settings");
     {
         // Selecting another row must describe that row, not the self row.

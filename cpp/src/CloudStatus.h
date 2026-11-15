@@ -116,6 +116,14 @@ struct CloudFleetInstance {
     QString creditSpec;
     QString stateReason;
     QString typeSpec;           // "2 vCPU, 1 GiB" from describe-instance-types
+    // What the console shows beside the instance: its DNS names, the IAM role
+    // *name* rather than the ARN, and the root disk.
+    QString privateDns;
+    QString publicDns;
+    QString iamProfileName;
+    QString rootDevice;         // /dev/xvda
+    QString rootVolumeId;       // vol-...
+    QString rootVolume;         // "8 GiB gp3"
 };
 
 struct CloudFleetStatus {
@@ -400,6 +408,8 @@ QString fleetInstanceDetailText(const CloudFleetInstance &row);
 // and cached, so a second listing costs none.
 QHash<QString, QString> parseAwsImageNames(const QByteArray &body);
 QHash<QString, QString> parseAwsInstanceTypeSpecs(const QByteArray &body);
+// Volume id -> "8 GiB gp3" (size, type, and the IOPS when provisioned).
+QHash<QString, QString> parseAwsVolumeSpecs(const QByteArray &body);
 QString fleetDisabledText();
 QString fleetNoProviderText();
 QString fleetCliMissingText(const QString &cli);

@@ -224,6 +224,24 @@ QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
     return args;
 }
 
+QStringList cloudAwsDescribeVolumesArguments(const QString &region,
+                                             const QStringList &volumeIds) {
+    QStringList args;
+    args << QStringLiteral("ec2") << QStringLiteral("describe-volumes")
+         << QStringLiteral("--output") << QStringLiteral("json");
+    if (!region.isEmpty()) {
+        args << QStringLiteral("--region") << region;
+    }
+    args << QStringLiteral("--volume-ids");
+    for (const QString &id : volumeIds) {
+        args << id;
+    }
+    args << QStringLiteral("--query")
+         << QStringLiteral("Volumes[].{id:VolumeId,size:Size,"
+                           "type:VolumeType,iops:Iops}");
+    return args;
+}
+
 QString cloudFleetScope(const CloudIdentity &identity) {
     switch (identity.provider) {
     case CloudProvider::Aws:
@@ -341,8 +359,11 @@ public:
         lastKnownCheckMs = 0;
         imageNames.clear();
         typeSpecs.clear();
+        volumeSpecs.clear();
         imageIdsByRegion.clear();
+        volumeIdsByRegion.clear();
         pendingImageRegions.clear();
+        pendingVolumeRegions.clear();
         pendingTypes.clear();
         startedAtMs = 0;
         wallStartedAtMs = 0;
@@ -397,7 +418,9 @@ public:
         baseRows.clear();
         okRegions.clear();
         imageIdsByRegion.clear();
+        volumeIdsByRegion.clear();
         pendingImageRegions.clear();
+        pendingVolumeRegions.clear();
         pendingTypes.clear();
         startedAtMs = nowMs;
         wallStartedAtMs = QDateTime::currentMSecsSinceEpoch();
@@ -718,6 +741,14 @@ public:
             applyDetails();
             return;
         }
+        if (job.stage == QLatin1String("volumes")) {
+            const QHash<QString, QString> specs = parseAwsVolumeSpecs(out);
+            for (auto it = specs.constBegin(); it != specs.constEnd(); ++it) {
+                volumeSpecs.insert(it.key(), it.value());
+            }
+            applyDetails();
+            return;
+        }
         if (job.stage == QLatin1String("types")) {
             const QHash<QString, QString> specs =
                 parseAwsInstanceTypeSpecs(out);
@@ -832,7 +863,9 @@ public:
 
     void buildDetailPlan() {
         imageIdsByRegion.clear();
+        volumeIdsByRegion.clear();
         pendingImageRegions.clear();
+        pendingVolumeRegions.clear();
         pendingTypes.clear();
         if (identity.provider != CloudProvider::Aws) {
             return;
@@ -844,7 +877,16 @@ public:
                     ids.append(row.imageId);
                 }
             }
+            if (!row.rootVolumeId.isEmpty() &&
+                !volumeSpecs.contains(row.rootVolumeId)) {
+                QStringList &ids = volumeIdsByRegion[row.region];
+                if (!ids.contains(row.rootVolumeId)) {
+                    ids.append(row.rootVolumeId);
+                }
+            }
         }
+        pendingVolumeRegions = volumeIdsByRegion.keys();
+        std::sort(pendingVolumeRegions.begin(), pendingVolumeRegions.end());
         pendingImageRegions = imageIdsByRegion.keys();
         std::sort(pendingImageRegions.begin(), pendingImageRegions.end());
         for (const CloudFleetInstance &row : rows) {
@@ -879,6 +921,15 @@ public:
             startJob(QStringLiteral("images"), region,
                      cloudAwsDescribeImagesArguments(region, ids), nowMs);
         }
+        while (jobs.size() < limit && !pendingVolumeRegions.isEmpty()) {
+            const QString region = pendingVolumeRegions.takeFirst();
+            const QStringList ids = volumeIdsByRegion.value(region);
+            if (ids.isEmpty()) {
+                continue;
+            }
+            startJob(QStringLiteral("volumes"), region,
+                     cloudAwsDescribeVolumesArguments(region, ids), nowMs);
+        }
     }
 
     void applyDetails() {
@@ -893,6 +944,12 @@ public:
                 const auto it = typeSpecs.constFind(row.instanceType);
                 if (it != typeSpecs.constEnd()) {
                     row.typeSpec = it.value();
+                }
+            }
+            if (row.rootVolume.isEmpty()) {
+                const auto it = volumeSpecs.constFind(row.rootVolumeId);
+                if (it != volumeSpecs.constEnd()) {
+                    row.rootVolume = it.value();
                 }
             }
         }
@@ -944,7 +1001,8 @@ public:
             noteRegionsFailure(note, nowMs);
             return;
         }
-        if (stage == QLatin1String("images") || stage == QLatin1String("types")) {
+        if (stage == QLatin1String("images") || stage == QLatin1String("types") ||
+            stage == QLatin1String("volumes")) {
             // Enrichment only: the listing itself succeeded, so a refused
             // describe-images must not make the account look broken.
             return;
@@ -1076,8 +1134,11 @@ public:
     // second listing of the same account costs no enrichment call at all.
     QHash<QString, QString> imageNames;
     QHash<QString, QString> typeSpecs;
+    QHash<QString, QString> volumeSpecs;
     QHash<QString, QStringList> imageIdsByRegion;
+    QHash<QString, QStringList> volumeIdsByRegion;
     QStringList pendingImageRegions;
+    QStringList pendingVolumeRegions;
     QStringList pendingTypes;
     QList<FleetJob> jobs;
     FleetPhase phase = FleetPhase::Idle;
