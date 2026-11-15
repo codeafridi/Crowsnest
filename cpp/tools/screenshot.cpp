@@ -942,6 +942,8 @@ int main(int argc, char *argv[]) {
                 alert.severity = sev;
                 alert.value = value;
                 alert.atMs = baseMs + tick * 2000;
+                alert.runbook = QStringLiteral("https://runbooks.example.com/%1")
+                                    .arg(id);
                 list.append(alert);
             };
             if (tick >= 30 && !(tick >= 170 && tick < 190)) {

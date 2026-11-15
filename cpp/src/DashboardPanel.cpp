@@ -1442,6 +1442,8 @@ QWidget *DashboardPanel::buildAlertsView() {
     m_alerts->setObjectName(QStringLiteral("ddAlerts"));
     m_alerts->setFont(monoFont(11));
     m_alerts->setWordWrap(false);
+    // A monitor's runbook is a link on its row; clicking opens it.
+    m_alerts->setOpenExternalLinks(true);
 
     layout->addWidget(makeBanner(QStringLiteral("ACTIVE ALERTS"),
         ui_theme::accent(), view));
@@ -8425,8 +8427,14 @@ void DashboardPanel::setAlerts(const QList<Alert> &alerts) {
                              "[silenced %2]</span>")
                   .arg(ui_theme::muted(),
                        formatSilenceRemaining(silence->endsAtMs - silenceNow));
-        text += QStringLiteral("%1 %2&nbsp;&nbsp;%3%4<br/>")
-                    .arg(marker, alert.title, alert.detail, quiet);
+        const QString runbook =
+            alert.runbook.isEmpty()
+                ? QString()
+                : QStringLiteral("&nbsp;&nbsp;<a href=\"%1\" "
+                                 "style=\"color:%2;\">runbook</a>")
+                      .arg(alert.runbook.toHtmlEscaped(), ui_theme::accent());
+        text += QStringLiteral("%1 %2&nbsp;&nbsp;%3%5%4<br/>")
+                    .arg(marker, alert.title, alert.detail, quiet, runbook);
     }
     m_alerts->setText(text);
 }

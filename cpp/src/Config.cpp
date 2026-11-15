@@ -244,6 +244,14 @@ Config loadConfig(const QString &path, QString *errorMessage) {
                     rule.group = group;
                 }
             }
+            const QString runbookKey = rule.id + QStringLiteral("_runbook");
+            if (settings.contains(runbookKey)) {
+                const QString runbook =
+                    settings.value(runbookKey).toString().trimmed();
+                if (runbook.size() <= 512) {
+                    rule.runbook = runbook;
+                }
+            }
             const QString ownerKey = rule.id + QStringLiteral("_owner");
             if (settings.contains(ownerKey)) {
                 const QString owner =
@@ -853,6 +861,7 @@ void saveAlertOverrides(const QString &path,
         // survives a restart (the editors only touch threshold/cycles).
         settings.setValue(rule.id + QStringLiteral("_group"), rule.group);
         settings.setValue(rule.id + QStringLiteral("_owner"), rule.owner);
+        settings.setValue(rule.id + QStringLiteral("_runbook"), rule.runbook);
         settings.setValue(rule.id + QStringLiteral("_group_wait_s"),
                           static_cast<double>(rule.groupWaitMs) / 1000.0);
         settings.setValue(rule.id + QStringLiteral("_repeat_s"),

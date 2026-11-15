@@ -1173,6 +1173,7 @@ void HudWindow::setMonitors(const QList<AlertRule> &rules) {
         m_alerts.setRuleSustained(rule.id, rule.sustained);
         m_alerts.setRuleCorrelation(rule.id, rule.group, rule.owner,
                                     rule.groupWaitMs, rule.repeatIntervalMs);
+        m_alerts.setRuleRunbook(rule.id, rule.runbook);
     }
     if (m_panel != nullptr) {
         m_panel->setMonitors(rules);

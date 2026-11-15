@@ -52,6 +52,7 @@ WebhookEvent eventFor(const Alert &alert, const QString &status,
     event.status = status;
     event.group = alert.group.isEmpty() ? alert.id : alert.group;
     event.owner = alert.owner;
+    event.runbook = alert.runbook;
     event.startsAtMs = startsAtMs > 0 ? startsAtMs : alert.atMs;
     event.endsAtMs = endsAtMs;
     return event;
@@ -90,6 +91,9 @@ QByteArray alertmanagerWebhookPayload(const QList<WebhookEvent> &events) {
         QJsonObject annotations{
             {QStringLiteral("summary"), event.title},
             {QStringLiteral("description"), event.detail}};
+        if (!event.runbook.isEmpty()) {
+            annotations.insert(QStringLiteral("runbook"), event.runbook);
+        }
         QJsonObject alert{
             {QStringLiteral("status"), event.status},
             {QStringLiteral("labels"), labels},
@@ -163,6 +167,12 @@ QByteArray slackWebhookPayload(const QList<WebhookEvent> &events) {
             QJsonObject{{QStringLiteral("title"), QStringLiteral("group")},
                         {QStringLiteral("value"), event.group},
                         {QStringLiteral("short"), true}}};
+        if (!event.runbook.isEmpty()) {
+            fields.append(QJsonObject{
+                {QStringLiteral("title"), QStringLiteral("runbook")},
+                {QStringLiteral("value"), event.runbook},
+                {QStringLiteral("short"), true}});
+        }
         QJsonObject attachment{
             {QStringLiteral("fallback"),
              QStringLiteral("%1 [%2]").arg(event.title, event.status)},
@@ -287,6 +297,9 @@ QString webhookMessageText(const QList<WebhookEvent> &events) {
                                 event.detail);
         if (!event.group.isEmpty()) {
             line += QStringLiteral(" (%1)").arg(event.group);
+        }
+        if (!event.runbook.isEmpty()) {
+            line += QStringLiteral("\nrunbook: %1").arg(event.runbook);
         }
         if (lines.join(QLatin1Char('\n')).size() + line.size() > 1800) {
             break;

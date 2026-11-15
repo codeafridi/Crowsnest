@@ -187,6 +187,7 @@ int main(int argc, char *argv[]) {
             "[alerts]\n"
             "app_cpu_group=edge\n"
             "app_cpu_owner=alice\n"
+            "app_cpu_runbook=https://runbooks.test/host-cpu\n"
             "app_cpu_group_wait_s=3\n"
             "app_cpu_repeat_s=45\n"
             "host_cpu_repeat_s=1\n"
@@ -226,7 +227,9 @@ int main(int argc, char *argv[]) {
             if (rule.id == QStringLiteral("app_cpu")) {
                 kept = rule.group == QStringLiteral("edge")
                        && rule.owner == QStringLiteral("alice")
-                       && rule.repeatIntervalMs == 45000;
+                       && rule.repeatIntervalMs == 45000
+                       && rule.runbook
+                              == QStringLiteral("https://runbooks.test/host-cpu");
             }
         }
 

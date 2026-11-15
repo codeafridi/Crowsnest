@@ -443,6 +443,27 @@ int main(int argc, char *argv[]) {
               "alert: a small bill stays quiet");
     }
 
+    // A runbook is what to do next: the rule carries it, the alert carries it,
+    // and every outbound payload names it.
+    {
+        AlertEngine runbookEngine;
+        check(runbookEngine.setRuleRunbook(
+                  QStringLiteral("host_cpu"),
+                  QStringLiteral("https://runbooks.test/host-cpu")),
+              "alert: a runbook attaches to a rule");
+        AlertInput hot;
+        hot.hostCpuValid = true;
+        hot.hostCpu = 97.0;
+        QList<Alert> fired;
+        for (int i = 0; i < 5; ++i) {
+            fired = runbookEngine.update(hot, 100 + i);
+        }
+        check(fired.size() == 1
+                  && fired.first().runbook
+                         == QStringLiteral("https://runbooks.test/host-cpu"),
+              "alert: the runbook reaches the alert");
+    }
+
     engine.reset();
     AlertInput memInput;
     memInput.hostMemValid = true;
@@ -2676,6 +2697,53 @@ int main(int argc, char *argv[]) {
                   && annotations.value(QStringLiteral("description")).toString()
                          == firing.detail,
               "webhook: annotations summary/description");
+
+        // A runbook travels with the event: annotations in v4, a field in
+        // slack, a line in the chat message.
+        {
+            WebhookEvent withRunbook = firing;
+            withRunbook.runbook = QStringLiteral("https://runbooks.test/x");
+            const QJsonObject annotated =
+                QJsonDocument::fromJson(
+                    alertmanagerWebhookPayload({withRunbook}))
+                    .object()
+                    .value(QStringLiteral("alerts"))
+                    .toArray()
+                    .first()
+                    .toObject()
+                    .value(QStringLiteral("annotations"))
+                    .toObject();
+            check(annotated.value(QStringLiteral("runbook")).toString()
+                      == QStringLiteral("https://runbooks.test/x"),
+                  "webhook: v4 annotations carry the runbook");
+
+            const QJsonArray slackAlerts =
+                QJsonDocument::fromJson(slackWebhookPayload({withRunbook}))
+                    .object()
+                    .value(QStringLiteral("attachments"))
+                    .toArray()
+                    .first()
+                    .toObject()
+                    .value(QStringLiteral("fields"))
+                    .toArray();
+            bool slackRunbook = false;
+            for (const QJsonValue &field : slackAlerts) {
+                if (field.toObject().value(QStringLiteral("title")).toString()
+                        == QStringLiteral("runbook")
+                    && field.toObject().value(QStringLiteral("value")).toString()
+                           == QStringLiteral("https://runbooks.test/x")) {
+                    slackRunbook = true;
+                }
+            }
+            check(slackRunbook, "webhook: slack carries a runbook field");
+
+            const QString message =
+                QString::fromUtf8(webhookPayload(WebhookFormat::Ntfy,
+                                                 {withRunbook}));
+            check(message.contains(
+                      QStringLiteral("runbook: https://runbooks.test/x")),
+                  "webhook: the chat message names the runbook");
+        }
         check(alert.value(QStringLiteral("startsAt")).toString()
                   == QStringLiteral("2023-11-14T22:13:20Z"),
               "webhook: startsAt ISO");

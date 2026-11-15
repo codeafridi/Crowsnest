@@ -21,6 +21,9 @@ struct AlertRule {
     // for a new group, then re-notify a still-firing group only this often.
     qint64 groupWaitMs = 5000;
     qint64 repeatIntervalMs = 300000;
+    // What to do about it. Carried into the alert row and into every outbound
+    // payload, so a pager or a chat message names the page to open.
+    QString runbook;
 };
 
 struct Alert {
@@ -35,6 +38,7 @@ struct Alert {
     // it - the receiver groups and routes the same way the console does.
     QString group;
     QString owner;
+    QString runbook;
 };
 
 // Latest observed values, assembled from the app/host/services/journal snapshots.
@@ -88,6 +92,8 @@ public:
     QList<AlertRule> rules() const { return m_rules; }
     bool setRuleThreshold(const QString &id, double threshold);
     bool setRuleSustained(const QString &id, int sustained);
+    // The runbook link shown on the alert row and sent with the payload.
+    bool setRuleRunbook(const QString &id, const QString &runbook);
     // M87: the correlated identity of a rule - fold key, owner, and the
     // Alertmanager cadence. Kept separate from the threshold editors so a
     // config load never clobbers a live edit and vice versa.

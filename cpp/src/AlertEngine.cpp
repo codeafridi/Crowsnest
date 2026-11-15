@@ -67,6 +67,7 @@ Alert makeAlert(const AlertRule &rule, double value, qint64 nowMs) {
     alert.atMs = nowMs;
     alert.group = rule.group;
     alert.owner = rule.owner;
+    alert.runbook = rule.runbook;
     // Money reads with cents; everything else with one decimal.
     const int decimals =
         rule.unit == QStringLiteral(" USD") ? 2 : 1;
@@ -218,6 +219,16 @@ bool AlertEngine::setRuleCorrelation(const QString &id, const QString &group,
             rule.repeatIntervalMs = repeatIntervalMs;
         }
         return true;
+    }
+    return false;
+}
+
+bool AlertEngine::setRuleRunbook(const QString &id, const QString &runbook) {
+    for (AlertRule &rule : m_rules) {
+        if (rule.id == id) {
+            rule.runbook = runbook.trimmed();
+            return true;
+        }
     }
     return false;
 }

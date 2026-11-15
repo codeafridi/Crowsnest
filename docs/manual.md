@@ -738,6 +738,18 @@ target (a Telegram bot token is printed as `bot<token>`), the last delivery
 result, and a **SEND TEST** button that sends one synthetic alert so a wrong
 url or token is found before an incident is.
 
+**Runbooks.** Any monitor can carry a link to what to do about it:
+
+```ini
+[alerts]
+host_cpu_runbook = https://wiki.example.com/runbooks/host-cpu
+```
+
+It renders as a `runbook` link on the alert row (clicking opens it) and travels
+with every outbound payload: `annotations.runbook` in the Alertmanager v4 body,
+a `runbook` field in the Slack attachment, and a `runbook:` line in the ntfy,
+Discord, Teams and Telegram message.
+
 **Process / unit / container actions** — on by default, and refused loudly
 rather than silently when a permission or an OS does not allow a verb. Every
 verb is available from the page that shows the target: the **Processes** page

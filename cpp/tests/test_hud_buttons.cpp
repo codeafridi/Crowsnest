@@ -2758,6 +2758,18 @@ int main(int argc, char *argv[]) {
                   && alertsText->text().contains(QStringLiteral("#d1685f")),
               "alert severity marker colorized");
 
+        {
+            // A monitor's runbook is a link on the alert row.
+            Alert linked = richAlerts.first();
+            linked.runbook = QStringLiteral("https://runbooks.test/host-cpu");
+            panel->setAlerts({linked});
+            check(alertsText->text().contains(
+                      QStringLiteral("href=\"https://runbooks.test/host-cpu\""))
+                      && alertsText->text().contains(QStringLiteral("runbook")),
+                  "alert row carries the runbook link");
+            panel->setAlerts(richAlerts);
+        }
+
 
         QString generalText;
         QList<QPushButton *> exportButtons;
