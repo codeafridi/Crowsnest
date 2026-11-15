@@ -6326,6 +6326,15 @@ int main(int argc, char *argv[]) {
                       && fan.identitySource
                              == QStringLiteral("aws sts get-caller-identity"),
                   "aws: the CLI names the account and the home region");
+            if (fan.rows.size() != 2 || fan.regions.size() != 2) {
+                std::printf("DEBUG fan rows=%d regions=%d failed=%d note=%s\n",
+                            int(fan.rows.size()), int(fan.regions.size()),
+                            int(fan.regionFailures.size()),
+                            qUtf8Printable(fan.note));
+                for (const QString &line : fanCalls) {
+                    std::printf("DEBUG call: %s\n", qUtf8Printable(line));
+                }
+            }
             check(fanCalls.size() == 6
                       && fanCalls.at(0)
                              == QStringLiteral(
