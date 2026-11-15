@@ -66,6 +66,37 @@ On GNOME or KDE, enable the focus bridge once so the HUD can see the active
 window. [docs/manual.md](docs/manual.md) has the command for both desktops.
 Everything else works without it.
 
+### What the installer does, and how to check it first
+
+The one-liner is a shell script you can read before running it, and it can
+show its plan or prove its download without installing anything:
+
+```sh
+sh install.sh --dry-run   # every path it would write, nothing is touched
+sh install.sh --verify    # download + sha256 against the release manifest
+```
+
+`--dry-run` prints the platform, the download URL, the install directory, the
+command path, the service file and what `uninstall` would remove. It
+downloads nothing and changes nothing. `--verify` fetches the artifact that
+would be installed, hashes it, compares it with the release's `SHA256SUMS`
+(or the per-asset `.sha256` sidecar on macOS and Windows), and installs
+nothing. The checksum proves the bytes are the published bytes; it cannot
+prove who published them, because the releases are not code-signed.
+
+On Linux **no root is needed**: the app goes to `~/.local/opt/crowsnest`, the
+command to `~/.local/bin/crowsnest`, the user unit to
+`~/.config/systemd/user/`, and the autostart entry to `~/.config/autostart/`
+only when you pass `--autostart`. Your `~/.config/crowsnest/` is never
+written by the installer. macOS uses `sudo` only to write `/Applications` and
+`/usr/local/bin` (it falls back to `~/Applications` and a direct bundle path
+without admin rights). Windows writes `%LOCALAPPDATA%\Crowsnest`, two shims
+in `%LOCALAPPDATA%\Microsoft\WindowsApps`, and a `HKCU` Run value only with
+`-Autostart`.
+
+Nothing starts by itself: the installer leaves the HUD stopped, and
+`crowsnest uninstall` reverses every one of those writes.
+
 ## Capabilities
 
 The console has 34 pages, in rail order: Overview, Metrics, Alerts, Incidents,

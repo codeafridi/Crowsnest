@@ -791,6 +791,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sh -n install.sh
+          # Trust verbs first: the plan names every path and changes nothing,
+          # and verify downloads + hashes the SAME artifact the install will
+          # use (here the job's own bundle), then installs nothing.
+          sh install.sh --dry-run 2>&1 | tee "${RUNNER_TEMP}/plan.txt"
+          grep -q "install dir" "${RUNNER_TEMP}/plan.txt"
+          test ! -d "$HOME/.local/opt/crowsnest"
           # Smoke the installer against THIS job's binary, not a published
           # release: the rename means no Crowsnest release exists yet, and an
           # old bundle would install the old brand under the new paths. The
@@ -805,6 +811,14 @@ jobs:
           chmod +x "$bundle/run.sh"
           tar -C "$bundle" -czf "${RUNNER_TEMP}/crowsnest-portable.tar.gz" .
           export CROWSNEST_BUNDLE_URL="file://${RUNNER_TEMP}/crowsnest-portable.tar.gz"
+          # A local manifest with the bundle's own hash, so verify runs against
+          # bytes it can actually read in CI.
+          ( cd "${RUNNER_TEMP}" && sha256sum crowsnest-portable.tar.gz \
+              > SHA256SUMS )
+          export CROWSNEST_SUMS_URL="file://${RUNNER_TEMP}/SHA256SUMS"
+          sh install.sh --verify 2>&1 | tee "${RUNNER_TEMP}/verify.txt"
+          grep -q "verified: crowsnest-portable.tar.gz" "${RUNNER_TEMP}/verify.txt"
+          test ! -d "$HOME/.local/opt/crowsnest"
           sh install.sh --no-bridge --no-autostart
           test -x "$HOME/.local/opt/crowsnest/crowsnest"
           test -x "$HOME/.local/bin/crowsnest"

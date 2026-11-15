@@ -92,6 +92,40 @@ only tried after the native tools.
   Or from Git Bash with the same `install.sh` as macOS/Linux. Or run
   the MSI from the [releases](../../releases) page instead.
 
+### Check before you install
+
+The installer is a script you can read, and it can show its plan or prove its
+download without installing anything:
+
+```sh
+sh install.sh --dry-run     # every path it would write; touches nothing
+sh install.sh --verify      # download + sha256 against the release manifest
+```
+
+```powershell
+./install.ps1 -DryRun       # prints the plan, creates nothing
+./install.ps1 -Verify       # download + Get-FileHash against the .sha256 sidecar
+```
+
+`--dry-run` / `-DryRun` prints the platform, the download URL, the install
+directory, the command path, the service/autostart target and what `uninstall`
+removes. `--verify` / `-Verify` downloads the artifact that would be
+installed, hashes it, compares it with the release's `SHA256SUMS` (or the
+per-asset `.sha256` sidecar), prints both digests on a mismatch and installs
+nothing. **The checksum proves the bytes are the published bytes; it cannot
+prove who published them — the releases are not code-signed.**
+
+What is written, exactly (nothing else): on Linux the app under
+`~/.local/opt/crowsnest`, the command in `~/.local/bin`, the user unit under
+`~/.config/systemd/user/`, the XDG autostart entry under `~/.config/autostart/`
+(only with `--autostart`) and the focus bridge when the desktop needs one —
+**no root, and `~/.config/crowsnest/` is never touched**. macOS uses `sudo`
+only for `/Applications` and `/usr/local/bin`, falling back to
+`~/Applications` without admin rights. Windows writes
+`%LOCALAPPDATA%\Crowsnest`, two shims in
+`%LOCALAPPDATA%\Microsoft\WindowsApps` and a `HKCU` Run value (only with
+`-Autostart`). `crowsnest uninstall` reverses every one of those writes.
+
 Control it (Linux verbs below; macOS uses the launchctl verb set, Windows
 autostart/status are `--autostart=on|off|status` — run the installer with
 `-h` to print the per-OS cheat sheet):

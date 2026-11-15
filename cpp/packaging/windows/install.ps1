@@ -8,8 +8,11 @@
 #   $env:CROWSNEST_AUTOSTART='1';    irm ... | iex   start the HUD now and at login
 #   $env:CROWSNEST_NO_AUTOSTART='1'; irm ... | iex   (accepted, no effect - default is off)
 #   $env:CROWSNEST_WIN_URL='<zip>';  irm ... | iex
+#   $env:CROWSNEST_DRY_RUN='1';      irm ... | iex   print the plan, change nothing
+#   $env:CROWSNEST_VERIFY='1';       irm ... | iex   download + sha256, install nothing
 # Direct invocation takes the same options as parameters:
-#   ./install.ps1 [-Uninstall] [-Autostart] [-NoAutostart] [-Url <zip url>]
+#   ./install.ps1 [-Uninstall] [-Autostart] [-NoAutostart] [-DryRun] [-Verify]
+#                 [-Url <zip url>]
 #
 # Installs the app and the `crowsnest` command. Nothing starts automatically:
 # run `crowsnest` after installing, or pass -Autostart to start the HUD now
@@ -23,6 +26,8 @@ param(
     [switch]$Uninstall,
     [switch]$Autostart,
     [switch]$NoAutostart,
+    [switch]$DryRun,
+    [switch]$Verify,
     [string]$Url
 )
 
@@ -41,6 +46,8 @@ function Die([string]$msg) { throw "error: $msg" }
 if ($env:CROWSNEST_UNINSTALL) { $Uninstall = $true }
 if ($env:CROWSNEST_AUTOSTART) { $Autostart = $true }
 if ($env:CROWSNEST_NO_AUTOSTART) { $NoAutostart = $true }
+if ($env:CROWSNEST_DRY_RUN) { $DryRun = $true }
+if ($env:CROWSNEST_VERIFY) { $Verify = $true }
 
 function Format-Bytes([long]$n) {
     if ($n -ge 1GB) { return '{0:F1} GB' -f ($n / 1GB) }
@@ -156,6 +163,106 @@ function ZipUrl {
     return "https://github.com/$Repo/releases/download/$tag/Crowsnest-$ver-windows-portable.zip"
 }
 
+# --- install trust ---------------------------------------------------------
+# The same two verbs the shell installer carries: print the plan, or prove the
+# download's checksum, without installing anything.
+function Show-Plan {
+    $zip = if ($env:CROWSNEST_WIN_URL) { $env:CROWSNEST_WIN_URL }
+           elseif ($Url) { $Url }
+           else { "https://github.com/$Repo/releases/latest/download/Crowsnest-<version>-windows-portable.zip" }
+    $auto = if ($Autostart) { 'start now and at login' }
+            else { 'off (pass -Autostart to start now and at login)' }
+    Info 'Crowsnest installer plan (dry run - nothing was changed)'
+    Info ''
+    Info '  platform     windows'
+    Info "  autostart    $auto"
+    Info "  download     $zip"
+    Info "  install dir  $AppDir"
+    Info "  command      $(Join-Path $ShimDir 'crowsnest.cmd') and an extensionless shim"
+    Info '  login start  HKCU Run "Crowsnest"  (only with -Autostart)'
+    Info "  removal      uninstall removes the app, both shims and the Run value"
+    Info ''
+    Info 'Nothing is downloaded, and no file, registry value or PATH entry is'
+    Info 'touched. Run it without -DryRun to install, or with -Verify to check'
+    Info "the download's sha256 without installing."
+}
+
+function Get-Sha256([string]$Path) {
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLower()
+}
+
+function Test-Artifact {
+    param([string]$Zip)
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("crowsnest-verify-" + [guid]::NewGuid())
+    $null = New-Item -ItemType Directory -Path $tmp -Force
+    $code = 1
+    try {
+        $name = [IO.Path]::GetFileName(($Zip -split '\?')[0])
+        if (-not $name) { $name = 'Crowsnest-windows-portable.zip' }
+        $dest = Join-Path $tmp $name
+        Info "Verifying $name"
+        Info "  from $Zip"
+        DownloadWithProgress -Source $Zip -Dest $dest
+        $actual = Get-Sha256 $dest
+        Info "  sha256 $actual"
+        $sumsUrl = if ($env:CROWSNEST_SUMS_URL) { $env:CROWSNEST_SUMS_URL } else { "$Zip.sha256" }
+        $sums = Join-Path $tmp 'sums.txt'
+        $haveSums = $true
+        try {
+            DownloadWithProgress -Source $sumsUrl -Dest $sums
+        } catch {
+            $haveSums = $false
+        }
+        if ($haveSums) {
+            $expected = $null
+            foreach ($line in Get-Content -LiteralPath $sums) {
+                if ($line -match '^[* ]*([0-9a-fA-F]{64})(\s+\*?(.+))?$') {
+                    if (-not $Matches[3] -or $Matches[3].Trim() -eq $name) {
+                        $expected = $Matches[1].ToLower()
+                        break
+                    }
+                }
+            }
+            if (-not $expected) {
+                Info ''
+                Info "The manifest at $sumsUrl does not name $name."
+                Info 'Nothing was installed.'
+            } elseif ($actual -eq $expected) {
+                Info ''
+                Info "verified: $name matches the release manifest"
+                Info 'Nothing was installed (this is -Verify).'
+                Info 'The checksum proves the bytes are the published bytes; it does'
+                Info 'not prove who published them - the release is not code-signed.'
+                $code = 0
+            } else {
+                Info ''
+                Info "MISMATCH: expected $expected"
+                Info "          got      $actual"
+                Info 'Nothing was installed. Delete the download and try again.'
+            }
+        } else {
+            Info ''
+            Info 'Downloaded and hashed, but the release manifest could not be read:'
+            Info "  $sumsUrl"
+            Info 'Nothing was installed. Compare the sha256 above with the asset'
+            Info '.sha256 sidecar (or SHA256SUMS) on the release page.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    return $code
+}
+
+$AppDir = Join-Path $env:LOCALAPPDATA 'Crowsnest'
+$ShimDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
+$Exe = Join-Path $AppDir 'crowsnest.exe'
+$VerFile = Join-Path $AppDir 'VERSION'
+
+if ($DryRun) {
+    Show-Plan
+    exit 0
+}
+
 # Resolved once: the tag names the release AND the VERSION stamp written into
 # the install directory, which is what `update` reports as old -> new.
 $tag = $null
@@ -163,10 +270,9 @@ if (-not $env:CROWSNEST_WIN_URL -and -not $Url) {
     $tag = LatestTag
 }
 
-$AppDir = Join-Path $env:LOCALAPPDATA 'Crowsnest'
-$ShimDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
-$Exe = Join-Path $AppDir 'crowsnest.exe'
-$VerFile = Join-Path $AppDir 'VERSION'
+if ($Verify) {
+    exit (Test-Artifact -Zip (ZipUrl))
+}
 
 # A running exe keeps its image locked: it is stopped first (the exe's own
 # `stop` verb waits for the kernel to retire each process), and folder removal

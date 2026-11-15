@@ -30,6 +30,9 @@
 #   --autostart      also start the HUD now and at login (default: off)
 #   --no-autostart   accepted for compatibility; same as the default
 #   --no-bridge      skip installing the Linux desktop focus bridge
+#   --dry-run        print what would be installed and where; change nothing
+#   --verify         download the artifact that would be installed, check its
+#                    sha256 against the release manifest, install nothing
 #   --uninstall      remove the app, command, service, autostart and bridge
 #   -h, --help       show this help
 #
@@ -37,6 +40,7 @@
 #   CROWSNEST_BUNDLE_URL  override the Linux portable-bundle URL
 #   CROWSNEST_DMG_URL     override the macOS DMG URL
 #   CROWSNEST_WIN_URL     override the Windows portable-zip URL
+#   CROWSNEST_SUMS_URL    override the checksum manifest --verify reads
 #   CROWSNEST_TEST_TAG    pin the resolved release tag (packaging CI only)
 #
 set -eu
@@ -66,6 +70,8 @@ MAC_CLI="/usr/local/bin/crowsnest"
 autostart=0
 bridge=1
 mode=install
+dry_run=0
+verify=0
 
 usage() {
   cat >&2 <<'USAGE'
@@ -79,6 +85,9 @@ progress on the terminal.
   --autostart      also start the HUD now and at login (default: off)
   --no-autostart   accepted for compatibility; same as the default
   --no-bridge      skip installing the Linux desktop focus bridge
+  --dry-run        print what would be installed and where; change nothing
+  --verify         download the artifact that would be installed, check its
+                   sha256 against the release manifest, install nothing
   --uninstall      remove the app, command, service, autostart and bridge
   -h, --help       show this help
 
@@ -86,6 +95,7 @@ Environment overrides:
   CROWSNEST_BUNDLE_URL  override the Linux portable-bundle URL
   CROWSNEST_DMG_URL     override the macOS DMG URL
   CROWSNEST_WIN_URL     override the Windows portable-zip URL
+  CROWSNEST_SUMS_URL    override the checksum manifest --verify reads
   CROWSNEST_TEST_TAG    pin the resolved release tag (packaging CI only)
 USAGE
 }
@@ -96,6 +106,8 @@ for arg in "$@"; do
     --autostart)    autostart=1 ;;
     --no-autostart) autostart=0 ;;
     --no-bridge)    bridge=0 ;;
+    --dry-run)      dry_run=1 ;;
+    --verify)       verify=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "unknown option: $arg" >&2; usage; exit 2 ;;
   esac
@@ -364,6 +376,176 @@ have_systemd() {
 
 desktop_id() {
   printf '%s' "${XDG_CURRENT_DESKTOP:-}${XDG_SESSION_DESKTOP:-}" | tr '[:upper:]' '[:lower:]'
+}
+
+sha256_of() { # <path> -> hex digest, or nothing
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$1" 2>/dev/null | sed 's/.*= //'
+  fi
+}
+
+sums_lookup() { # <sums-file> <basename> -> hex digest, or nothing
+  # "<hex>  name" and "<hex> *name" are both valid; never match by prefix.
+  awk -v want="$2" '
+    { name = $2; sub(/^\*/, "", name) }
+    name == want { print $1; exit }
+  ' "$1" 2>/dev/null
+}
+
+dry_run_plan() { # <flow>
+  plan_autostart="off (pass --autostart to start now and at login)"
+  if [ "$autostart" -eq 1 ]; then
+    plan_autostart="start now and at login"
+  fi
+  plan_download=""
+  case "$1" in
+    linux)
+      plan_download="$BUNDLE_URL"
+      ;;
+    mac)
+      if [ -n "${CROWSNEST_DMG_URL:-}" ]; then
+        plan_download="$CROWSNEST_DMG_URL"
+      elif [ -n "${CROWSNEST_TEST_TAG:-}" ]; then
+        plan_download="https://github.com/${REPO}/releases/download/${CROWSNEST_TEST_TAG}/Crowsnest-$(printf '%s' "$CROWSNEST_TEST_TAG" | tr -d v)-macos.dmg"
+      else
+        plan_download="https://github.com/${REPO}/releases/latest/download/Crowsnest-<version>-macos.dmg"
+      fi
+      ;;
+    win)
+      if [ -n "${CROWSNEST_WIN_URL:-}" ]; then
+        plan_download="$CROWSNEST_WIN_URL"
+      elif [ -n "${CROWSNEST_TEST_TAG:-}" ]; then
+        plan_download="https://github.com/${REPO}/releases/download/${CROWSNEST_TEST_TAG}/Crowsnest-$(printf '%s' "$CROWSNEST_TEST_TAG" | tr -d v)-windows-portable.zip"
+      else
+        plan_download="https://github.com/${REPO}/releases/latest/download/Crowsnest-<version>-windows-portable.zip"
+      fi
+      ;;
+  esac
+
+  log "Crowsnest installer plan (dry run - nothing was changed)"
+  log ""
+  log "  platform     $1"
+  log "  autostart    $plan_autostart"
+  log "  download     $plan_download"
+  case "$1" in
+    linux)
+      log "  install dir  $APP_DIR  (self-contained: Qt is bundled)"
+      log "  command      $WRAPPER"
+      log "  service      $UNIT_FILE  (written, not enabled without --autostart)"
+      log "  login start  $AUTOSTART_FILE  (only with --autostart)"
+      if [ "$bridge" -eq 1 ]; then
+        log "  focus bridge installed when the desktop needs one (GNOME extension / KWin script)"
+      else
+        log "  focus bridge skipped (--no-bridge)"
+      fi
+      log "  config       $CONFIG_HOME  (left untouched)"
+      log "  removal      crowsnest uninstall removes all of the above"
+      ;;
+    mac)
+      log "  install dir  $MAC_APP_DEFAULT  (~/Applications without admin rights)"
+      log "  command      $MAC_CLI  (a shim into the app bundle)"
+      log "  login start  $MAC_PLIST  (only with --autostart)"
+      log "  note         the DMG is mounted read-only and detached again"
+      log "  removal      crowsnest uninstall removes the app, shim and LaunchAgent"
+      ;;
+    win)
+      log "  install dir  $APP_DIR"
+      log "  command      $BIN_DIR/crowsnest.cmd and an extensionless shim"
+      log "  login start  HKCU Run \"Crowsnest\"  (only with --autostart)"
+      log "  removal      crowsnest uninstall removes the app, both shims and the Run value"
+      ;;
+  esac
+  log ""
+  log "Nothing is downloaded, and no file, service, registry value or PATH"
+  log "entry is touched. Run it without --dry-run to install."
+  log "Run it with --verify to check the download's sha256 without installing."
+}
+
+verify_artifact() { # <flow> — download + checksum only, never install
+  tmp="$(work_dir)" || die "no writable directory for the download"
+  mkdir -p "$tmp" 2>/dev/null || true
+  trap 'rm -rf "$tmp"' EXIT INT TERM
+
+  case "$1" in
+    linux)
+      url="$BUNDLE_URL"
+      name="crowsnest-portable.tar.gz"
+      sums_url="${CROWSNEST_SUMS_URL:-https://github.com/${REPO}/releases/latest/download/SHA256SUMS}"
+      ;;
+    mac)
+      if [ -n "${CROWSNEST_DMG_URL:-}" ]; then
+        url="$CROWSNEST_DMG_URL"
+      else
+        if [ -n "${CROWSNEST_TEST_TAG:-}" ]; then
+          tag="$CROWSNEST_TEST_TAG"
+        else
+          tag="$(latest_version_tag)" || die "could not resolve the latest release tag"
+        fi
+        url="https://github.com/${REPO}/releases/download/${tag}/Crowsnest-$(printf '%s' "$tag" | tr -d v)-macos.dmg"
+      fi
+      name="$(basename "$url")"
+      sums_url="${CROWSNEST_SUMS_URL:-${url}.sha256}"
+      ;;
+    win)
+      if [ -n "${CROWSNEST_WIN_URL:-}" ]; then
+        url="$CROWSNEST_WIN_URL"
+      else
+        if [ -n "${CROWSNEST_TEST_TAG:-}" ]; then
+          tag="$CROWSNEST_TEST_TAG"
+        else
+          tag="$(latest_version_tag)" || die "could not resolve the latest release tag"
+        fi
+        url="https://github.com/${REPO}/releases/download/${tag}/Crowsnest-$(printf '%s' "$tag" | tr -d v)-windows-portable.zip"
+      fi
+      name="$(basename "$url")"
+      sums_url="${CROWSNEST_SUMS_URL:-${url}.sha256}"
+      ;;
+  esac
+
+  log "Verifying $name"
+  log "  from $url"
+  fetch "$url" "$tmp/$name" \
+    || die "download failed ($url). Nothing was installed."
+  actual="$(sha256_of "$tmp/$name")"
+  [ -n "$actual" ] || die "no sha256 tool found (sha256sum, shasum or openssl)"
+  log "  sha256 $actual"
+
+  if ! fetch "$sums_url" "$tmp/sums.txt" 2>/dev/null; then
+    log ""
+    log "Downloaded and hashed, but the release manifest could not be read:"
+    log "  $sums_url"
+    log "Nothing was installed. Compare the sha256 above with the asset's"
+    log ".sha256 sidecar (or SHA256SUMS) on the release page."
+    exit 1
+  fi
+  expected="$(sums_lookup "$tmp/sums.txt" "$name")"
+  if [ -z "$expected" ]; then
+    # The mac and Windows sidecars carry only the digest, or "<digest>  name".
+    expected="$(sed -n 's/^[* ]*\([0-9a-f]\{64\}\).*/\1/p' "$tmp/sums.txt" | head -n 1)"
+  fi
+  if [ -z "$expected" ]; then
+    log ""
+    log "The manifest at $sums_url does not name $name."
+    log "Nothing was installed."
+    exit 1
+  fi
+  if [ "$actual" = "$expected" ]; then
+    log ""
+    log "verified: $name matches the release manifest"
+    log "Nothing was installed (this is --verify)."
+    log "The checksum proves the bytes are the published bytes; it does not"
+    log "prove who published them - the release is not code-signed."
+    exit 0
+  fi
+  log ""
+  log "MISMATCH: expected $expected"
+  log "          got      $actual"
+  log "Nothing was installed. Delete the download and try again."
+  exit 1
 }
 
 latest_version_tag() { # echoes v0.8.0 (releases/latest redirects to /releases/tag/<tag>)
@@ -919,6 +1101,16 @@ case "$kernel_sys" in
   MINGW*|MSYS*|CYGWIN*) os_flow="win" ;;
   *) die "unsupported OS: $kernel_sys (Linux / macOS / Windows only)" ;;
 esac
+
+if [ "$dry_run" -eq 1 ]; then
+  dry_run_plan "$os_flow"
+  exit 0
+fi
+
+if [ "$verify" -eq 1 ]; then
+  verify_artifact "$os_flow"
+  exit 0
+fi
 
 if [ "$mode" = "uninstall" ]; then
   case "$os_flow" in
