@@ -795,6 +795,37 @@ QHash<QString, QString> parseAwsInstanceTypeSpecs(const QByteArray &body) {
     return specs;
 }
 
+QString fleetInstanceDetailHtml(const QString &detailText) {
+    QString html = QStringLiteral(
+        "<table cellspacing=\"0\" cellpadding=\"0\" width=\"100%\">");
+    const QStringList lines = detailText.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.trimmed().isEmpty()) {
+            html += QStringLiteral(
+                "<tr><td colspan=\"2\" height=\"7\"></td></tr>");
+            continue;
+        }
+        const QString label = line.left(10).trimmed();
+        QString value = line.size() > 10 ? line.mid(11).trimmed() : QString();
+        if (value.isEmpty()) {
+            value = label;
+            html += QStringLiteral("<tr><td colspan=\"2\">%1</td></tr>")
+                        .arg(value.toHtmlEscaped());
+            continue;
+        }
+        // A Qt rich-text table sizes a cell to its content, so the gap is
+        // carried by non-breaking spaces rather than a width hint: with a
+        // hint the label cell shrank and "monitoring" ran into "disabled".
+        html += QStringLiteral(
+                    "<tr><td valign=\"top\" "
+                    "style=\"color:#7d8794\">%1&nbsp;&nbsp;&nbsp;</td>"
+                    "<td valign=\"top\">%2</td></tr>")
+                    .arg(label.toHtmlEscaped(), value.toHtmlEscaped());
+    }
+    html += QStringLiteral("</table>");
+    return html;
+}
+
 QHash<QString, QString> parseAwsVolumeSpecs(const QByteArray &body) {
     QHash<QString, QString> specs;
     const QJsonDocument document = QJsonDocument::fromJson(body);

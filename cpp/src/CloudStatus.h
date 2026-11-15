@@ -402,6 +402,9 @@ QString fleetTableNote();
 // image/OS, access, network and the launch settings, from the same
 // describe-instances answer. A field the provider did not report is dashed.
 QString fleetInstanceDetailText(const CloudFleetInstance &row);
+// The same fields as a two-column rich-text table, so a long value (an ARN, a
+// DNS name) wraps under its own column instead of running back to the label.
+QString fleetInstanceDetailHtml(const QString &detailText);
 // AMI id -> the provider's own description of that image ("Amazon Linux 2023
 // AMI 2023.9.20251117 x86_64", "Ubuntu 22.04 LTS (Jammy Jellyfish) ..."), and
 // instance type -> "2 vCPU, 1 GiB". Both are filled by one extra call per run

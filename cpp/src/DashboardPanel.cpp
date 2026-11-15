@@ -151,6 +151,16 @@ QFrame *makeStatCard(const QString &caption, QWidget *content, QWidget *parent) 
 // Datadog KPI tile (img3/img4): small caption, huge bold value, delta
 // line under the value. Value keeps its existing objectName so external
 // assertions keep working.
+// The instance detail is a list of blank-line separated groups; split it into
+// two halves so it can sit in two columns and stay short without wrapping.
+void splitFleetDetail(const QString &text, QString *left, QString *right) {
+    const QStringList groups =
+        text.split(QStringLiteral("\n\n"), Qt::SkipEmptyParts);
+    const int half = (groups.size() + 1) / 2;
+    *left = QStringList(groups.mid(0, half)).join(QStringLiteral("\n\n"));
+    *right = QStringList(groups.mid(half)).join(QStringLiteral("\n\n"));
+}
+
 QFrame *makeTile(const QString &caption, QLabel *value,
                  QLabel **deltaOut, QWidget *parent) {
     auto *card = new QFrame(parent);
@@ -4939,7 +4949,6 @@ QWidget *DashboardPanel::buildCloudView() {
     // selected instance, not "this boot" (there is no this-boot cost).
     m_cloudTileAccruedCaption =
         accruedTile->findChild<QLabel *>(QStringLiteral("ddCardTitle"));
-    layout->addLayout(tiles);
 
     // --- Identity from the instance metadata service (the same document the
     // Datadog agent's cloud-provider client reads).
@@ -4955,15 +4964,14 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudDetail->setWordWrap(false);
     m_cloudDetail->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("INSTANCE IDENTITY"),
-                                 ui_theme::accent(), view));
+    auto *identityBanner = makeBanner(QStringLiteral("THIS HOST"),
+                                      ui_theme::accent(), view);
     auto *identity = new QHBoxLayout;
     identity->setSpacing(10);
     identity->addWidget(
         makeCard(QStringLiteral("metadata"), m_cloudSummary, view), 1);
     identity->addWidget(
         makeCard(QStringLiteral("detail"), m_cloudDetail, view), 1);
-    layout->addLayout(identity, 2);
 
     // --- Account inventory from the provider's own CLI. This is the only
     // place the launch time (and therefore the instance age) exists.
@@ -4981,8 +4989,8 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudFleetSummary->setWordWrap(true);
     m_cloudFleetSummary->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("FLEET INVENTORY"),
-                                 ui_theme::banner(), view));
+    auto *accountBanner = makeBanner(QStringLiteral("ACCOUNT"),
+                                     ui_theme::banner(), view);
     auto *fleetHead = new QHBoxLayout;
     fleetHead->setSpacing(8);
     m_cloudPreflight = new QLabel(QStringLiteral("--"), view);
@@ -5002,19 +5010,17 @@ QWidget *DashboardPanel::buildCloudView() {
     connect(m_cloudRefresh, &QPushButton::clicked, this,
             &DashboardPanel::cloudRefreshRequested);
     fleetHead->addWidget(m_cloudRefresh, 0);
-    layout->addLayout(fleetHead);
     // The summary and the fleet-size chart share one row: stacked, they pushed
     // the table (and the selected instance's detail) below the fold, which is
     // where the answer actually is.
     auto *fleetTop = new QHBoxLayout;
     fleetTop->setSpacing(10);
     fleetTop->addWidget(
-        makeCard(QStringLiteral("inventory"), m_cloudFleetSummary, view), 2);
+        makeCard(QStringLiteral("inventory"), m_cloudFleetSummary, view), 3);
     fleetTop->addWidget(
         makeChartCard(QStringLiteral("running instances"), m_chartCloudFleet,
                       view),
-        1);
-    layout->addLayout(fleetTop);
+        2);
 
     m_cloudFleet = new QTreeWidget(view);
     m_cloudFleet->setObjectName(QStringLiteral("ddCloudFleet"));
@@ -5033,17 +5039,30 @@ QWidget *DashboardPanel::buildCloudView() {
         m_cloudFleet->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
-    layout->addWidget(
-        makeCard(QStringLiteral("instances"), m_cloudFleet, view));
+    auto *instancesCard =
+        makeCard(QStringLiteral("instances"), m_cloudFleet, view);
     // Selecting a row shows everything the provider reported about it: the
     // image is the only place the distribution is named, and the launch
     // settings (key, tenancy, IMDSv2, security groups) are what "how was this
     // box started" actually means.
-    m_cloudFleetDetail = new QLabel(QStringLiteral("--"), view);
+    auto *detailBox = new QWidget(view);
+    auto *detailLayout = new QHBoxLayout(detailBox);
+    detailLayout->setContentsMargins(0, 0, 0, 0);
+    detailLayout->setSpacing(18);
+    m_cloudFleetDetail = new QLabel(QStringLiteral("--"), detailBox);
     m_cloudFleetDetail->setObjectName(QStringLiteral("ddCloudFleetDetail"));
     m_cloudFleetDetail->setFont(monoFont(10));
+    m_cloudFleetDetail->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_cloudFleetDetail->setWordWrap(true);
     m_cloudFleetDetail->setMinimumWidth(1);
+    m_cloudFleetDetailB = new QLabel(QString(), detailBox);
+    m_cloudFleetDetailB->setObjectName(QStringLiteral("ddCloudFleetDetailB"));
+    m_cloudFleetDetailB->setFont(monoFont(10));
+    m_cloudFleetDetailB->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_cloudFleetDetailB->setWordWrap(true);
+    m_cloudFleetDetailB->setMinimumWidth(1);
+    detailLayout->addWidget(m_cloudFleetDetail, 1);
+    detailLayout->addWidget(m_cloudFleetDetailB, 1);
     connect(m_cloudFleet, &QTreeWidget::itemSelectionChanged, this, [this]() {
         const QList<QTreeWidgetItem *> selected = m_cloudFleet->selectedItems();
         if (selected.isEmpty()) {
@@ -5054,17 +5073,20 @@ QWidget *DashboardPanel::buildCloudView() {
             return;
         }
         m_cloudFleetSelectedId = m_cloudFleetRows.at(index).instanceId;
-        m_cloudFleetDetail->setText(
-            fleetInstanceDetailText(m_cloudFleetRows.at(index)));
+        QString left;
+        QString right;
+        splitFleetDetail(fleetInstanceDetailText(m_cloudFleetRows.at(index)),
+                         &left, &right);
+        m_cloudFleetDetail->setText(left);
+        m_cloudFleetDetailB->setText(right);
     });
-    layout->addWidget(
-        makeCard(QStringLiteral("selected instance"), m_cloudFleetDetail, view));
+    auto *detailCard =
+        makeCard(QStringLiteral("selected instance"), detailBox, view);
     m_cloudFleetNote = new QLabel(fleetTableNote(), view);
     m_cloudFleetNote->setObjectName(QStringLiteral("ddCloudFleetNote"));
     m_cloudFleetNote->setFont(monoFont(9));
     m_cloudFleetNote->setWordWrap(true);
     m_cloudFleetNote->setMinimumWidth(1);
-    layout->addWidget(m_cloudFleetNote);
 
     // --- M91: the terraform state diffed against the listing above. Read-only
     // both ways: it names drift, it never applies, imports or destroys.
@@ -5074,10 +5096,17 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudIac->setWordWrap(false);
     m_cloudIac->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("IAC DRIFT"),
-                                 ui_theme::warn(), view));
-    layout->addWidget(makeCard(QStringLiteral("terraform state vs the account"),
-                               m_cloudIac, view));
+    // Niche, and off by default: the whole section hides until a state file is
+    // configured instead of occupying a banner on every account.
+    m_cloudIacSection = new QWidget(view);
+    auto *iacLayout = new QVBoxLayout(m_cloudIacSection);
+    iacLayout->setContentsMargins(0, 0, 0, 0);
+    iacLayout->setSpacing(8);
+    iacLayout->addWidget(makeBanner(QStringLiteral("IAC DRIFT"),
+                                    ui_theme::warn(), m_cloudIacSection));
+    iacLayout->addWidget(
+        makeCard(QStringLiteral("terraform state vs the account"), m_cloudIac,
+                 m_cloudIacSection));
 
     // --- Rate / accrual / projection, with the import date that decides how
     // much the number is worth.
@@ -5087,10 +5116,11 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudCost->setWordWrap(false);
     m_cloudCost->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("INSTANCE COST"),
-                                 ui_theme::banner(), view));
-    layout->addWidget(makeCard(QStringLiteral("rate · accrual · projection"),
-                               m_cloudCost, view));
+    auto *costBanner = makeBanner(QStringLiteral("COST MODEL"),
+                                  ui_theme::banner(), view);
+    auto *costCard =
+        makeCard(QStringLiteral("rate · accrual · projection"), m_cloudCost,
+                 view);
 
     // --- Focused-app share: the instance rate split by the CPU the app
     // actually used, charged against this box's vCPU count.
@@ -5105,12 +5135,9 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudApp->setWordWrap(false);
     m_cloudApp->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("APP COST SHARE"),
-                                 ui_theme::warn(), view));
-    layout->addWidget(
-        makeChartCard(QStringLiteral("focused app $/hour"), m_chartCloudApp,
-                      view));
-    layout->addWidget(makeCard(QStringLiteral("focused app"), m_cloudApp, view));
+    auto *appChartCard = makeChartCard(
+        QStringLiteral("focused app $/hour"), m_chartCloudApp, view);
+    auto *appCard = makeCard(QStringLiteral("focused app"), m_cloudApp, view);
 
     m_cloudConsumers = new QTreeWidget(view);
     m_cloudConsumers->setObjectName(QStringLiteral("ddCloudConsumers"));
@@ -5127,9 +5154,9 @@ QWidget *DashboardPanel::buildCloudView() {
         m_cloudConsumers->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
-    layout->addWidget(makeCard(
+    auto *consumersCard = makeCard(
         QStringLiteral("TOP PROCESSES IN THE FOCUSED APP"), m_cloudConsumers,
-        view));
+        view);
 
     // --- M85: what the provider actually billed. The estimate above comes
     // from a rate file; this comes from the provider's own cost API, so the
@@ -5172,17 +5199,16 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudSpendNote->setWordWrap(true);
     m_cloudSpendNote->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("BILLED SPEND"),
-                                 ui_theme::warn(), view));
-    layout->addWidget(makeChartCard(QStringLiteral("daily spend"),
-                                    m_chartCloudSpend, view));
-    layout->addWidget(
-        makeCard(QStringLiteral("month to date"), m_cloudSpendSummary, view));
-    layout->addWidget(makeCard(QStringLiteral("detail"), m_cloudSpendDetail,
-                               view));
-    layout->addWidget(makeCard(QStringLiteral("by service"),
-                               m_cloudSpendServices, view));
-    layout->addWidget(m_cloudSpendNote);
+    auto *spendBanner = makeBanner(QStringLiteral("BILLED SPEND"),
+                                   ui_theme::warn(), view);
+    auto *spendChartCard =
+        makeChartCard(QStringLiteral("daily spend"), m_chartCloudSpend, view);
+    auto *spendSummaryCard =
+        makeCard(QStringLiteral("month to date"), m_cloudSpendSummary, view);
+    auto *spendDetailCard =
+        makeCard(QStringLiteral("detail"), m_cloudSpendDetail, view);
+    auto *spendServicesCard =
+        makeCard(QStringLiteral("by service"), m_cloudSpendServices, view);
 
     // --- M84: the outbound footprint. Every network action Crowsnest takes on
     // its own, its cadence and the measured cost of the last sweep, plus the
@@ -5194,18 +5220,59 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudFootprint->setWordWrap(true);
     m_cloudFootprint->setMinimumWidth(1);
 
-    layout->addWidget(makeBanner(QStringLiteral("CLOUD FOOTPRINT"),
-                                 ui_theme::warn(), view));
-    layout->addWidget(
+    auto *footprintBanner = makeBanner(QStringLiteral("CLOUD FOOTPRINT"),
+                                       ui_theme::warn(), view);
+    auto *footprintCard =
         makeCard(QStringLiteral("what leaves this host"), m_cloudFootprint,
-                 view));
+                 view);
 
     m_cloudShare = new QLabel(cloudShareNote(), view);
     m_cloudShare->setObjectName(QStringLiteral("ddCloudShare"));
     m_cloudShare->setFont(monoFont(9));
     m_cloudShare->setWordWrap(true);
     m_cloudShare->setMinimumWidth(1);
+
+    // --- Reading order. What the account is (tiles), what is in it (table with
+    // the selected instance beside it), what this host is, what it costs, what
+    // the provider billed, and last what leaves the host. Side-by-side rows keep
+    // related facts together instead of stacking every card into one column.
+    layout->addLayout(tiles);
+    layout->addWidget(accountBanner);
+    layout->addLayout(fleetHead);
+    layout->addLayout(fleetTop);
+    layout->addWidget(instancesCard);
+    layout->addWidget(detailCard);
+    layout->addWidget(m_cloudFleetNote);
+
+    layout->addWidget(identityBanner);
+    layout->addLayout(identity, 2);
+
+    layout->addWidget(costBanner);
+    auto *costRow = new QHBoxLayout;
+    costRow->setSpacing(10);
+    costRow->addWidget(costCard, 2);
+    costRow->addWidget(appCard, 1);
+    layout->addLayout(costRow);
+    auto *costDetailRow = new QHBoxLayout;
+    costDetailRow->setSpacing(10);
+    costDetailRow->addWidget(appChartCard, 1);
+    costDetailRow->addWidget(consumersCard, 2);
+    layout->addLayout(costDetailRow);
+
+    layout->addWidget(spendBanner);
+    auto *spendTop = new QHBoxLayout;
+    spendTop->setSpacing(10);
+    spendTop->addWidget(spendSummaryCard, 2);
+    spendTop->addWidget(spendChartCard, 1);
+    layout->addLayout(spendTop);
+    layout->addWidget(spendDetailCard);
+    layout->addWidget(spendServicesCard);
+    layout->addWidget(m_cloudSpendNote);
+
+    layout->addWidget(footprintBanner);
+    layout->addWidget(footprintCard);
     layout->addWidget(m_cloudShare);
+    layout->addWidget(m_cloudIacSection);
 
     auto *scroll = new QScrollArea(view);
     scroll->setObjectName(QStringLiteral("ddScroll"));
@@ -8845,6 +8912,10 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                                 ? iacGateText(cloud.iac.path)
                                 : cloud.iac.note);
     }
+    if (m_cloudIacSection != nullptr) {
+        // Off by default: no terraform configured, no section.
+        m_cloudIacSection->setVisible(!cloud.iac.path.isEmpty());
+    }
     if (m_cloudFleet != nullptr) {
         m_cloudFleet->setUpdatesEnabled(false);
         m_cloudFleet->clear();
@@ -8897,6 +8968,9 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             if (m_cloudFleetDetail != nullptr) {
                 m_cloudFleetDetail->setText(QStringLiteral(
                     "-- no instance selected (the account listing is empty)"));
+            }
+            if (m_cloudFleetDetailB != nullptr) {
+                m_cloudFleetDetailB->clear();
             }
         } else {
             // Keep the row the reader chose; otherwise lead with this machine

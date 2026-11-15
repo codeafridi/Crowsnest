@@ -353,6 +353,7 @@ private:
     QLabel *m_cloudFleetSummary = nullptr;
     QLabel *m_cloudFleetNote = nullptr;
     QLabel *m_cloudFleetDetail = nullptr;
+    QLabel *m_cloudFleetDetailB = nullptr;
     QList<CloudFleetInstance> m_cloudFleetRows;
     QString m_cloudFleetSelectedId;
     QLabel *m_cloudPreflight = nullptr;
@@ -360,6 +361,7 @@ private:
     int m_cloudPageIndex = -1;
     bool m_cloudPageVisible = false;
     QLabel *m_cloudIac = nullptr;
+    QWidget *m_cloudIacSection = nullptr;
     QTreeWidget *m_cloudFleet = nullptr;
     TimeseriesChart *m_chartCloudFleet = nullptr;
     QLabel *m_cloudCost = nullptr;

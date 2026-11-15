@@ -136,6 +136,20 @@ LaunchAgent or a systemd user unit inherits a narrow `PATH`, so without this an
 `CROWSNEST_CLI_DIRS` (a `PATH`-style list) prepends explicit directories.
 
 
+## How the page is laid out
+
+One column, read top to bottom, in the order the questions are asked:
+
+| section | what is in it |
+|---|---|
+| the four tiles | provider, the age of the instance the page is describing, its accrued cost and its monthly rate |
+| **ACCOUNT** | the CHECK NOW line, the inventory summary beside the running-instances chart, the instances table, and the selected instance's detail in two columns underneath |
+| **THIS HOST** | the metadata summary and the instance detail, side by side |
+| **COST MODEL** | the rate/accrual/projection card beside the focused app's share, then the app's cost chart and its top processes |
+| **BILLED SPEND** | month to date beside the daily chart, then the query detail and the per-service split |
+| **CLOUD FOOTPRINT** | every outbound action, its cadence and the two guarantees |
+| **IAC DRIFT** | only when `[cloud] terraform_state` is set — otherwise the section is not rendered at all |
+
 ## Billed spend (what the provider actually charged)
 
 The estimate above is a rate × time projection. **Billed spend** is the other

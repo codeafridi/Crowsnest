@@ -2157,22 +2157,26 @@ int main(int argc, char *argv[]) {
           "charts: a count axis steps by whole numbers only");
     auto *cloudFleetDetail =
         hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetDetail"));
+    auto *cloudFleetDetailB =
+        hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetDetailB"));
+    // The detail is two columns; assert over the pair.
+    const QString fleetDetailText =
+        cloudFleetDetail != nullptr && cloudFleetDetailB != nullptr
+            ? cloudFleetDetail->text() + QLatin1Char('\n')
+                  + cloudFleetDetailB->text()
+            : QString();
     check(cloudFleetDetail != nullptr
-              && cloudFleetDetail->text().contains(
-                  QStringLiteral("Ubuntu 22.04 LTS"))
-              && cloudFleetDetail->text().contains(
-                  QStringLiteral("8 vCPU, 16 GiB"))
-              && cloudFleetDetail->text().contains(QStringLiteral("hud-key"))
-              && cloudFleetDetail->text().contains(QStringLiteral("required"))
-              && cloudFleetDetail->text().contains(
-                  QStringLiteral("8 GiB gp3 ebs"))
-              && cloudFleetDetail->text().contains(
-                  QStringLiteral("ip-10-0-3-17")),
+              && fleetDetailText.contains(QStringLiteral("Ubuntu 22.04 LTS"))
+              && fleetDetailText.contains(QStringLiteral("8 vCPU, 16 GiB"))
+              && fleetDetailText.contains(QStringLiteral("hud-key"))
+              && fleetDetailText.contains(QStringLiteral("required"))
+              && fleetDetailText.contains(QStringLiteral("8 GiB gp3 ebs"))
+              && fleetDetailText.contains(QStringLiteral("ip-10-0-3-17")),
           "cloud fleet detail names the OS, the type spec and the settings");
     {
         // Selecting another row must describe that row, not the self row.
         cloudFleet->setCurrentItem(cloudFleet->topLevelItem(1));
-        check(cloudFleetDetail->text().contains(
+        check((cloudFleetDetail->text() + cloudFleetDetailB->text()).contains(
                   QStringLiteral("i-0feedface")),
               "cloud fleet detail follows the selected row");
         cloudFleet->setCurrentItem(cloudFleet->topLevelItem(0));
