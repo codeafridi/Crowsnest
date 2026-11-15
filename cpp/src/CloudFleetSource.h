@@ -87,6 +87,13 @@ QStringList cloudAwsIdentityArguments();
 QStringList cloudAwsRegionArguments();
 QStringList cloudAwsDescribeRegionsArguments(const QString &homeRegion);
 QStringList cloudAwsDescribeInstancesArguments(const QString &region);
+// One call per region after the listing: the AMI's own description is the only
+// place the distribution is named ("Amazon Linux 2023 AMI ...", "Ubuntu 22.04
+// LTS ..."). Types are global, so that one runs once per listing.
+QStringList cloudAwsDescribeImagesArguments(const QString &region,
+                                            const QStringList &imageIds);
+QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
+                                                   const QStringList &types);
 
 // What "CHECK NOW" runs, in words: every command, how many times, and the two
 // promises (read only; Cost Explorer is not called).

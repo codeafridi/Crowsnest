@@ -240,6 +240,50 @@ CloudFleetStatus parseAwsDescribeInstances(const QByteArray &body) {
         if (row.name.isEmpty()) {
             row.name = field(object, "name");
         }
+        row.imageId = field(object, "ImageId");
+        row.architecture = field(object, "Architecture");
+        row.platformDetails = field(object, "PlatformDetails");
+        if (row.platformDetails.isEmpty()) {
+            const QString platform = field(object, "Platform");
+            if (!platform.isEmpty()) {
+                row.platformDetails =
+                    platform.compare(QLatin1String("windows"),
+                                     Qt::CaseInsensitive) == 0
+                        ? QStringLiteral("Windows")
+                        : platform;
+            }
+        }
+        row.keyName = field(object, "KeyName");
+        row.vpcId = field(object, "VpcId");
+        row.subnetId = field(object, "SubnetId");
+        row.iamProfile = nestedField(object, "IamInstanceProfile", "Arn");
+        if (row.iamProfile.isEmpty()) {
+            row.iamProfile = field(object, "iamProfile");
+        }
+        const QJsonArray securityGroups =
+            object.value(QStringLiteral("SecurityGroups")).toArray();
+        for (const QJsonValue &value : securityGroups) {
+            const QJsonObject group = value.toObject();
+            const QString groupName = field(group, "GroupName");
+            const QString groupId = field(group, "GroupId");
+            if (!groupName.isEmpty() && !groupId.isEmpty()) {
+                row.securityGroups.append(
+                    QStringLiteral("%1 (%2)").arg(groupName, groupId));
+            } else if (!groupName.isEmpty()) {
+                row.securityGroups.append(groupName);
+            } else if (!groupId.isEmpty()) {
+                row.securityGroups.append(groupId);
+            }
+        }
+        row.tenancy = field(object, "Tenancy");
+        row.rootDeviceType = field(object, "RootDeviceType");
+        row.virtualizationType = field(object, "VirtualizationType");
+        row.instanceLifecycle = field(object, "InstanceLifecycle");
+        row.httpTokens = nestedField(object, "MetadataOptions", "HttpTokens");
+        row.monitoring = nestedField(object, "Monitoring", "State");
+        row.creditSpec =
+            nestedField(object, "CreditSpecification", "CpuCredits");
+        row.stateReason = field(object, "StateTransitionReason");
         if (row.rawState.isEmpty()) {
             row.rawState = QStringLiteral("unknown");
         }
@@ -635,6 +679,180 @@ int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity) {
 
 void fleetFinalize(CloudFleetStatus &fleet) {
     finishFleet(fleet);
+}
+
+QHash<QString, QString> parseAwsImageNames(const QByteArray &body) {
+    QHash<QString, QString> names;
+    const QJsonDocument document = QJsonDocument::fromJson(body);
+    QJsonArray images;
+    if (document.isArray()) {
+        images = document.array();
+    } else if (document.isObject()) {
+        images = document.object().value(QStringLiteral("Images")).toArray();
+    }
+    for (const QJsonValue &value : images) {
+        const QJsonObject object = value.toObject();
+        QString id = field(object, "ImageId");
+        if (id.isEmpty()) {
+            id = field(object, "id");
+        }
+        if (id.isEmpty()) {
+            continue;
+        }
+        QString label = field(object, "Description");
+        if (label.isEmpty()) {
+            label = field(object, "desc");
+        }
+        if (label.isEmpty()) {
+            label = field(object, "Name");
+        }
+        if (label.isEmpty()) {
+            label = field(object, "name");
+        }
+        if (label.isEmpty()) {
+            continue;
+        }
+        // The provider's description is the only place the distribution is
+        // named ("Amazon Linux 2023 AMI ...", "Ubuntu 22.04 LTS ...").
+        names.insert(id, label.simplified());
+    }
+    return names;
+}
+
+QHash<QString, QString> parseAwsInstanceTypeSpecs(const QByteArray &body) {
+    QHash<QString, QString> specs;
+    const QJsonDocument document = QJsonDocument::fromJson(body);
+    QJsonArray types;
+    if (document.isArray()) {
+        types = document.array();
+    } else if (document.isObject()) {
+        types =
+            document.object().value(QStringLiteral("InstanceTypes")).toArray();
+    }
+    for (const QJsonValue &value : types) {
+        const QJsonObject object = value.toObject();
+        QString type = field(object, "InstanceType");
+        if (type.isEmpty()) {
+            type = field(object, "type");
+        }
+        if (type.isEmpty()) {
+            continue;
+        }
+        qint64 cores = qint64(object.value(QStringLiteral("VCpuInfo"))
+                                  .toObject()
+                                  .value(QStringLiteral("DefaultVCpus"))
+                                  .toDouble());
+        if (cores <= 0) {
+            cores = qint64(object.value(QStringLiteral("vcpu")).toDouble());
+        }
+        qint64 mib = qint64(object.value(QStringLiteral("MemoryInfo"))
+                                .toObject()
+                                .value(QStringLiteral("SizeInMiB"))
+                                .toDouble());
+        if (mib <= 0) {
+            mib = qint64(object.value(QStringLiteral("mem")).toDouble());
+        }
+        QStringList parts;
+        if (cores > 0) {
+            parts.append(QStringLiteral("%1 vCPU").arg(cores));
+        }
+        if (mib > 0) {
+            const double gib = double(mib) / 1024.0;
+            if (qFuzzyCompare(gib, double(qRound(gib)))) {
+                parts.append(QStringLiteral("%1 GiB").arg(qRound(gib)));
+            } else {
+                parts.append(QStringLiteral("%1 GiB").arg(gib, 0, 'f', 1));
+            }
+        }
+        if (!parts.isEmpty()) {
+            specs.insert(type, parts.join(QStringLiteral(", ")));
+        }
+    }
+    return specs;
+}
+
+QString fleetInstanceDetailText(const CloudFleetInstance &row) {
+    QStringList lines;
+    const auto add = [&lines](const QString &label, const QString &value) {
+        if (value.isEmpty()) {
+            return;
+        }
+        lines.append(QStringLiteral("%1 %2").arg(label.leftJustified(10), value));
+    };
+    const auto dash = [](const QString &value) {
+        return value.isEmpty() ? QStringLiteral("--") : value;
+    };
+
+    add(QStringLiteral("instance"), dash(row.instanceId));
+    add(QStringLiteral("name"), row.name);
+    QString type = dash(row.instanceType);
+    if (!row.typeSpec.isEmpty()) {
+        type += QStringLiteral("  (%1)").arg(row.typeSpec);
+    }
+    add(QStringLiteral("type"), type);
+    QString where = dash(row.region);
+    if (!row.zone.isEmpty() && row.zone != row.region) {
+        where += QStringLiteral("  %1").arg(row.zone);
+    }
+    add(QStringLiteral("region"), where);
+    QString state = dash(row.state);
+    if (row.spot) {
+        state += QStringLiteral("  (spot)");
+    } else if (!row.instanceLifecycle.isEmpty()) {
+        state += QStringLiteral("  (%1)").arg(row.instanceLifecycle);
+    }
+    add(QStringLiteral("state"), state);
+    if (row.launchedAtMs > 0) {
+        add(QStringLiteral("launched"),
+            qtcompat::fromMSecsSinceEpochUtc(row.launchedAtMs)
+                .toString(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'")));
+    }
+    if (row.ageSec >= 0) {
+        add(QStringLiteral("age"), cloudUptimeText(row.ageSec));
+    }
+    lines.append(QString());
+
+    add(QStringLiteral("image"), row.imageId);
+    add(QStringLiteral("os"), row.imageName);
+    QString platform;
+    for (const QString &part :
+         {row.platformDetails, row.architecture, row.virtualizationType}) {
+        if (!part.isEmpty()) {
+            platform += (platform.isEmpty() ? QString() : QStringLiteral("  ")) +
+                        part;
+        }
+    }
+    add(QStringLiteral("platform"), platform);
+    if (!row.rootDeviceType.isEmpty()) {
+        add(QStringLiteral("root"), row.rootDeviceType);
+    }
+    add(QStringLiteral("reason"), row.stateReason);
+    lines.append(QString());
+
+    add(QStringLiteral("key"), row.keyName);
+    add(QStringLiteral("iam"), row.iamProfile);
+    add(QStringLiteral("security"), row.securityGroups.join(QStringLiteral(", ")));
+    lines.append(QString());
+
+    add(QStringLiteral("vpc"), row.vpcId);
+    add(QStringLiteral("subnet"), row.subnetId);
+    add(QStringLiteral("private"), row.privateIp);
+    add(QStringLiteral("public"), row.publicIp);
+    lines.append(QString());
+
+    add(QStringLiteral("tenancy"), row.tenancy);
+    add(QStringLiteral("monitoring"), row.monitoring);
+    add(QStringLiteral("imds"), row.httpTokens);
+    add(QStringLiteral("credit"), row.creditSpec);
+    add(QStringLiteral("tags"), row.tags.join(QStringLiteral(", ")));
+
+    while (!lines.isEmpty() && lines.last().isEmpty()) {
+        lines.removeLast();
+    }
+    if (lines.isEmpty()) {
+        return QStringLiteral("-- no detail reported for this instance");
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 QString fleetSummaryText(const CloudFleetStatus &fleet) {

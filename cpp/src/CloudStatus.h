@@ -95,6 +95,27 @@ struct CloudFleetInstance {
     bool isSelf = false;
     double ratePerHour = -1.0;
     double monthlyUsd = -1.0;
+    // Everything below is in the same describe-instances answer (one call per
+    // region), so the detail pane costs nothing extra. The image name and the
+    // type spec are resolved once per run from two extra calls and cached.
+    QString imageId;
+    QString imageName;        // AMI Description/Name: the OS the box actually runs
+    QString architecture;
+    QString platformDetails;  // Linux/UNIX, Windows, ...
+    QString keyName;
+    QString vpcId;
+    QString subnetId;
+    QString iamProfile;
+    QStringList securityGroups;
+    QString tenancy;
+    QString rootDeviceType;
+    QString virtualizationType;
+    QString instanceLifecycle;  // spot, scheduled, capacity-block, ...
+    QString httpTokens;         // IMDSv2: required | optional
+    QString monitoring;
+    QString creditSpec;
+    QString stateReason;
+    QString typeSpec;           // "2 vCPU, 1 GiB" from describe-instance-types
 };
 
 struct CloudFleetStatus {
@@ -369,6 +390,16 @@ void fleetFinalize(CloudFleetStatus &fleet);
 
 QString fleetSummaryText(const CloudFleetStatus &fleet);
 QString fleetTableNote();
+// The selected instance, as the Cloud page's detail pane renders it: identity,
+// image/OS, access, network and the launch settings, from the same
+// describe-instances answer. A field the provider did not report is dashed.
+QString fleetInstanceDetailText(const CloudFleetInstance &row);
+// AMI id -> the provider's own description of that image ("Amazon Linux 2023
+// AMI 2023.9.20251117 x86_64", "Ubuntu 22.04 LTS (Jammy Jellyfish) ..."), and
+// instance type -> "2 vCPU, 1 GiB". Both are filled by one extra call per run
+// and cached, so a second listing costs none.
+QHash<QString, QString> parseAwsImageNames(const QByteArray &body);
+QHash<QString, QString> parseAwsInstanceTypeSpecs(const QByteArray &body);
 QString fleetDisabledText();
 QString fleetNoProviderText();
 QString fleetCliMissingText(const QString &cli);

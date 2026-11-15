@@ -10,6 +10,8 @@
 #include <QProcess>
 #include <QStringList>
 
+#include <algorithm>
+
 namespace {
 
 // The account does not change often; a 10 min listing keeps the $/MO figure
@@ -71,6 +73,9 @@ enum class FleetPhase {
     HomeRegion,
     Regions,
     Instances,
+    // One describe-images per region with rows, plus one describe-instance-types
+    // for the types seen: the OS name and the vCPU/memory behind the type.
+    Details,
     Done,
 };
 
@@ -179,6 +184,42 @@ QStringList cloudAwsDescribeInstancesArguments(const QString &region) {
     // handles this and the full document the same way.
     args << QStringLiteral("--query")
          << QStringLiteral("Reservations[].Instances[]");
+    return args;
+}
+
+QStringList cloudAwsDescribeImagesArguments(const QString &region,
+                                            const QStringList &imageIds) {
+    QStringList args;
+    args << QStringLiteral("ec2") << QStringLiteral("describe-images")
+         << QStringLiteral("--output") << QStringLiteral("json");
+    if (!region.isEmpty()) {
+        args << QStringLiteral("--region") << region;
+    }
+    args << QStringLiteral("--image-ids");
+    for (const QString &id : imageIds) {
+        args << id;
+    }
+    args << QStringLiteral("--query")
+         << QStringLiteral("Images[].{id:ImageId,name:Name,desc:Description}");
+    return args;
+}
+
+QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
+                                                   const QStringList &types) {
+    QStringList args;
+    args << QStringLiteral("ec2") << QStringLiteral("describe-instance-types")
+         << QStringLiteral("--output") << QStringLiteral("json");
+    if (!region.isEmpty()) {
+        args << QStringLiteral("--region") << region;
+    }
+    args << QStringLiteral("--instance-types");
+    for (const QString &type : types) {
+        args << type;
+    }
+    args << QStringLiteral("--query")
+         << QStringLiteral("InstanceTypes[].{type:InstanceType,"
+                           "vcpu:VCpuInfo.DefaultVCpus,"
+                           "mem:MemoryInfo.SizeInMiB}");
     return args;
 }
 
@@ -292,6 +333,12 @@ public:
         identityResolved = false;
         regionsRequested = false;
         singleRequested = false;
+        detailsRequested = false;
+        imageNames.clear();
+        typeSpecs.clear();
+        imageIdsByRegion.clear();
+        pendingImageRegions.clear();
+        pendingTypes.clear();
         startedAtMs = 0;
         wallStartedAtMs = 0;
         lastAttemptMs = 0;
@@ -323,6 +370,10 @@ public:
     void begin(const CloudIdentity &id, const CloudFleetOptions &opts,
                qint64 nowMs) {
         abort();
+        // Keep the last answer on screen while the new one is being read: a
+        // 20 s job that blanks its own result looks like a collapse/reopen
+        // losing the data (reported live).
+        const CloudFleetStatus previous = status;
         identity = id;
         options = opts;
         rows.clear();
@@ -336,18 +387,42 @@ public:
         identityResolved = false;
         regionsRequested = false;
         singleRequested = false;
+        detailsRequested = false;
+        imageIdsByRegion.clear();
+        pendingImageRegions.clear();
+        pendingTypes.clear();
         startedAtMs = nowMs;
         wallStartedAtMs = QDateTime::currentMSecsSinceEpoch();
         lastAttemptMs = nowMs;
 
         status = CloudFleetStatus{};
+        if (previous.provider == id.provider && previous.attempted) {
+            status.rows = previous.rows;
+            status.dropped = previous.dropped;
+            status.running = previous.running;
+            status.unpriced = previous.unpriced;
+            status.monthlyUsd = previous.monthlyUsd;
+            status.selfIndex = previous.selfIndex;
+            status.account = previous.account;
+            status.homeRegion = previous.homeRegion;
+            status.regions = previous.regions;
+            status.regionFailures = previous.regionFailures;
+            status.regionError = previous.regionError;
+            status.regionListRefused = previous.regionListRefused;
+            status.regionListError = previous.regionListError;
+            status.identityResolved = previous.identityResolved;
+            status.identitySource = previous.identitySource;
+            status.fetchedAtMs = previous.fetchedAtMs;
+            status.available = previous.available;
+            status.wholeAccount = previous.wholeAccount;
+        }
         status.attempted = true;
         status.provider = id.provider;
         status.cliName = cloudFleetCli(id.provider);
         status.scope = cloudFleetScope(id);
         status.source = cloudFleetCommandText(id);
-        status.account = id.accountId;
-        status.homeRegion = homeRegion;
+        status.account = id.accountId.isEmpty() ? status.account : id.accountId;
+        status.homeRegion = homeRegion.isEmpty() ? status.homeRegion : homeRegion;
 
         cliPath = cloudCliResolve(status.cliName, options.cliPath);
         status.cliPath = cliPath;
@@ -516,6 +591,18 @@ public:
                              cloudAwsDescribeInstancesArguments(region), nowMs);
                 }
                 if (jobs.isEmpty() && pendingRegions.isEmpty()) {
+                    phase = FleetPhase::Details;
+                    continue;
+                }
+                return;
+            }
+            case FleetPhase::Details: {
+                if (!detailsRequested) {
+                    detailsRequested = true;
+                    buildDetailPlan();
+                }
+                startDetailJobs(nowMs);
+                if (jobs.isEmpty()) {
                     finishRun(nowMs, QString());
                     return;
                 }
@@ -611,6 +698,23 @@ public:
             }
             return;
         }
+        if (job.stage == QLatin1String("images")) {
+            const QHash<QString, QString> names = parseAwsImageNames(out);
+            for (auto it = names.constBegin(); it != names.constEnd(); ++it) {
+                imageNames.insert(it.key(), it.value());
+            }
+            applyDetails();
+            return;
+        }
+        if (job.stage == QLatin1String("types")) {
+            const QHash<QString, QString> specs =
+                parseAwsInstanceTypeSpecs(out);
+            for (auto it = specs.constBegin(); it != specs.constEnd(); ++it) {
+                typeSpecs.insert(it.key(), it.value());
+            }
+            applyDetails();
+            return;
+        }
         // instances
         if (out.trimmed().isEmpty()) {
             stageFailure(job.stage, job.region, QStringLiteral("no output"),
@@ -641,26 +745,100 @@ public:
             }
             rows.append(row);
         }
+        applyDetails();
         // Publish the rows that have arrived instead of waiting for all 18
         // regions: the answer for the region this machine lives in is already
         // known, and the page should show it rather than a spinner for 20 s.
         publishPartial(nowMs);
     }
 
+    void buildDetailPlan() {
+        imageIdsByRegion.clear();
+        pendingImageRegions.clear();
+        pendingTypes.clear();
+        if (identity.provider != CloudProvider::Aws) {
+            return;
+        }
+        for (const CloudFleetInstance &row : rows) {
+            if (!row.imageId.isEmpty() && !imageNames.contains(row.imageId)) {
+                QStringList &ids = imageIdsByRegion[row.region];
+                if (!ids.contains(row.imageId)) {
+                    ids.append(row.imageId);
+                }
+            }
+        }
+        pendingImageRegions = imageIdsByRegion.keys();
+        std::sort(pendingImageRegions.begin(), pendingImageRegions.end());
+        for (const CloudFleetInstance &row : rows) {
+            if (!row.instanceType.isEmpty() &&
+                !typeSpecs.contains(row.instanceType) &&
+                !pendingTypes.contains(row.instanceType)) {
+                pendingTypes.append(row.instanceType);
+            }
+        }
+    }
+
+    void startDetailJobs(qint64 nowMs) {
+        if (!pendingTypes.isEmpty()) {
+            const QString region =
+                homeRegion.isEmpty()
+                    ? (rows.isEmpty() ? QString() : rows.first().region)
+                    : homeRegion;
+            const QStringList types = pendingTypes;
+            pendingTypes.clear();
+            startJob(QStringLiteral("types"), region,
+                     cloudAwsDescribeInstanceTypesArguments(region, types),
+                     nowMs);
+        }
+        const int limit = qBound(1, options.regionConcurrency,
+                                 kCloudFleetRegionConcurrencyMax);
+        while (jobs.size() < limit && !pendingImageRegions.isEmpty()) {
+            const QString region = pendingImageRegions.takeFirst();
+            const QStringList ids = imageIdsByRegion.value(region);
+            if (ids.isEmpty()) {
+                continue;
+            }
+            startJob(QStringLiteral("images"), region,
+                     cloudAwsDescribeImagesArguments(region, ids), nowMs);
+        }
+    }
+
+    void applyDetails() {
+        for (CloudFleetInstance &row : rows) {
+            if (row.imageName.isEmpty()) {
+                const auto it = imageNames.constFind(row.imageId);
+                if (it != imageNames.constEnd()) {
+                    row.imageName = it.value();
+                }
+            }
+            if (row.typeSpec.isEmpty()) {
+                const auto it = typeSpecs.constFind(row.instanceType);
+                if (it != typeSpecs.constEnd()) {
+                    row.typeSpec = it.value();
+                }
+            }
+        }
+    }
+
     void publishPartial(qint64 nowMs) {
+        Q_UNUSED(nowMs);
         if (phase != FleetPhase::Instances) {
             return;
         }
-        status.rows = rows;
-        status.dropped = dropped;
+        // Replace the rows only when something has actually arrived: a refresh
+        // keeps the previous answer on screen until the new one has a row to
+        // show (a region with no instances must not blank it).
+        if (!rows.isEmpty()) {
+            status.rows = rows;
+            status.dropped = dropped;
+            fleetFinalize(status);
+        }
         status.regions = queriedRegions;
         status.regionFailures = regionFailures;
         status.regionError = regionError;
         status.homeRegion = homeRegion;
         status.account = identity.accountId;
         status.identityResolved = identityResolved;
-        status.fetchedAtMs = nowMs;
-        fleetFinalize(status);
         status.note = QStringLiteral("fleet: listing %1 region(s) - %2 found "
                                      "so far ...")
                           .arg(queriedRegions.size() + pendingRegions.size())
@@ -686,6 +864,11 @@ public:
         }
         if (stage == QLatin1String("regions")) {
             noteRegionsFailure(note, nowMs);
+            return;
+        }
+        if (stage == QLatin1String("images") || stage == QLatin1String("types")) {
+            // Enrichment only: the listing itself succeeded, so a refused
+            // describe-images must not make the account look broken.
             return;
         }
         const QString label =
@@ -746,6 +929,7 @@ public:
 
     void finishRun(qint64 nowMs, const QString &overrideNote) {
         abort();
+        applyDetails();
         status.rows = rows;
         status.dropped = dropped;
         status.regions = queriedRegions;
@@ -802,6 +986,14 @@ public:
     bool identityResolved = false;
     bool regionsRequested = false;
     bool singleRequested = false;
+    bool detailsRequested = false;
+    // AMI id -> description and instance type -> spec, kept across runs so a
+    // second listing of the same account costs no enrichment call at all.
+    QHash<QString, QString> imageNames;
+    QHash<QString, QString> typeSpecs;
+    QHash<QString, QStringList> imageIdsByRegion;
+    QStringList pendingImageRegions;
+    QStringList pendingTypes;
     QList<FleetJob> jobs;
     FleetPhase phase = FleetPhase::Idle;
     qint64 startedAtMs = 0;

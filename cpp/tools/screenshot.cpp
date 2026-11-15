@@ -542,6 +542,33 @@ DisplaySnapshot demoSnapshot(int tick) {
         fleetRow("i-0deadbeefdeadbe01", "batch-old", "t4g.small", "stopped",
                  47, "ap-south-1b"),
     };
+    // The detail pane: the AMI description is the only place the distribution
+    // is named, and the type spec comes from describe-instance-types.
+    fleet.rows[0].imageId = QStringLiteral("ami-0ubuntu22");
+    fleet.rows[0].imageName =
+        QStringLiteral("Ubuntu 22.04 LTS (Jammy Jellyfish) amd64");
+    fleet.rows[0].typeSpec = QStringLiteral("8 vCPU, 16 GiB");
+    fleet.rows[0].architecture = QStringLiteral("arm64");
+    fleet.rows[0].platformDetails = QStringLiteral("Linux/UNIX");
+    fleet.rows[0].virtualizationType = QStringLiteral("hvm");
+    fleet.rows[0].rootDeviceType = QStringLiteral("ebs");
+    fleet.rows[0].keyName = QStringLiteral("hud-key");
+    fleet.rows[0].vpcId = QStringLiteral("vpc-0c1f2e3d");
+    fleet.rows[0].subnetId = QStringLiteral("subnet-0a9b8c7d");
+    fleet.rows[0].iamProfile =
+        QStringLiteral("arn:aws:iam::123456789012:instance-profile/hud");
+    fleet.rows[0].securityGroups = {
+        QStringLiteral("hud-sg (sg-0a1b2c3d)")};
+    fleet.rows[0].tenancy = QStringLiteral("default");
+    fleet.rows[0].httpTokens = QStringLiteral("required");
+    fleet.rows[0].monitoring = QStringLiteral("disabled");
+    fleet.rows[0].creditSpec = QStringLiteral("standard");
+    fleet.rows[0].privateIp = QStringLiteral("10.0.3.17");
+    fleet.rows[0].publicIp = QStringLiteral("13.244.18.9");
+    fleet.rows[1].imageName = QStringLiteral("Amazon Linux 2023 AMI 2023.9.20251117 x86_64 HVM kernel-6.1");
+    fleet.rows[1].typeSpec = QStringLiteral("2 vCPU, 2 GiB");
+    fleet.rows[1].keyName = QStringLiteral("hud-key");
+    fleet.rows[1].httpTokens = QStringLiteral("required");
     fleetApplyRates(
         fleet,
         parseCloudRateFile(QStringLiteral("aws/c7g.2xlarge = 0.2920\n"

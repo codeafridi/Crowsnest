@@ -350,6 +350,9 @@ private:
     QLabel *m_cloudDetail = nullptr;
     QLabel *m_cloudFleetSummary = nullptr;
     QLabel *m_cloudFleetNote = nullptr;
+    QLabel *m_cloudFleetDetail = nullptr;
+    QList<CloudFleetInstance> m_cloudFleetRows;
+    QString m_cloudFleetSelectedId;
     QLabel *m_cloudPreflight = nullptr;
     QPushButton *m_cloudRefresh = nullptr;
     int m_cloudPageIndex = -1;

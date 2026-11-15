@@ -1899,6 +1899,21 @@ int main(int argc, char *argv[]) {
     fleetSelf.zone = QStringLiteral("eu-west-1b");
     fleetSelf.privateIp = QStringLiteral("10.0.3.17");
     fleetSelf.launchedAtMs = fleetNow - 3 * 86400LL * 1000LL;
+    fleetSelf.imageId = QStringLiteral("ami-0ubuntu");
+    fleetSelf.imageName =
+        QStringLiteral("Ubuntu 22.04 LTS (Jammy Jellyfish) amd64");
+    fleetSelf.typeSpec = QStringLiteral("8 vCPU, 16 GiB");
+    fleetSelf.architecture = QStringLiteral("arm64");
+    fleetSelf.platformDetails = QStringLiteral("Linux/UNIX");
+    fleetSelf.keyName = QStringLiteral("hud-key");
+    fleetSelf.vpcId = QStringLiteral("vpc-0abc");
+    fleetSelf.subnetId = QStringLiteral("subnet-0abc");
+    fleetSelf.iamProfile =
+        QStringLiteral("arn:aws:iam::123456789012:instance-profile/hud");
+    fleetSelf.securityGroups = {QStringLiteral("hud-sg (sg-0abc)")};
+    fleetSelf.tenancy = QStringLiteral("default");
+    fleetSelf.httpTokens = QStringLiteral("required");
+    fleetSelf.rootDeviceType = QStringLiteral("ebs");
     CloudFleetInstance fleetWeb;
     fleetWeb.instanceId = QStringLiteral("i-0feedface");
     fleetWeb.name = QStringLiteral("web-2");
@@ -2123,6 +2138,24 @@ int main(int argc, char *argv[]) {
     }
     check(cloudFleetChart != nullptr && cloudFleetChart->sampleCount() == 2,
           "cloud fleet chart follows the running count per tick");
+    auto *cloudFleetDetail =
+        hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetDetail"));
+    check(cloudFleetDetail != nullptr
+              && cloudFleetDetail->text().contains(
+                  QStringLiteral("Ubuntu 22.04 LTS"))
+              && cloudFleetDetail->text().contains(
+                  QStringLiteral("8 vCPU, 16 GiB"))
+              && cloudFleetDetail->text().contains(QStringLiteral("hud-key"))
+              && cloudFleetDetail->text().contains(QStringLiteral("required")),
+          "cloud fleet detail names the OS, the type spec and the settings");
+    {
+        // Selecting another row must describe that row, not the self row.
+        cloudFleet->setCurrentItem(cloudFleet->topLevelItem(1));
+        check(cloudFleetDetail->text().contains(
+                  QStringLiteral("i-0feedface")),
+              "cloud fleet detail follows the selected row");
+        cloudFleet->setCurrentItem(cloudFleet->topLevelItem(0));
+    }
     auto *cloudFleetNote =
         hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetNote"));
     check(cloudFleetNote != nullptr

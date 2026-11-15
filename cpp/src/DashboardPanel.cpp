@@ -721,7 +721,8 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddTeamTileMachines, #ddTeamTileOnline, #ddTeamTileSilent,"
         " #ddTeamTileRelay { color: %TEXT%; }"
         "#ddCloudSummary, #ddCloudDetail, #ddCloudCost, #ddCloudApp,"
-        " #ddCloudFleetSummary, #ddCloudFleetNote, #ddCloudFootprint,"
+        " #ddCloudFleetSummary, #ddCloudFleetNote, #ddCloudFleetDetail,"
+        " #ddCloudFootprint,"
         " #ddCloudSpendSummary, #ddCloudSpendDetail, #ddCloudSpendNote,"
         " #ddRemoteReport"
         " { color: %MUTED%; }"
@@ -4988,10 +4989,18 @@ QWidget *DashboardPanel::buildCloudView() {
             &DashboardPanel::cloudRefreshRequested);
     fleetHead->addWidget(m_cloudRefresh, 0);
     layout->addLayout(fleetHead);
-    layout->addWidget(makeChartCard(
-        QStringLiteral("running instances"), m_chartCloudFleet, view));
-    layout->addWidget(
-        makeCard(QStringLiteral("inventory"), m_cloudFleetSummary, view));
+    // The summary and the fleet-size chart share one row: stacked, they pushed
+    // the table (and the selected instance's detail) below the fold, which is
+    // where the answer actually is.
+    auto *fleetTop = new QHBoxLayout;
+    fleetTop->setSpacing(10);
+    fleetTop->addWidget(
+        makeCard(QStringLiteral("inventory"), m_cloudFleetSummary, view), 2);
+    fleetTop->addWidget(
+        makeChartCard(QStringLiteral("running instances"), m_chartCloudFleet,
+                      view),
+        1);
+    layout->addLayout(fleetTop);
 
     m_cloudFleet = new QTreeWidget(view);
     m_cloudFleet->setObjectName(QStringLiteral("ddCloudFleet"));
@@ -5003,8 +5012,8 @@ QWidget *DashboardPanel::buildCloudView() {
                                    QStringLiteral("AGE"),
                                    QStringLiteral("$/MO")});
     m_cloudFleet->setRootIsDecorated(false);
-    m_cloudFleet->setSelectionMode(QAbstractItemView::NoSelection);
-    m_cloudFleet->setFocusPolicy(Qt::NoFocus);
+    m_cloudFleet->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_cloudFleet->setFocusPolicy(Qt::ClickFocus);
     m_cloudFleet->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     for (int column = 1; column < 6; ++column) {
         m_cloudFleet->header()->setSectionResizeMode(
@@ -5012,6 +5021,30 @@ QWidget *DashboardPanel::buildCloudView() {
     }
     layout->addWidget(
         makeCard(QStringLiteral("instances"), m_cloudFleet, view));
+    // Selecting a row shows everything the provider reported about it: the
+    // image is the only place the distribution is named, and the launch
+    // settings (key, tenancy, IMDSv2, security groups) are what "how was this
+    // box started" actually means.
+    m_cloudFleetDetail = new QLabel(QStringLiteral("--"), view);
+    m_cloudFleetDetail->setObjectName(QStringLiteral("ddCloudFleetDetail"));
+    m_cloudFleetDetail->setFont(monoFont(10));
+    m_cloudFleetDetail->setWordWrap(true);
+    m_cloudFleetDetail->setMinimumWidth(1);
+    connect(m_cloudFleet, &QTreeWidget::itemSelectionChanged, this, [this]() {
+        const QList<QTreeWidgetItem *> selected = m_cloudFleet->selectedItems();
+        if (selected.isEmpty()) {
+            return;
+        }
+        const int index = m_cloudFleet->indexOfTopLevelItem(selected.first());
+        if (index < 0 || index >= m_cloudFleetRows.size()) {
+            return;
+        }
+        m_cloudFleetSelectedId = m_cloudFleetRows.at(index).instanceId;
+        m_cloudFleetDetail->setText(
+            fleetInstanceDetailText(m_cloudFleetRows.at(index)));
+    });
+    layout->addWidget(
+        makeCard(QStringLiteral("selected instance"), m_cloudFleetDetail, view));
     m_cloudFleetNote = new QLabel(fleetTableNote(), view);
     m_cloudFleetNote->setObjectName(QStringLiteral("ddCloudFleetNote"));
     m_cloudFleetNote->setFont(monoFont(9));
@@ -8748,7 +8781,9 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                                 : cloud.iac.note);
     }
     if (m_cloudFleet != nullptr) {
+        m_cloudFleet->setUpdatesEnabled(false);
         m_cloudFleet->clear();
+        m_cloudFleetRows = fleet.rows;
         for (const CloudFleetInstance &row : fleet.rows) {
             auto *item = new QTreeWidgetItem(m_cloudFleet);
             item->setText(0, row.isSelf
@@ -8793,7 +8828,29 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             item->setText(0, fleetText);
             item->setForeground(0, QColor(ui_theme::dim()));
             m_cloudFleet->setFirstColumnSpanned(0, QModelIndex(), true);
+            m_cloudFleetSelectedId.clear();
+            if (m_cloudFleetDetail != nullptr) {
+                m_cloudFleetDetail->setText(QStringLiteral(
+                    "-- no instance selected (the account listing is empty)"));
+            }
+        } else {
+            // Keep the row the reader chose; otherwise lead with this machine
+            // when it is in the listing, else the first row, so the detail
+            // pane is never blank while there is something to describe.
+            int select = fleet.selfIndex >= 0 ? fleet.selfIndex : 0;
+            for (int i = 0; i < fleet.rows.size(); ++i) {
+                if (!m_cloudFleetSelectedId.isEmpty() &&
+                    fleet.rows.at(i).instanceId == m_cloudFleetSelectedId) {
+                    select = i;
+                    break;
+                }
+            }
+            if (select >= 0 && select < m_cloudFleet->topLevelItemCount()) {
+                m_cloudFleet->setCurrentItem(
+                    m_cloudFleet->topLevelItem(select));
+            }
         }
+        m_cloudFleet->setUpdatesEnabled(true);
     }
     if (m_chartCloudFleet != nullptr && fleet.available) {
         m_chartCloudFleet->push(fleet.running);

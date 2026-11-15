@@ -512,7 +512,16 @@ QString cloudDetailText(const CloudSnapshot &snapshot) {
     const CloudIdentity &id = snapshot.identity;
     QStringList lines;
     lines.append(QStringLiteral("provider   %1").arg(cloudProviderLabel(id.provider)));
-    lines.append(QStringLiteral("instance   %1").arg(orDash(id.instanceId)));
+    if (id.instanceId.isEmpty()) {
+        // identity=auto on a laptop: the account is real, this host is not in
+        // it. Saying so is better than three dashes the reader has to decode.
+        lines.append(QStringLiteral(
+            "instance   --  (no instance metadata on this host - the account "
+            "is read through the CLI)"));
+    } else {
+        lines.append(
+            QStringLiteral("instance   %1").arg(orDash(id.instanceId)));
+    }
     if (!id.instanceName.isEmpty()) {
         lines.append(QStringLiteral("name       %1").arg(id.instanceName));
     }
@@ -546,6 +555,9 @@ QString cloudDetailText(const CloudSnapshot &snapshot) {
                     .toString(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'")));
         }
         lines.append(age);
+    } else if (id.instanceId.isEmpty()) {
+        lines.append(QStringLiteral(
+            "age        --  (this host is not the instance the account lists)"));
     } else {
         lines.append(QStringLiteral(
             "age        --  (the provider reported no launch time for this "

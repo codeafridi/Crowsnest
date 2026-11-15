@@ -5536,12 +5536,84 @@ int main(int argc, char *argv[]) {
                   && fleetTableNote().contains(QStringLiteral("* this instance")),
               "fleet: every refusal states the command, the time and the note");
 
+        // The instance detail: everything describe-instances already carries,
+        // plus the two enrichment maps (AMI description, type spec).
+        const CloudFleetStatus detailed = parseAwsDescribeInstances(
+            QByteArrayLiteral(
+                "[{\"InstanceId\":\"i-0detail\",\"InstanceType\":\"t3.micro\","
+                "\"State\":{\"Name\":\"running\"},"
+                "\"Placement\":{\"AvailabilityZone\":\"ap-south-1b\"},"
+                "\"ImageId\":\"ami-0abc\",\"Architecture\":\"x86_64\","
+                "\"PlatformDetails\":\"Linux/UNIX\",\"KeyName\":\"my-key\","
+                "\"VpcId\":\"vpc-123\",\"SubnetId\":\"subnet-456\","
+                "\"IamInstanceProfile\":{\"Arn\":\"arn:aws:iam::1:"
+                "instance-profile/app\"},"
+                "\"SecurityGroups\":[{\"GroupName\":\"launch-wizard-1\","
+                "\"GroupId\":\"sg-789\"}],"
+                "\"Tenancy\":\"default\",\"RootDeviceType\":\"ebs\","
+                "\"VirtualizationType\":\"hvm\",\"InstanceLifecycle\":\"spot\","
+                "\"MetadataOptions\":{\"HttpTokens\":\"required\"},"
+                "\"Monitoring\":{\"State\":\"disabled\"},"
+                "\"CreditSpecification\":{\"CpuCredits\":\"standard\"},"
+                "\"StateTransitionReason\":\"User initiated (2026-11-15 "
+                "06:30:00 GMT)\","
+                "\"LaunchTime\":\"2026-11-15T06:30:00Z\","
+                "\"Tags\":[{\"Key\":\"Name\",\"Value\":\"sample 1\"}]}]"));
+        const CloudFleetInstance &detail = detailed.rows.first();
+        check(detail.imageId == QStringLiteral("ami-0abc")
+                  && detail.architecture == QStringLiteral("x86_64")
+                  && detail.platformDetails == QStringLiteral("Linux/UNIX")
+                  && detail.keyName == QStringLiteral("my-key")
+                  && detail.vpcId == QStringLiteral("vpc-123")
+                  && detail.subnetId == QStringLiteral("subnet-456")
+                  && detail.iamProfile.endsWith(QStringLiteral("instance-profile/app"))
+                  && detail.securityGroups.contains(
+                      QStringLiteral("launch-wizard-1 (sg-789)"))
+                  && detail.httpTokens == QStringLiteral("required")
+                  && detail.creditSpec == QStringLiteral("standard")
+                  && detail.stateReason.startsWith(QStringLiteral("User initiated")),
+              "fleet: describe-instances carries the launch settings");
+        const QHash<QString, QString> imageNames = parseAwsImageNames(
+            QByteArrayLiteral(
+                "[{\"id\":\"ami-0abc\",\"name\":\"ubuntu/images/hvm-ssd/"
+                "ubuntu-jammy-22.04-amd64-server-20240101\","
+                "\"desc\":\"Ubuntu 22.04 LTS (Jammy Jellyfish) ...\"}]"));
+        const QHash<QString, QString> typeSpecs = parseAwsInstanceTypeSpecs(
+            QByteArrayLiteral(
+                "[{\"type\":\"t3.micro\",\"vcpu\":2,\"mem\":1024},"
+                "{\"type\":\"m7g.large\",\"vcpu\":2,\"mem\":8192}]"));
+        check(imageNames.value(QStringLiteral("ami-0abc"))
+                      .startsWith(QStringLiteral("Ubuntu 22.04 LTS"))
+                  && typeSpecs.value(QStringLiteral("t3.micro"))
+                         == QStringLiteral("2 vCPU, 1 GiB")
+                  && typeSpecs.value(QStringLiteral("m7g.large"))
+                         == QStringLiteral("2 vCPU, 8 GiB"),
+              "fleet: the AMI description and the type spec parse");
+        CloudFleetInstance enriched = detail;
+        enriched.imageName = imageNames.value(QStringLiteral("ami-0abc"));
+        enriched.typeSpec = typeSpecs.value(QStringLiteral("t3.micro"));
+        const QString detailText = fleetInstanceDetailText(enriched);
+        check(detailText.contains(QStringLiteral("Ubuntu 22.04 LTS"))
+                  && detailText.contains(
+                      QStringLiteral("t3.micro  (2 vCPU, 1 GiB)"))
+                  && detailText.contains(QStringLiteral("my-key"))
+                  && detailText.contains(QStringLiteral("required"))
+                  && detailText.contains(
+                      QStringLiteral("launch-wizard-1 (sg-789)"))
+                  && detailText.contains(QStringLiteral("vpc-123"))
+                  && !detailText.contains(QStringLiteral("--")),
+              "fleet: the detail pane names the OS, the type spec and the "
+              "launch settings");
+        check(!fleetInstanceDetailText(CloudFleetInstance{})
+                   .contains(QStringLiteral("vpc")),
+              "fleet: an instance with nothing reported dashes instead of "
+              "inventing");
+
         check(cloudFleetNeedsCredentials(
                   CloudProvider::Aws,
                   QStringLiteral("Unable to locate credentials. You can "
                                  "configure credentials by running \"aws "
-                                 "configure\"."))
-                  && cloudFleetNeedsCredentials(
+                                 "configure\"."))                  && cloudFleetNeedsCredentials(
                       CloudProvider::Azure,
                       QStringLiteral("Please run 'az login' to setup account."))
                   && cloudFleetNeedsCredentials(
@@ -5885,6 +5957,25 @@ int main(int argc, char *argv[]) {
                     QLatin1Char('\n'), Qt::SkipEmptyParts);
             return lines.isEmpty() ? QString() : lines.last().trimmed();
         };
+        // The AWS listing now ends with two enrichment calls (describe-images
+        // and describe-instance-types), so "the last line" is no longer the
+        // instances call: match the call being asserted instead.
+        const auto argvLine = [&argvLog](const QString &needle) {
+            QFile log(argvLog);
+            if (!log.open(QIODevice::ReadOnly)) {
+                return QString();
+            }
+            const QStringList lines =
+                QString::fromUtf8(log.readAll()).split(
+                    QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (int i = lines.size() - 1; i >= 0; --i) {
+                const QString line = lines.at(i).trimmed();
+                if (line.contains(needle)) {
+                    return line;
+                }
+            }
+            return QString();
+        };
         // Resolving the CLI hits the filesystem, so it runs with the fake
         // dir first on PATH; the identity below is what the metadata service
         // would report on each provider.
@@ -5928,7 +6019,7 @@ int main(int argc, char *argv[]) {
         setFake(awsListing, QByteArray(), 0);
         const CloudFleetStatus awsFleet =
             probeCloudFleet(awsId, cliOptions, cliNow);
-        check(lastArgv() == QStringLiteral(
+        check(argvLine(QStringLiteral("ec2 describe-instances")) == QStringLiteral(
                                "ec2 describe-instances --output json "
                                "--region eu-west-1 --query "
                                "Reservations[].Instances[]"),
@@ -5946,7 +6037,7 @@ int main(int argc, char *argv[]) {
                 QByteArray(), 0);
         const CloudFleetStatus azFleet =
             probeCloudFleet(azId, cliOptions, cliNow);
-        check(lastArgv() == QStringLiteral(
+        check(argvLine(QStringLiteral("vm list")) == QStringLiteral(
                                "vm list -d -o json --subscription sub-9"),
               "cloud cli: az lists with -d and the imds subscription");
         check(azFleet.available && azFleet.rows.size() == 1
@@ -5963,7 +6054,7 @@ int main(int argc, char *argv[]) {
                 QByteArray(), 0);
         const CloudFleetStatus gcpFleet =
             probeCloudFleet(gcpId, cliOptions, cliNow);
-        check(lastArgv() == QStringLiteral(
+        check(argvLine(QStringLiteral("compute instances list")) == QStringLiteral(
                                "compute instances list --format=json "
                                "--project proj-7"),
               "cloud cli: gcloud lists the imds project as json");
@@ -5979,7 +6070,7 @@ int main(int argc, char *argv[]) {
                 QByteArray(), 0);
         const CloudFleetStatus ociFleet =
             probeCloudFleet(ociId, cliOptions, cliNow);
-        check(lastArgv() == QStringLiteral(
+        check(argvLine(QStringLiteral("compute instance list")) == QStringLiteral(
                                "compute instance list --compartment-id "
                                "ocid1.compartment --region eu-frankfurt-1 "
                                "--all --output json"),
@@ -6226,7 +6317,7 @@ int main(int argc, char *argv[]) {
                       && fan.identitySource
                              == QStringLiteral("aws sts get-caller-identity"),
                   "aws: the CLI names the account and the home region");
-            check(fanCalls.size() == 5
+            check(fanCalls.size() == 6
                       && fanCalls.at(0)
                              == QStringLiteral(
                                  "sts get-caller-identity --output json")
@@ -6237,8 +6328,14 @@ int main(int argc, char *argv[]) {
                                                "json --region eu-west-1")
                       && fanCalls.at(3).startsWith(
                           QStringLiteral("ec2 describe-instances --output json "
-                                         "--region eu-west-1")),
-                  "aws: identity, the region list, then the home region first");
+                                         "--region eu-west-1"))
+                      && fanCalls.at(4).startsWith(
+                          QStringLiteral("ec2 describe-instances --output json "
+                                         "--region us-west-2"))
+                      && fanCalls.at(5).startsWith(
+                          QStringLiteral("ec2 describe-instance-types")),
+                  "aws: identity, the region list, the home region first, then "
+                  "the type specs");
             QStringList fanRowRegions;
             for (const CloudFleetInstance &row : fan.rows) {
                 fanRowRegions.append(row.region);

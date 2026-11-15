@@ -103,6 +103,22 @@ aws ec2 describe-instances --region <each> --output json \
   page also refreshes the listing once if it is older than a minute; while the
   page stays open the cadence is 5 minutes instead of 10, because a listing is
   ~18 `aws` starts, not a live stream.
+- **Selecting an instance** shows everything the provider reported about it:
+  id, name, type with its vCPU/memory, region/zone, state, launch time and age;
+  the AMI and **the distribution** (the image's own description — "Amazon Linux
+  2023 AMI …", "Ubuntu 22.04 LTS …"), architecture, platform and
+  virtualization; key pair, IAM instance profile and security groups; VPC,
+  subnet, private and public address; tenancy, monitoring, **IMDSv2** state
+  (`HttpTokens`), CPU credit mode and tags. Everything except the image name
+  and the type spec comes from the same `describe-instances` answer the table
+  already uses. Those two are one extra read-only call each per listing
+  (`ec2:DescribeImages` for the AMIs seen, `ec2:DescribeInstanceTypes` once for
+  the types seen) and are cached, so a second listing costs none. If IAM denies
+  them the detail simply shows `--` for that field; the listing is unaffected.
+- **A refresh never blanks the table**: the previous answer stays on screen
+  while the new one is being read, with the note saying `listing N region(s) -
+  M found so far`. Collapsing and reopening the console therefore keeps the
+  rows instead of showing an empty card until the next poll.
 
 The CLI itself is resolved like a login shell would: `PATH` first, then the
 directories the providers install into (`/opt/homebrew/bin`,
