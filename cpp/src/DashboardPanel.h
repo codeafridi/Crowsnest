@@ -56,6 +56,10 @@ class TimeseriesChart;
 // (HudWindow) through setHistorySelection, so the panel never touches files.
 struct HistoryViewInfo {
     bool enabled = false;
+    // 0 = the per-tick ring (1 h by default), 1 = the long ring (24 h by
+    // default, one sample every 15 s).
+    int tier = 0;
+    bool longTierAvailable = false;
     QString path;
     int count = 0;
     int capacity = 0;
@@ -203,6 +207,8 @@ signals:
     void monitorsResetRequested();
     void historyExportRequested(const QString &format);
     void historySeekRequested(int index);
+    // 0 = 1 h tier, 1 = 24 h tier.
+    void historyTierRequested(int tier);
     void silenceRequested(const QString &monitorId, int minutes);
     void silenceExpireRequested(const QString &monitorId);
     void processActionRequested(const ProcessAction &action);
@@ -658,6 +664,8 @@ private:
     QLabel *m_histTileDisk = nullptr;
     QLabel *m_histTileInterval = nullptr;
     QLabel *m_histSummary = nullptr;
+    QPushButton *m_histTierHour = nullptr;
+    QPushButton *m_histTierDay = nullptr;
     QLabel *m_histPos = nullptr;
     QLabel *m_histDetail = nullptr;
     QList<QLabel *> m_histDetailLines;

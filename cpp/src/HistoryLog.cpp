@@ -253,6 +253,16 @@ bool HistoryLog::open(const QString &path, int capacity) {
     return true;
 }
 
+void HistoryLog::setIntervalMs(qint64 intervalMs) {
+    if (intervalMs <= 0) {
+        return;
+    }
+    m_intervalMs = qBound<qint64>(1, intervalMs, 24LL * 3600 * 1000);
+    if (m_file != nullptr && writeHeader()) {
+        m_file->flush();
+    }
+}
+
 void HistoryLog::close() {
     if (m_file != nullptr) {
         m_file->flush();
@@ -274,7 +284,9 @@ bool HistoryLog::createFile() {
     m_total = 0;
     m_createdMs = QDateTime::currentMSecsSinceEpoch();
     m_intervalMs = 1000;
-    if (!m_file->resize(0)) {
+    // The file always occupies its full byte budget: the cap is known before
+    // the first sample, so a partial ring is a short file only until it fills.
+    if (!m_file->resize(fileBytes())) {
         return false;
     }
     return writeHeader();
@@ -312,7 +324,12 @@ bool HistoryLog::loadHeader() {
     if (m_intervalMs <= 0) {
         m_intervalMs = 1000;
     }
-    if (qint64(m_file->size()) < fileBytes()) {
+    // A ring that has not wrapped yet is shorter than its capacity allows. A
+    // strict size check would re-create it and throw the window away on every
+    // restart until the ring happened to be full - grow it instead, which
+    // keeps the hard byte cap and the count the header states.
+    if (qint64(m_file->size()) < fileBytes()
+        && !m_file->resize(fileBytes())) {
         return false;
     }
     return true;
@@ -452,6 +469,15 @@ QString historyDefaultPath() {
         base = QDir::tempPath() + QStringLiteral("/crowsnest");
     }
     return base + QStringLiteral("/history.ring");
+}
+
+QString historyLongPath(const QString &shortPath) {
+    if (shortPath.isEmpty()) {
+        return QString();
+    }
+    const int slash = shortPath.lastIndexOf(QLatin1Char('/'));
+    const QString dir = slash >= 0 ? shortPath.left(slash + 1) : QString();
+    return dir + QStringLiteral("history-long.ring");
 }
 
 QString historySummaryText(int count, int capacity, qint64 spanMs,

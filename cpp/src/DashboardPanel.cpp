@@ -794,10 +794,14 @@ QString DashboardPanel::consoleStyleSheet() const {
         // inherits the surface and renders near-invisible (the M61c sweep).
         "#ddOpacityValue { color: %TEXT%; }"
         "#ddAccentSwatch { font-weight: bold; }"
-        "#ddPresetBtn { color: %DIM%; background-color: transparent;"
+        "#ddPresetBtn, #ddHistTierHour, #ddHistTierDay"
+        " { color: %DIM%; background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px; padding: 3px 9px; }"
-        "#ddPresetBtn:hover { color: %TEXT%; border-color: %MUTED%; }"
-        "#ddPresetBtn:checked { color: %ACCENT%; border-color: %ACCENT%; }"
+        "#ddPresetBtn:hover, #ddHistTierHour:hover, #ddHistTierDay:hover"
+        " { color: %TEXT%; border-color: %MUTED%; }"
+        "#ddPresetBtn:checked, #ddHistTierHour:checked, #ddHistTierDay:checked"
+        " { color: %ACCENT%; border-color: %ACCENT%; }"
+        "#ddHistTierDay:disabled { color: %MUTED%; border-color: %BORDER%; }"
         "#ddSwatch { color: %DIM%; background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px; padding: 4px 4px 2px 4px; }"
         "#ddSwatch:hover { color: %TEXT%; border-color: %MUTED%; }"
@@ -4220,9 +4224,28 @@ void DashboardPanel::copyDiagnosticsReport() {
 }
 
 void DashboardPanel::setHistoryView(const HistoryViewInfo &view) {
+    const bool tierChanged = view.tier != m_historyView.tier;
     m_historyView = view;
     if (m_histSummary == nullptr) {
         return;
+    }
+    if (m_histTierHour != nullptr) {
+        m_histTierHour->setEnabled(view.enabled);
+        m_histTierDay->setEnabled(view.enabled && view.longTierAvailable);
+        m_histTierDay->setToolTip(
+            view.longTierAvailable
+                ? QStringLiteral("a sample every %1 s, kept for a day")
+                : QStringLiteral(
+                      "the 24 h ring is not open on this machine"));
+        const QSignalBlocker blockHour(m_histTierHour);
+        const QSignalBlocker blockDay(m_histTierDay);
+        m_histTierHour->setChecked(view.tier == 0);
+        m_histTierDay->setChecked(view.tier == 1);
+    }
+    if (tierChanged) {
+        // A different ring means a different window: never redraw the chart
+        // from the previous tier's points.
+        m_histWindowNewest = 0;
     }
     m_histSummary->setText(
         view.enabled
@@ -4497,9 +4520,46 @@ QWidget *DashboardPanel::buildHistoryView() {
     m_histSummary->setObjectName(QStringLiteral("ddHistSummary"));
     m_histSummary->setFont(monoFont(10));
     m_histSummary->setMinimumWidth(1);
+    // Two tiers: the per-tick ring (one hour by default) and a long ring
+    // written every 15 s (a day). The buttons say which window is on screen.
+    m_histTierHour = new QPushButton(QStringLiteral("1 H"), view);
+    m_histTierHour->setObjectName(QStringLiteral("ddHistTierHour"));
+    m_histTierHour->setCheckable(true);
+    m_histTierHour->setChecked(true);
+    m_histTierHour->setCursor(Qt::PointingHandCursor);
+    m_histTierHour->setFocusPolicy(Qt::NoFocus);
+    m_histTierDay = new QPushButton(QStringLiteral("24 H"), view);
+    m_histTierDay->setObjectName(QStringLiteral("ddHistTierDay"));
+    m_histTierDay->setCheckable(true);
+    m_histTierDay->setCursor(Qt::PointingHandCursor);
+    m_histTierDay->setFocusPolicy(Qt::NoFocus);
+    connect(m_histTierHour, &QPushButton::clicked, this, [this]() {
+        m_histTierHour->setChecked(true);
+        m_histTierDay->setChecked(false);
+        emit historyTierRequested(0);
+    });
+    connect(m_histTierDay, &QPushButton::clicked, this, [this]() {
+        m_histTierDay->setChecked(true);
+        m_histTierHour->setChecked(false);
+        emit historyTierRequested(1);
+    });
+
+    auto *historyBox = new QWidget(view);
+    auto *historyLayout = new QVBoxLayout(historyBox);
+    historyLayout->setContentsMargins(0, 0, 0, 0);
+    historyLayout->setSpacing(6);
+    historyLayout->addWidget(m_histSummary);
+    auto *tierRow = new QHBoxLayout();
+    tierRow->setContentsMargins(0, 0, 0, 0);
+    tierRow->setSpacing(6);
+    tierRow->addWidget(m_histTierHour);
+    tierRow->addWidget(m_histTierDay);
+    tierRow->addStretch(1);
+    historyLayout->addLayout(tierRow);
+
     layout->addWidget(makeBanner(QStringLiteral("HISTORY"), ui_theme::accent(),
                                  view));
-    layout->addWidget(makeCard(QStringLiteral("HISTORY"), m_histSummary, view));
+    layout->addWidget(makeCard(QStringLiteral("HISTORY"), historyBox, view));
 
     m_histPos = new QLabel(QStringLiteral("--"), view);
     m_histPos->setObjectName(QStringLiteral("ddHistPos"));

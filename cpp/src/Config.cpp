@@ -563,6 +563,19 @@ Config loadConfig(const QString &path, QString *errorMessage) {
         if (ok) {
             config.history.samples = clampInt(samples, 60, 100000);
         }
+        ok = false;
+        const int longSamples =
+            settings.value(QStringLiteral("long_samples")).toString().toInt(&ok);
+        if (ok) {
+            config.history.longSamples = clampInt(longSamples, 60, 100000);
+        }
+        ok = false;
+        const int longInterval =
+            settings.value(QStringLiteral("long_interval_s")).toString().toInt(&ok);
+        if (ok) {
+            config.history.longIntervalS =
+                clampInt(longInterval, 2, 3600);
+        }
     }
     settings.endGroup();
 

@@ -146,7 +146,11 @@ public:
 
     void setSettingsInfo(const SettingsInfo &info);
     void setRemoteInfo(const RemoteInfo &info);
-    void setHistoryStore(const QString &path, int capacity);
+    // Two rings: the per-tick one (1 h by default) and a long one written
+    // every `longEverySamples` samples (24 h at 15 s by default). Zero
+    // disables the tier.
+    void setHistoryStore(const QString &path, int capacity,
+                         int longCapacity = 0, int longEverySamples = 1);
 
     // M97: what the reporter needs from the console. The console owns the event
     // ring and the alert state; the reporter only puts the bytes on a socket.
@@ -248,12 +252,18 @@ private:
     SettingsInfo m_consoleSettings;
     bool m_haveConsoleSettings = false;
     HistoryLog m_historyLog;
+    HistoryLog m_historyLong;
     int m_historyCapacity = 0;
+    int m_historyLongEvery = 1;
+    int m_historyLongTick = 0;
+    int m_historyTier = 0;          // 0 = per-tick ring, 1 = long ring
+    bool m_historyLongWritten = false;
     int m_historySeek = -1;
     int m_historyTick = 0;
     int m_historyWindowCount = -1;
     qint64 m_historySpanMs = 0;
     void publishHistory();
+    void setHistoryTier(int tier);
     QWidget *m_pages = nullptr;
     QWidget *m_compactPage = nullptr;
     QRect m_savedGeometry;

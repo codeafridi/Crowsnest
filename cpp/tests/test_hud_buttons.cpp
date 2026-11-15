@@ -658,6 +658,35 @@ int main(int argc, char *argv[]) {
                   && histSummary->text().contains(QStringLiteral("15 min"))
                   && histSummary->text().contains(QStringLiteral("history.ring")) == false,
               "panel history card summarizes the stored ring");
+
+        // Two tiers: the 1 H ring and the 24 H ring, with the selector saying
+        // which window is on screen. A ring that is not open disables its
+        // button instead of pretending.
+        auto *tierHour = hud.findChild<QPushButton *>(
+            QStringLiteral("ddHistTierHour"));
+        auto *tierDay = hud.findChild<QPushButton *>(
+            QStringLiteral("ddHistTierDay"));
+        check(tierHour != nullptr && tierDay != nullptr
+                  && tierHour->isChecked() && !tierDay->isChecked()
+                  && !tierDay->isEnabled(),
+              "the 24 h tier is disabled when its ring is not open");
+        HistoryViewInfo longView = view;
+        longView.tier = 1;
+        longView.longTierAvailable = true;
+        longView.intervalMs = 15000;
+        longView.capacity = 5760;
+        panel->setHistoryView(longView);
+        check(tierDay->isChecked() && !tierHour->isChecked()
+                  && tierDay->isEnabled()
+                  && histInterval->text() == QStringLiteral("15 s"),
+              "the 24 h tier renders its own interval");
+        QList<int> tiers;
+        QObject::connect(panel, &DashboardPanel::historyTierRequested,
+                         [&tiers](int tier) { tiers.append(tier); });
+        tierHour->click();
+        check(!tiers.isEmpty() && tiers.last() == 0 && tierHour->isChecked(),
+              "the tier buttons ask the owner for the other ring");
+        panel->setHistoryView(view);
         check(histSlider->maximum() == 899 && histSlider->value() == 899
                   && histSlider->isEnabled(),
               "panel scrubber spans the stored window and rests on the newest");
@@ -691,6 +720,7 @@ int main(int argc, char *argv[]) {
         panel->setHistorySelection(
             historyPositionText(10, 900, selected, false),
             historyRecordText(selected));
+
         check(histPos->text().contains(QStringLiteral("rewound"))
                   && detailText().contains(QStringLiteral("firefox"))
                   && detailText().contains(QStringLiteral("estab 12"))
@@ -724,6 +754,36 @@ int main(int argc, char *argv[]) {
         lastButton->click();
         check(!seeks.isEmpty() && seeks.last() == 899,
               "latest jumps back to the live sample");
+
+        {
+            // The two rings on disk: the per-tick one and the long one, which
+            // takes one sample every N ticks (a clock-free policy, so the
+            // cadence cannot drift from the sampler's).
+            QTemporaryDir histDir;
+            check(histDir.isValid(), "history: a temp dir for the two rings");
+            const QString shortPath =
+                histDir.path() + QStringLiteral("/history.ring");
+            hud.setHistoryStore(shortPath, 8, 4, 3);
+            for (int i = 0; i < 7; ++i) {
+                DisplaySnapshot tick = withProcs;
+                tick.sequence = quint64(900 + i);
+                hud.setSnapshot(tick);
+            }
+            HistoryLog shortRing;
+            HistoryLog longRing;
+            const bool shortOpen = shortRing.open(shortPath, 8);
+            const bool longOpen = longRing.open(historyLongPath(shortPath), 4);
+            check(shortOpen && longOpen && shortRing.count() == 7
+                      && longRing.count() == 3,
+                  "history: the long ring keeps one sample every N ticks");
+            panel->historyTierRequested(1);
+            check(histSamples->text().contains(QStringLiteral("3")),
+                  "history: switching tiers republishes the other ring");
+            panel->historyTierRequested(0);
+            check(histSamples->text().contains(QStringLiteral("7")),
+                  "history: switching back republishes the tick ring");
+            hud.setHistoryStore(QString(), 0);
+        }
     }
 
     {

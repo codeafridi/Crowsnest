@@ -853,6 +853,26 @@ restyle, on purpose:
 accent = #4a86c4
 ```
 
+**History page and its two tiers** — the console writes a bounded on-disk
+ring of its own samples, so a spike you did not see live is still there after
+the fact and after a restart:
+
+```ini
+[history]
+enabled = true
+samples = 3600          ; per-tick ring: one hour at a 1 s cadence
+long_samples = 5760     ; long ring: 24 hours at 15 s
+long_interval_s = 15
+```
+
+Two rings, one page: **1 H** is the per-tick ring, **24 H** is the coarse one
+(a sample every `long_interval_s`, in its own file beside the first). The tier
+buttons switch which ring the rewind scrubber and the stored-window charts
+read, and the INTERVAL tile states the cadence of the ring on screen. The ring
+is a single fixed-record file whose size is known before the first sample, so
+the disk cost never grows past `header + samples x record`; a ring that has
+not filled yet resumes after a restart instead of being thrown away.
+
 **Metric history export** — the HUD keeps the last 1800 samples
 (~30 min at the default 1 s cadence) in memory and can write them out:
 Settings → DIAGNOSTICS → **EXPORT CSV** / **EXPORT JSON** (files land in

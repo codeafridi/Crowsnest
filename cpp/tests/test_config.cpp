@@ -691,6 +691,28 @@ int main(int argc, char *argv[]) {
     }
 
     {
+        QTemporaryDir dir;
+        const QString path = writeConfig(dir, QByteArrayLiteral(
+            "[history]\n"
+            "long_samples = 4000\n"
+            "long_interval_s = 20\n"));
+        QString error;
+        const Config c = loadConfig(path, &error);
+        check(c.history.longSamples == 4000
+                  && c.history.longIntervalS == 20,
+              "history: the long tier cadence and size load");
+
+        const QString tiny = writeConfig(dir, QByteArrayLiteral(
+            "[history]\n"
+            "long_samples = 5\n"
+            "long_interval_s = 1\n"));
+        const Config clamped = loadConfig(tiny, &error);
+        check(clamped.history.longSamples == 60
+                  && clamped.history.longIntervalS == 2,
+              "history: a too-small long tier clamps to its floor");
+    }
+
+    {
         // M82: [cloud] is on by default (link-local IMDS read only).
         QTemporaryDir dir;
         const QString path = writeConfig(dir, QByteArrayLiteral(""));

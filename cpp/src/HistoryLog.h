@@ -85,6 +85,9 @@ public:
     int count() const { return m_count; }
     qint64 totalWritten() const { return m_total; }
     qint64 intervalMs() const { return m_intervalMs; }
+    // The cadence this ring is written at, stated rather than guessed: the
+    // long tier is one record every fifteen seconds, not one per tick.
+    void setIntervalMs(qint64 intervalMs);
     qint64 createdMs() const { return m_createdMs; }
     qint64 fileBytes() const;
     bool append(const HistoryRecord &record);
@@ -114,6 +117,8 @@ private:
 };
 
 QString historyDefaultPath();
+// The long tier lives beside the short ring: same format, coarser cadence.
+QString historyLongPath(const QString &shortPath);
 QString historySummaryText(int count, int capacity, qint64 spanMs,
                            qint64 bytes, qint64 intervalMs);
 QString historyPositionText(int index, int count, const HistoryRecord &record,

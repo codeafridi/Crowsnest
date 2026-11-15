@@ -1537,6 +1537,10 @@ int main(int argc, char *argv[]) {
         info.bytes = 97264;
         info.intervalMs = 1000;
         info.spanMs = 899000;
+        // The 24 h tier is available (a ring of 15 s samples) and the 1 h
+        // tier is the one on screen.
+        info.tier = 0;
+        info.longTierAvailable = true;
         for (int i = 0; i < 240; ++i) {
             const double wave = std::sin(double(i) / 9.0);
             ExportRow row;

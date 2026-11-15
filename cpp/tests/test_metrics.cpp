@@ -3985,6 +3985,41 @@ int main(int argc, char *argv[]) {
 
         check(historyDefaultPath().endsWith(QStringLiteral("history.ring")),
               "history: default ring lives in the cache directory");
+
+        // A ring that has not wrapped yet is a short file. Refusing it threw
+        // the whole window away on every restart until the ring happened to be
+        // full - the long tier would never resume at all.
+        {
+            const QString youngPath =
+                dir.filePath(QStringLiteral("young.bin"));
+            HistoryLog young;
+            check(young.open(youngPath, 8), "history: a young ring opens");
+            for (int i = 0; i < 3; ++i) {
+                HistoryRecord record;
+                record.atMs = 1000 + i;
+                young.append(record);
+            }
+            young.close();
+            HistoryLog resumedYoung;
+            check(resumedYoung.open(youngPath, 8)
+                      && resumedYoung.count() == 3,
+                  "history: a ring that never wrapped still resumes");
+            check(historyLongPath(youngPath)
+                      == dir.filePath(QStringLiteral("history-long.ring"))
+                  && historyLongPath(QString()).isEmpty(),
+                  "history: the long ring lives beside the tick ring");
+
+            // The cadence is stated by whoever writes the ring, not assumed
+            // to be one second: a 15 s tier that reports 1 s would be a lie.
+            resumedYoung.setIntervalMs(15000);
+            check(resumedYoung.intervalMs() == 15000,
+                  "history: the ring states the cadence it is written at");
+            resumedYoung.close();
+            HistoryLog cadence;
+            check(cadence.open(youngPath, 8)
+                      && cadence.intervalMs() == 15000,
+                  "history: the stated cadence survives a reopen");
+        }
         check(historySummaryText(0, 0, 0, 0, 1000)
                   == QStringLiteral("history: disabled")
                   && historySummaryText(0, 3600, 0, 0, 1000)

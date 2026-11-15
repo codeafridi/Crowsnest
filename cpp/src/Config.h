@@ -74,6 +74,11 @@ struct StatsdConfig {
 struct HistoryConfig {
     bool enabled = true;
     int samples = 3600;
+    // The long tier: one sample every `longIntervalS` for a day, in its own
+    // ring, so "yesterday at this time" has an answer without reading a
+    // million per-tick records.
+    int longSamples = 5760;
+    int longIntervalS = 15;
 };
 
 // M86: the event stream. `events` is the ring size, `windowSeconds` the

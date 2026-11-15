@@ -324,6 +324,8 @@ DashboardPanel *HudWindow::ensureConsole() {
             &HudWindow::exportHistory);
     connect(m_panel, &DashboardPanel::historySeekRequested, this,
             &HudWindow::seekHistory);
+    connect(m_panel, &DashboardPanel::historyTierRequested, this,
+            &HudWindow::setHistoryTier);
     connect(m_panel, &DashboardPanel::silenceRequested, this,
             &HudWindow::addSilence);
     connect(m_panel, &DashboardPanel::silenceExpireRequested, this,
@@ -461,7 +463,17 @@ void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
         m_exportRows.removeFirst();
     }
     if (m_historyLog.isOpen()) {
-        m_historyLog.append(historyRecordFrom(m_exportRows.last()));
+        const HistoryRecord record = historyRecordFrom(m_exportRows.last());
+        m_historyLog.append(record);
+        // The long tier keeps one sample every N ticks: a coarse ring answers
+        // "yesterday at this time" without reading a million per-tick rows.
+        if (m_historyLong.isOpen()) {
+            if (m_historyLongTick % m_historyLongEvery == 0) {
+                m_historyLong.append(record);
+                m_historyLongWritten = true;
+            }
+            ++m_historyLongTick;
+        }
         publishHistory();
     }
     // The event page is republished on a slow cadence so "12s ago" stays
@@ -973,21 +985,54 @@ void HudWindow::setFimSnapshot(const FimSnapshot &snapshot) {
     }
 }
 
-void HudWindow::setHistoryStore(const QString &path, int capacity) {
+void HudWindow::setHistoryStore(const QString &path, int capacity,
+                                int longCapacity, int longEverySamples) {
     m_historySeek = -1;
     m_historyTick = 0;
     m_historyWindowCount = -1;
     m_historySpanMs = 0;
     m_historyCapacity = capacity;
+    m_historyLongEvery = qMax(1, longEverySamples);
+    m_historyLongTick = 0;
+    m_historyLongWritten = false;
     if (capacity <= 0) {
         m_historyLog.close();
+        m_historyLong.close();
+        m_historyTier = 0;
         publishHistory();
         return;
     }
-    if (!m_historyLog.open(path, capacity)) {
+    if (m_historyLog.open(path, capacity)) {
+        m_historyLog.setIntervalMs(m_exportIntervalMs);
+    } else {
         qWarning() << "history: could not open the ring at" << path
                    << "- rewinding stays unavailable";
     }
+    // The long tier is independent: a failure here only costs the 24 h view.
+    if (longCapacity > 0) {
+        const QString longPath = historyLongPath(path);
+        if (m_historyLong.open(longPath, longCapacity)) {
+            m_historyLong.setIntervalMs(qint64(m_exportIntervalMs)
+                                        * m_historyLongEvery);
+        } else {
+            qWarning() << "history: could not open the long ring at" << longPath
+                       << "- the 24 h tier stays unavailable";
+        }
+    } else {
+        m_historyLong.close();
+    }
+    if (m_historyTier == 1 && !m_historyLong.isOpen()) {
+        m_historyTier = 0;
+    }
+    publishHistory();
+}
+
+void HudWindow::setHistoryTier(int tier) {
+    m_historyTier = tier == 1 && m_historyLong.isOpen() ? 1 : 0;
+    m_historySeek = -1;
+    m_historyTick = 0;
+    m_historyWindowCount = -1;
+    m_historySpanMs = 0;
     publishHistory();
 }
 
@@ -995,13 +1040,16 @@ void HudWindow::publishHistory() {
     if (m_panel == nullptr) {
         return;
     }
+    HistoryLog &ring = m_historyTier == 1 ? m_historyLong : m_historyLog;
     HistoryViewInfo info;
-    info.enabled = m_historyLog.isOpen();
-    info.path = m_historyLog.path();
-    info.count = m_historyLog.count();
-    info.capacity = m_historyLog.capacity();
-    info.bytes = m_historyLog.isOpen() ? m_historyLog.fileBytes() : 0;
-    info.intervalMs = m_historyLog.isOpen() ? m_historyLog.intervalMs() : 1000;
+    info.tier = m_historyTier;
+    info.longTierAvailable = m_historyLong.isOpen();
+    info.enabled = ring.isOpen();
+    info.path = ring.path();
+    info.count = ring.count();
+    info.capacity = ring.capacity();
+    info.bytes = ring.isOpen() ? ring.fileBytes() : 0;
+    info.intervalMs = ring.isOpen() ? ring.intervalMs() : 1000;
     info.spanMs = m_historySpanMs;
     // The stored window is read off disk on a slow cadence (every 5th tick
     // or when the sample count jumps): one append per tick is the only
@@ -1011,12 +1059,12 @@ void HudWindow::publishHistory() {
         && (m_historyWindowCount < 0 || m_historyTick % 5 == 0
             || info.count != m_historyWindowCount)) {
         QList<HistoryRecord> window;
-        m_historyLog.readLast(240, window);
+        ring.readLast(240, window);
         for (const HistoryRecord &record : window) {
             info.window.append(exportRowFromHistory(record));
         }
         m_historyWindowCount = info.count;
-        m_historySpanMs = m_historyLog.spanMs();
+        m_historySpanMs = ring.spanMs();
         info.spanMs = m_historySpanMs;
         if (!info.window.isEmpty()) {
             info.newestMs = info.window.last().atMs;
@@ -1049,7 +1097,7 @@ void HudWindow::publishHistory() {
         return;
     }
     HistoryRecord record;
-    if (m_historyLog.readAt(m_historySeek, record)) {
+    if (ring.readAt(m_historySeek, record)) {
         if (m_panel != nullptr) {
             m_panel->setHistorySelection(
                 historyPositionText(m_historySeek, info.count, record, false),

@@ -816,8 +816,11 @@ int main(int argc, char *argv[]) {
                 : QStringLiteral("disabled ([timeline] enabled=false)");
         settingsInfo.historyLine =
             config.history.enabled
-                ? QStringLiteral("%1 samples max - %2")
+                ? QStringLiteral("%1 samples at %2 s, %3 at %4 s - %5")
                       .arg(config.history.samples)
+                      .arg(config.sampleIntervalMs / 1000)
+                      .arg(config.history.longSamples)
+                      .arg(config.history.longIntervalS)
                       .arg(historyDefaultPath())
                 : QStringLiteral("disabled ([history] enabled=false)");
         {
@@ -853,8 +856,17 @@ int main(int argc, char *argv[]) {
         hud.setWebhookConfig(config.webhook);
         hud.setActionsEnabled(config.actions.enabled);
         hud.setExportIntervalMs(config.sampleIntervalMs);
-        hud.setHistoryStore(historyDefaultPath(),
-                            config.history.enabled ? config.history.samples : 0);
+        // One long-ring sample every N ticks: N derives from the two cadences
+        // rather than a clock, so a sampler running slower than configured
+        // still writes the tier it promised.
+        const int historyEvery = qMax(
+            1, (config.history.longIntervalS * 1000)
+                   / qMax(1, config.sampleIntervalMs));
+        hud.setHistoryStore(
+            historyDefaultPath(),
+            config.history.enabled ? config.history.samples : 0,
+            config.history.enabled ? config.history.longSamples : 0,
+            historyEvery);
         hud.setTimelineConfig(config.timeline.enabled, config.timeline.events,
                               config.timeline.markers,
                               config.timeline.windowSeconds);
