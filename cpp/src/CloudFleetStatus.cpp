@@ -1113,11 +1113,58 @@ QString cloudFleetCredentialHint(CloudProvider provider) {
     return QString();
 }
 
+QString fleetLoginExpiredText(CloudProvider provider) {
+    QString command;
+    switch (provider) {
+    case CloudProvider::Aws:
+        command = QStringLiteral("aws login");
+        break;
+    case CloudProvider::Azure:
+        command = QStringLiteral("az login");
+        break;
+    case CloudProvider::Gcp:
+        command = QStringLiteral("gcloud auth login");
+        break;
+    case CloudProvider::Oci:
+        command = QStringLiteral("oci session authenticate");
+        break;
+    case CloudProvider::None:
+        break;
+    }
+    return QStringLiteral(
+               "fleet: the %1 login session expired - run `%2`; the listing "
+               "below is the last known state")
+        .arg(cloudProviderName(provider), command);
+}
+
 QString fleetCredentialsText(CloudProvider provider) {
     return QStringLiteral(
                "fleet: %1 has no credentials here - run `%2` (Crowsnest never "
                "reads or stores them)")
         .arg(cloudProviderName(provider), cloudFleetCredentialHint(provider));
+}
+
+bool cloudFleetLoginExpired(CloudProvider provider,
+                            const QString &stderrText) {
+    const QString text = stderrText.toLower();
+    if (text.isEmpty()) {
+        return false;
+    }
+    if (provider != CloudProvider::Aws) {
+        return false;
+    }
+    // `aws login` issues temporary credentials plus a refresh token; when the
+    // token lapses every call answers 255 with this sentence.
+    return text.contains(QLatin1String("session has expired")) ||
+           text.contains(QLatin1String("please reauthenticate")) ||
+           text.contains(QLatin1String("aws login")) ||
+           text.contains(QLatin1String("expiredtoken")) ||
+           text.contains(QLatin1String("security token included in the "
+                                       "request is expired")) ||
+           (text.contains(QLatin1String("refresh token")) &&
+            text.contains(QLatin1String("expired"))) ||
+           text.contains(QLatin1String("token has expired and refresh "
+                                       "failed"));
 }
 
 bool cloudFleetNeedsCredentials(CloudProvider provider,
@@ -1133,7 +1180,17 @@ bool cloudFleetNeedsCredentials(CloudProvider provider,
                text.contains(QLatin1String("no credentials")) ||
                text.contains(QLatin1String("security token included in the "
                                            "request is invalid")) ||
-               text.contains(QLatin1String("could not be found"));
+               text.contains(QLatin1String("could not be found")) ||
+               text.contains(QLatin1String("session has expired")) ||
+               text.contains(QLatin1String("please reauthenticate")) ||
+               text.contains(QLatin1String("aws login")) ||
+               text.contains(QLatin1String("expiredtoken")) ||
+               text.contains(QLatin1String("security token included in the "
+                                           "request is expired")) ||
+               (text.contains(QLatin1String("refresh token")) &&
+                text.contains(QLatin1String("expired"))) ||
+               text.contains(QLatin1String("token has expired and refresh "
+                                           "failed"));
     case CloudProvider::Azure:
         return text.contains(QLatin1String("please run 'az login'")) ||
                text.contains(QLatin1String("please run az login")) ||

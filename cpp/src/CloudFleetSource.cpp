@@ -351,6 +351,13 @@ public:
         baseRows.clear();
         okRegions.clear();
         lastKnownCheckMs = 0;
+        authFailure = false;
+        authNote.clear();
+        carryRows.clear();
+        carryFetchedAtMs = 0;
+        carryScope.clear();
+        carryRegions.clear();
+        carryAccount.clear();
         imageNames.clear();
         typeSpecs.clear();
         volumeSpecs.clear();
@@ -411,6 +418,8 @@ public:
         knownCheck = false;
         baseRows.clear();
         okRegions.clear();
+        authFailure = false;
+        authNote.clear();
         imageIdsByRegion.clear();
         volumeIdsByRegion.clear();
         pendingImageRegions.clear();
@@ -441,6 +450,11 @@ public:
             status.available = previous.available;
             status.wholeAccount = previous.wholeAccount;
         }
+        carryRows = status.rows;
+        carryFetchedAtMs = status.fetchedAtMs;
+        carryScope = status.scope;
+        carryRegions = status.regions;
+        carryAccount = status.account;
         status.attempted = true;
         status.provider = id.provider;
         status.cliName = cloudFleetCli(id.provider);
@@ -679,9 +693,18 @@ public:
         }
         if (!normalExit || exitCode != 0) {
             const QString errors = QString::fromLocal8Bit(err);
+            const bool expired =
+                cloudFleetLoginExpired(identity.provider, errors);
+            const bool missing = cloudFleetNeedsCredentials(identity.provider,
+                                                            errors);
+            if (expired || missing) {
+                authFailure = true;
+                authNote = expired ? fleetLoginExpiredText(identity.provider)
+                                   : fleetCredentialsText(identity.provider);
+            }
             stageFailure(job.stage, job.region,
-                         cloudFleetNeedsCredentials(identity.provider, errors)
-                             ? fleetCredentialsText(identity.provider)
+                         authFailure && (expired || missing)
+                             ? authNote
                              : fleetFailureText(status.cliName, exitCode,
                                                 cloudFirstLine(errors)),
                          nowMs);
@@ -1026,6 +1049,15 @@ public:
 
     void fail(const QString &note, qint64 nowMs) {
         abort();
+        if (authFailure && !carryRows.isEmpty()) {
+            // The account is known; only the credential lapsed. Keep what the
+            // page showed, date it, and name the fix - a blank table reads as
+            // "empty account", which is a lie.
+            restoreLastKnown();
+            status.note = authNote.isEmpty() ? note : authNote;
+            phase = FleetPhase::Done;
+            return;
+        }
         status.note = note;
         status.fetchedAtMs = nowMs;
         status.rows.clear();
@@ -1037,6 +1069,16 @@ public:
         status.selfIndex = -1;
         rows.clear();
         phase = FleetPhase::Done;
+    }
+
+    void restoreLastKnown() {
+        status.rows = carryRows;
+        status.account = carryAccount;
+        status.regions = carryRegions;
+        status.scope = carryScope;
+        status.fetchedAtMs = carryFetchedAtMs;
+        fleetFinalize(status);
+        status.available = !carryRows.isEmpty();
     }
 
     QString sourceText() const {
@@ -1099,6 +1141,10 @@ public:
         } else if (!regionFailures.isEmpty() || status.regionListRefused) {
             status.note = overrideNote;
         }
+        if (authFailure && status.rows.isEmpty() && !carryRows.isEmpty()) {
+            restoreLastKnown();
+            status.note = authNote;
+        }
         phase = FleetPhase::Done;
     }
 
@@ -1124,6 +1170,15 @@ public:
     QList<CloudFleetInstance> baseRows;
     QSet<QString> okRegions;
     qint64 lastKnownCheckMs = 0;
+    // A credential/login refusal must not turn a known account into "0
+    // instances": the previous listing is kept and dated instead.
+    bool authFailure = false;
+    QString authNote;
+    QList<CloudFleetInstance> carryRows;
+    qint64 carryFetchedAtMs = 0;
+    QString carryScope;
+    QStringList carryRegions;
+    QString carryAccount;
     // AMI id -> description and instance type -> spec, kept across runs so a
     // second listing of the same account costs no enrichment call at all.
     QHash<QString, QString> imageNames;
@@ -1260,7 +1315,8 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
     }
     if (m_refreshPending) {
         m_refreshPending = false;
-        m_session->reset();
+        // No reset() here: begin() restores the previous listing itself, and
+        // resetting first would blank the table on a manual refresh.
         qInfo("[cloud] inventory starting (on request)");
         m_session->begin(identity, m_options, nowMs);
         if (!m_session->active()) {

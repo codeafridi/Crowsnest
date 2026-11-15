@@ -6446,6 +6446,86 @@ int main(int argc, char *argv[]) {
                 runner.stop();
             }
 
+            // An expired `aws login` session must not turn a known account into
+            // "0 instances": the refusal names the command and the last
+            // listing stays on screen, dated.
+            {
+                const QByteArray expired =
+                    QByteArrayLiteral("aws: [ERROR]: Your session has expired. "
+                                      "Please reauthenticate using 'aws login'.\n");
+                check(cloudFleetLoginExpired(CloudProvider::Aws,
+                                             QString::fromUtf8(expired))
+                          && cloudFleetNeedsCredentials(
+                                 CloudProvider::Aws,
+                                 QString::fromUtf8(expired))
+                          && !cloudFleetLoginExpired(
+                                 CloudProvider::Aws,
+                                 QStringLiteral("InvalidInstanceID.NotFound"))
+                          && fleetLoginExpiredText(CloudProvider::Aws)
+                                 .contains(QStringLiteral("aws login"))
+                          && !fleetLoginExpiredText(CloudProvider::Aws)
+                                  .contains(QStringLiteral("aws configure")),
+                      "aws: an expired login is its own refusal with its own "
+                      "command");
+
+                setFake(awsListing, QByteArray(), 0);
+                CloudFleetRunner runner;
+                runner.setOptions(fanOptions);
+                qint64 clock = cliNow;
+                QElapsedTimer guard;
+                guard.start();
+                while (guard.elapsed() < 40000) {
+                    runner.update(autoIdentity, clock);
+                    if (runner.status().fetchedAtMs > 0
+                        && runner.status().rows.size() == 2) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    clock += 10;
+                    QThread::msleep(5);
+                }
+                const qint64 seededAt = runner.status().fetchedAtMs;
+                const int seededRows = runner.status().rows.size();
+                setFake(QByteArray(), expired, 255);
+                runner.refreshNow();
+                guard.restart();
+                while (guard.elapsed() < 40000) {
+                    runner.update(autoIdentity, clock);
+                    if (runner.status().note.contains(
+                            QStringLiteral("aws login"))) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    clock += 50;
+                    QThread::msleep(5);
+                }
+                check(seededRows == 2
+                          && runner.status().rows.size() == seededRows
+                          && runner.status().fetchedAtMs == seededAt
+                          && runner.status().note.contains(
+                              QStringLiteral("aws login")),
+                      "aws: an expired login keeps the last listing and names "
+                      "the command");
+                // Logging in again clears it on the next run.
+                setFake(awsListing, QByteArray(), 0);
+                runner.refreshNow();
+                guard.restart();
+                while (guard.elapsed() < 40000) {
+                    runner.update(autoIdentity, clock);
+                    if (!runner.status().note.contains(
+                            QStringLiteral("aws login"))) {
+                        break;
+                    }
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                    clock += 50;
+                    QThread::msleep(5);
+                }
+                check(!runner.status().note.contains(
+                          QStringLiteral("aws login")),
+                      "aws: a fresh login clears the expired-session note");
+                runner.stop();
+            }
+
             // A stopped instance must leave the table on its own: the targeted
             // re-check lists only the regions that already have rows (one call
             // instead of 18) and replaces their rows wholesale.

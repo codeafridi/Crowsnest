@@ -418,9 +418,14 @@ QString fleetEmptyText(const CloudFleetStatus &fleet);
 QString fleetFailureText(const QString &cli, int exitCode,
                          const QString &firstErrorLine);
 QString fleetCredentialsText(CloudProvider provider);
+// `aws login` / `az login` / `sso` sessions expire; that is a different
+// refusal from "no credentials configured" and names a different command.
+QString fleetLoginExpiredText(CloudProvider provider);
 QString cloudFleetCredentialHint(CloudProvider provider);
 bool cloudFleetNeedsCredentials(CloudProvider provider,
                                 const QString &stderrText);
+bool cloudFleetLoginExpired(CloudProvider provider,
+                            const QString &stderrText);
 
 // --- text ----------------------------------------------------------------
 QString cloudUnreachableText();
