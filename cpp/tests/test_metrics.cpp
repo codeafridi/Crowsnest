@@ -5864,8 +5864,17 @@ int main(int argc, char *argv[]) {
             "$env:CROWSNEST_FAKE_REGION }\r\n"
             "elseif ($key -like \'ec2 describe-regions*\') { $out = "
             "$env:CROWSNEST_FAKE_REGIONS }\r\n"
-            "Add-Content -Path $env:CROWSNEST_FAKE_ARGV_LOG -Value ($args -join "
-            "' ')\r\n"
+            // Two region calls run at once, and two Add-Content writes to one
+            // file can collide: under ErrorAction=Stop that aborted the whole
+            // fake before it wrote stdout, so the region looked empty. Retry
+            // the append instead of failing the listing.
+            "$logged = $false\r\n"
+            "for ($attempt = 0; $attempt -lt 40 -and -not $logged; $attempt++) {\r\n"
+            "  try { Add-Content -Path $env:CROWSNEST_FAKE_ARGV_LOG -Value "
+            "$key -ErrorAction Stop; $logged = $true }\r\n"
+            "  catch { Start-Sleep -Milliseconds 25 }\r\n"
+            "}\r\n"
+            "if (-not $logged) { exit 3 }\r\n"
             "if ($env:CROWSNEST_FAKE_STDERR) { "
             "[Console]::Error.Write([IO.File]::ReadAllText("
             "$env:CROWSNEST_FAKE_STDERR)) }\r\n"
