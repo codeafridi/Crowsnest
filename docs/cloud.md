@@ -99,8 +99,10 @@ aws ec2 describe-instances --region <each> --output json \
   whole-plan budget, separate from one call's `inventory_timeout_ms`.
 - **CHECK NOW** on the FLEET INVENTORY banner runs the plan immediately, and
   the line above the button states exactly which commands it will run and that
-  no Cost Explorer request (which is billable) is part of it. While the Cloud
-  page is open the listing is polled every minute instead of every ten.
+  no Cost Explorer request (which is billable) is part of it. Opening the Cloud
+  page also refreshes the listing once if it is older than a minute; while the
+  page stays open the cadence is 5 minutes instead of 10, because a listing is
+  ~18 `aws` starts, not a live stream.
 
 The CLI itself is resolved like a login shell would: `PATH` first, then the
 directories the providers install into (`/opt/homebrew/bin`,
@@ -197,7 +199,7 @@ writes     none - no credential is read or stored, no instance is ever
 | Action | Destination | When | Can it be turned off |
 |---|---|---|---|
 | IMDS identity read | `169.254.169.254`, `169.254.0.23` | every 5/15 min | `[cloud] enabled=false` |
-| Account listing | the provider CLI, to the provider API | every 10 min (every 1 min while the Cloud page is open) | `[cloud] inventory=false` |
+| Account listing | the provider CLI, to the provider API | every 10 min (5 min while the Cloud page is open, and once when it opens) | `[cloud] inventory=false` |
 | Price import | AWS Price List API via `aws` | only when you run `--cloud-prices` | it never runs otherwise |
 
 There is no other outbound path in the cloud feature — no telemetry, no

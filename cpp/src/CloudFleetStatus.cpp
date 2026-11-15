@@ -642,7 +642,19 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
         return fleet.note;
     }
     if (fleet.rows.isEmpty()) {
-        return fleet.note.isEmpty() ? fleetEmptyText(fleet) : fleet.note;
+        // A run in progress (and an account that really has no instances)
+        // still names the account: "naming the account ..." alone told the
+        // reader nothing about which one.
+        QStringList lines;
+        lines.append(fleet.note.isEmpty() ? fleetEmptyText(fleet) : fleet.note);
+        if (!fleet.account.isEmpty()) {
+            QString line = QStringLiteral("account   %1").arg(fleet.account);
+            if (!fleet.identitySource.isEmpty()) {
+                line += QStringLiteral(" (%1)").arg(fleet.identitySource);
+            }
+            lines.append(line);
+        }
+        return lines.join(QLatin1Char('\n'));
     }
     const int total = fleet.rows.size() + fleet.dropped;
     QString first = QStringLiteral("%1 fleet   %2 instance%3   %4 running")

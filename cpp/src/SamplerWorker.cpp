@@ -94,6 +94,13 @@ void SamplerWorker::stop() {
 
 void SamplerWorker::setCloudPageVisible(bool visible) {
     m_cloudPageVisible = visible;
+    if (visible) {
+        // Opening the page asks for a fresh answer once. A 1-minute poll was
+        // the first shape and it meant ~18 aws processes a minute while the
+        // page stayed open: the listing is a 20 s job, not a live stream.
+        m_cloudRefreshRequested = true;
+        qInfo("[cloud] cloud page opened - refreshing the inventory");
+    }
 }
 
 void SamplerWorker::refreshCloudNow() {
@@ -1050,12 +1057,12 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
             cloudIdentityAutoRequested(m_cloud.identityOverride);
         fleetOptions.regionConcurrency = m_cloud.regionConcurrency;
         fleetOptions.accountTimeoutMs = m_cloud.accountTimeoutMs;
-        fleetOptions.cadenceMs = m_cloudPageVisible ? 60000 : 600000;
+        fleetOptions.cadenceMs = m_cloudPageVisible ? 300000 : 600000;
         m_cloudFleet->setOptions(fleetOptions);
         if (m_cloudRefreshRequested) {
             m_cloudRefreshRequested = false;
             if (cloud.identity.provider == CloudProvider::None) {
-                qInfo("[cloud] CHECK NOW ignored: no cloud identity "
+                qInfo("[cloud] inventory refresh ignored: no cloud identity "
                       "([cloud] identity=auto is not loaded in this process, "
                       "or the CLI has no login)");
             }

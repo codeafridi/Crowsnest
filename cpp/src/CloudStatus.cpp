@@ -710,8 +710,8 @@ QString cloudFootprintText(const CloudFootprint &footprint) {
                                  .arg(footprint.fleetRegions);
         }
         inventoryText += QStringLiteral(
-            " - the CLI's own login, no credential is read; 1 min while this "
-            "page is open");
+            " - the CLI's own login, no credential is read; 5 min while this "
+            "page is open, refreshed when it opens");
         lines.append(inventoryText);
     } else {
         lines.append(QStringLiteral(

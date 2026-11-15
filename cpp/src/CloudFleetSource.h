@@ -133,4 +133,5 @@ public:
 private:
     CloudFleetOptions m_options;
     std::unique_ptr<CloudFleetSession> m_session;
+    bool m_refreshPending = false;
 };

@@ -437,6 +437,9 @@ public:
                                 : FleetPhase::HomeRegion;
                     continue;
                 }
+                status.note = QStringLiteral(
+                    "fleet: naming the account (aws sts get-caller-identity) "
+                    "...");
                 if (startJob(QStringLiteral("sts"), QString(),
                              cloudAwsIdentityArguments(), nowMs)) {
                     return;
@@ -448,6 +451,9 @@ public:
                     phase = FleetPhase::Regions;
                     continue;
                 }
+                status.note = QStringLiteral(
+                    "fleet: reading the aws home region (aws configure get "
+                    "region) ...");
                 if (startJob(QStringLiteral("region"), QString(),
                              cloudAwsRegionArguments(), nowMs)) {
                     return;
@@ -461,6 +467,9 @@ public:
                     status.homeRegion = homeRegion;
                 }
                 if (!regionsRequested) {
+                    status.note = QStringLiteral(
+                        "fleet: reading the enabled regions (aws ec2 "
+                        "describe-regions) ...");
                     regionsRequested = true;
                     if (startJob(QStringLiteral("regions"), QString(),
                                  cloudAwsDescribeRegionsArguments(homeRegion),
@@ -491,6 +500,15 @@ public:
                 const int limit =
                     qBound(1, options.regionConcurrency,
                            kCloudFleetRegionConcurrencyMax);
+                if (jobs.isEmpty()) {
+                    // A listing is ~1-2 s per region, so the card has to say
+                    // what it is doing rather than only where it started.
+                    status.note =
+                        QStringLiteral("fleet: listing %1 region(s), %2 at a "
+                                       "time ...")
+                            .arg(pendingRegions.size() + jobs.size())
+                            .arg(limit);
+                }
                 while (jobs.size() < limit && !pendingRegions.isEmpty()) {
                     const QString region = pendingRegions.takeFirst();
                     queriedRegions.append(region);
@@ -829,14 +847,16 @@ const CloudFleetStatus &CloudFleetRunner::status() const {
 }
 
 void CloudFleetRunner::refreshNow() {
-    if (!m_session->active()) {
-        m_session->lastAttemptMs = 0;
-    }
+    // A request during a run is queued, not dropped: clicking CHECK NOW while
+    // the listing is already in flight used to do nothing at all, which looks
+    // exactly like a broken button.
+    m_refreshPending = true;
 }
 
 void CloudFleetRunner::stop() {
     m_session->abort();
     m_session->lastAttemptMs = 0;
+    m_refreshPending = false;
 }
 
 void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
@@ -869,23 +889,37 @@ void CloudFleetRunner::update(const CloudIdentity &identity, qint64 nowMs) {
     }
     if (m_session->active()) {
         m_session->poll(nowMs);
+        if (m_session->active()) {
+            return;
+        }
+        logFinished();
+    }
+    if (m_refreshPending) {
+        m_refreshPending = false;
+        m_session->reset();
+        qInfo("[cloud] inventory starting (on request)");
+        m_session->begin(identity, m_options, nowMs);
         if (!m_session->active()) {
             logFinished();
         }
         return;
     }
-    // A different instance (or a different provider) invalidates the listing:
-    // ages and the self row belong to the previous machine.
+    // A different provider or a different machine invalidates the listing.
+    // NOT the account or the region: those are what the run itself resolves
+    // (`sts`, `configure get region`), so the caller's copy is still empty
+    // while the session has already filled them in. Comparing them reset the
+    // session on the very next tick, so the listing restarted every ~20 s and
+    // the card only ever showed "naming the account ..." (found live).
     if (m_session->lastAttemptMs > 0 &&
         (identity.provider != m_session->identity.provider ||
-         identity.instanceId != m_session->identity.instanceId ||
-         identity.accountId != m_session->identity.accountId)) {
+         identity.instanceId != m_session->identity.instanceId)) {
         m_session->reset();
     }
     if (m_session->lastAttemptMs > 0 &&
         nowMs - m_session->lastAttemptMs < m_options.cadenceMs) {
         return;
     }
+    qInfo("[cloud] inventory starting (on cadence)");
     m_session->begin(identity, m_options, nowMs);
     if (!m_session->active()) {
         logFinished();

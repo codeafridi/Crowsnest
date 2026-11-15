@@ -5493,6 +5493,21 @@ int main(int argc, char *argv[]) {
                                     "eu-west-1 has none"),
               "fleet: an empty account says so instead of showing a blank table");
 
+        CloudFleetStatus progress;
+        progress.attempted = true;
+        progress.provider = CloudProvider::Aws;
+        progress.cliName = QStringLiteral("aws");
+        progress.account = QStringLiteral("123456789012");
+        progress.identitySource = QStringLiteral("aws sts get-caller-identity");
+        progress.note =
+            QStringLiteral("fleet: listing 18 region(s), 4 at a time ...");
+        check(fleetSummaryText(progress).contains(
+                  QStringLiteral("listing 18 region(s)"))
+                  && fleetSummaryText(progress).contains(
+                      QStringLiteral("account   123456789012 (aws sts "
+                                     "get-caller-identity)")),
+              "fleet: a listing in progress names the account it is reading");
+
         CloudFleetStatus disabledFleet;
         disabledFleet.note = fleetDisabledText();
         check(fleetSummaryText(disabledFleet).contains(
@@ -6264,6 +6279,22 @@ int main(int argc, char *argv[]) {
                           && runner.status().account
                                  == QStringLiteral("123456789012"),
                       "aws: the polled runner completes the whole-account plan");
+                // The caller keeps passing the identity it has (account and
+                // region still empty: the sampler adopts them only from the
+                // finished status). That must not restart the listing - it did,
+                // every tick, and the card only ever showed "naming the
+                // account ..." (found live).
+                const qint64 fetched = runner.status().fetchedAtMs;
+                const int rowsBefore = runner.status().rows.size();
+                for (int i = 0; i < 5; ++i) {
+                    runner.update(autoIdentity,
+                                  QDateTime::currentMSecsSinceEpoch());
+                    app.processEvents(QEventLoop::AllEvents, 10);
+                }
+                check(runner.status().fetchedAtMs == fetched
+                          && runner.status().rows.size() == rowsBefore,
+                      "aws: a finished listing is not restarted by a stale "
+                      "caller identity");
                 runner.stop();
             }
             qunsetenv("CROWSNEST_FAKE_STS");
