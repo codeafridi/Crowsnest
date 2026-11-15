@@ -970,6 +970,7 @@ QWidget *DashboardPanel::buildOverviewView() {
     m_chartProc = new TimeseriesChart(view);
     m_chartProc->setUnit(QStringLiteral("Processes"));
     m_chartProc->setSeriesName(QStringLiteral("crowsnest.process.count"));
+    m_chartProc->setIntegerAxis(true);
     m_chartProc->setBarMode(true);
 
     layout->addWidget(makeBanner(QStringLiteral("FOCUSED APP"),
@@ -1441,6 +1442,7 @@ QWidget *DashboardPanel::buildAlertsView() {
     m_chartAlertTrans->setUnit(QStringLiteral("Transitions"));
     m_chartAlertTrans->setSeriesName(QStringLiteral("crowsnest.alerts.fired"));
     m_chartAlertTrans->setSeriesNameB(QStringLiteral("crowsnest.alerts.resolved"));
+    m_chartAlertTrans->setIntegerAxis(true);
     m_chartAlertTrans->setBarMode(true);
 
     layout->addWidget(makeBanner(QStringLiteral("TRANSITIONS"),
@@ -1579,6 +1581,7 @@ QWidget *DashboardPanel::buildIncidentsView() {
     m_chartIncOpen = new TimeseriesChart(view);
     m_chartIncOpen->setUnit(QStringLiteral("Incidents"));
     m_chartIncOpen->setSeriesName(QStringLiteral("crowsnest.incidents.open"));
+    m_chartIncOpen->setIntegerAxis(true);
 
     layout->addWidget(makeBanner(QStringLiteral("OPEN OVER TIME"),
         ui_theme::banner(), view));
@@ -2399,6 +2402,7 @@ QWidget *DashboardPanel::buildContainersView() {
     m_chartDocker = new TimeseriesChart(view);
     m_chartDocker->setUnit(QStringLiteral("Count"));
     m_chartDocker->setSeriesName(QStringLiteral("crowsnest.docker.running"));
+    m_chartDocker->setIntegerAxis(true);
 
     layout->addWidget(makeBanner(QStringLiteral("RUNNING OVER TIME"),
         ui_theme::banner(), view));
@@ -2530,6 +2534,7 @@ QWidget *DashboardPanel::buildKubernetesView() {
     m_chartKube = new TimeseriesChart(view);
     m_chartKube->setUnit(QStringLiteral("Count"));
     m_chartKube->setSeriesName(QStringLiteral("crowsnest.kube.pods"));
+    m_chartKube->setIntegerAxis(true);
 
     layout->addWidget(makeBanner(QStringLiteral("PODS OVER TIME"),
         ui_theme::banner(), view));
@@ -3132,6 +3137,7 @@ QWidget *DashboardPanel::buildLogsView() {
     m_chartLog = new TimeseriesChart(view);
     m_chartLog->setUnit(QStringLiteral("Count"));
     m_chartLog->setSeriesName(QStringLiteral("crowsnest.journal.lines"));
+    m_chartLog->setIntegerAxis(true);
 
     layout->addWidget(makeBanner(QStringLiteral("LOG VOLUME"),
         ui_theme::banner(), view));
@@ -4966,6 +4972,7 @@ QWidget *DashboardPanel::buildCloudView() {
     m_chartCloudFleet->setUnit(QStringLiteral("inst"));
     m_chartCloudFleet->setSeriesName(
         QStringLiteral("crowsnest.cloud.fleet_running"));
+    m_chartCloudFleet->setIntegerAxis(true);
 
     m_cloudFleetSummary = new QLabel(QStringLiteral("--"), view);
     m_cloudFleetSummary->setObjectName(

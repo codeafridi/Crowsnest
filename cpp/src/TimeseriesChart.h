@@ -49,6 +49,9 @@ public:
     }
 
     void setUnit(const QString &unit);
+    // A count (instances, pods, processes, alerts) has no half ticks: the axis
+    // step is forced to >= 1 and its ticks are whole numbers, from zero.
+    void setIntegerAxis(bool on);
     void setSeriesName(const QString &name);
     void setSeriesNameB(const QString &nameB);
     void setSeriesColors(const QColor &a, const QColor &b);
@@ -102,6 +105,7 @@ private:
     QList<double> m_forecastLow;
     QList<double> m_forecastHigh;
     QString m_unit;
+    bool m_integerAxis = false;
     QString m_nameA;
     QString m_nameB;
     QColor m_colorA{77, 143, 214};
@@ -123,3 +127,7 @@ private:
     QRectF m_plotRect;
     int m_hoverEvent = -1;
 };
+
+// The y-axis step for a given span, with the count rule applied. Exposed so
+// "0, 0.2, 0.4" on a series of instances is a test, not a screenshot.
+double chartAxisStep(double span, bool integerAxis);

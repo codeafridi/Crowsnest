@@ -59,6 +59,14 @@ TimeseriesChart::TimeseriesChart(QWidget *parent)
     m_lastPush = QDateTime::currentDateTime();
 }
 
+void TimeseriesChart::setIntegerAxis(bool on) {
+    if (m_integerAxis == on) {
+        return;
+    }
+    m_integerAxis = on;
+    update();
+}
+
 void TimeseriesChart::setUnit(const QString &unit) {
     m_unit = unit;
     update();
@@ -357,12 +365,15 @@ void TimeseriesChart::paintEvent(QPaintEvent *event) {
         // Empty panel: draw grid only.
     }
     const double span = std::max(high - low, 1e-9);
-    const double step = niceStep(span);
+    const double step = chartAxisStep(span, m_integerAxis);
     double top = std::ceil((high + 0.02 * span) / step) * step;
     if (top <= 0.0) {
         top = step;
     }
-    const double bottom = (low >= 0.0 && low < step * 0.25) ? 0.0 : low;
+    const double bottom = (m_integerAxis && low >= 0.0) ||
+                                  (low >= 0.0 && low < step * 0.25)
+                              ? 0.0
+                              : low;
 
     // Horizontal gridlines + y tick labels + rotated unit title.
     QPen gridPen{QColor(ui_theme::grid())};
@@ -673,4 +684,13 @@ void TimeseriesChart::paintEvent(QPaintEvent *event) {
         painter.setPen(QPen(m_overlayColor));
         painter.drawText(plot, Qt::AlignCenter, tickLabel(m_overlay));
     }
+}
+
+double chartAxisStep(double span, bool integerAxis) {
+    const double step = niceStep(span);
+    if (!integerAxis) {
+        return step;
+    }
+    // "0, 0.2, 0.4" on a count of instances is noise: whole numbers only.
+    return std::max(1.0, std::ceil(step - 1e-9));
 }

@@ -2138,6 +2138,13 @@ int main(int argc, char *argv[]) {
     }
     check(cloudFleetChart != nullptr && cloudFleetChart->sampleCount() == 2,
           "cloud fleet chart follows the running count per tick");
+    // A count has no half ticks: the running-instances axis steps by whole
+    // numbers even when the series is flat at 1 (screenshot: 0, 0.2, 0.4).
+    check(chartAxisStep(1e-9, true) == 1.0 && chartAxisStep(1.0, true) == 1.0
+              && chartAxisStep(4.0, true) == 1.0
+              && chartAxisStep(100.0, true) == 20.0
+              && chartAxisStep(1.0, false) < 1.0,
+          "charts: a count axis steps by whole numbers only");
     auto *cloudFleetDetail =
         hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetDetail"));
     check(cloudFleetDetail != nullptr
