@@ -2490,6 +2490,52 @@ int main(int argc, char *argv[]) {
                       && fleetSummary->text().contains(
                           QStringLiteral("2 peer")),
                   "fleet summary states what is polled");
+
+            // An agentless peer rides the same table: host readings only, and
+            // the row says so instead of showing zeros for what it cannot see.
+            FleetPeer agentless;
+            agentless.name = QStringLiteral("build-02");
+            agentless.address = QStringLiteral("ssh://ops@build-02");
+            agentless.configured = true;
+            agentless.agentless = true;
+            agentless.online = true;
+            agentless.everSeen = true;
+            agentless.lastSeenMs = fleetNow - 2000;
+            agentless.hostname = QStringLiteral("build-02");
+            agentless.version = QStringLiteral("agentless (ssh, Linux 6.8.0)");
+            agentless.memTotalKb = 8000000;
+            agentless.memAvailableKb = 2000000;
+            agentless.load1 = 0.75;
+            agentless.uptimeSec = 3600;
+            FleetPeer pending;
+            pending.name = QStringLiteral("edge");
+            pending.address = QStringLiteral("ssh://ops@edge");
+            pending.configured = true;
+            pending.agentless = true;
+            pending.connecting = true;
+            hud.setFleetSshPeers({agentless, pending});
+            check(fleetTable->topLevelItemCount() == 5
+                      && fleetTable->topLevelItem(3)->text(0)
+                             == QStringLiteral("build-02")
+                      && fleetTable->topLevelItem(3)->text(1)
+                             == QStringLiteral("--")
+                      && fleetTable->topLevelItem(3)->text(2)
+                             == QStringLiteral("25%")
+                      && fleetTable->topLevelItem(3)->text(5)
+                             .startsWith(QStringLiteral("online"))
+                      && fleetTable->topLevelItem(4)->text(5)
+                             == QStringLiteral("connecting"),
+                  "an agentless peer joins the table with its own state");
+            fleetTable->setCurrentItem(fleetTable->topLevelItem(3));
+            auto *fleetDetail =
+                hud.findChild<QLabel *>(QStringLiteral("ddFleetDetail"));
+            check(fleetDetail != nullptr
+                      && fleetDetail->text().contains(
+                          QStringLiteral("agentless (ssh)"))
+                      && fleetDetail->text().contains(
+                          QStringLiteral("host only")),
+                  "the agentless detail names the mechanism and its limit");
+            hud.setFleetSshPeers({});
         }
 
         {

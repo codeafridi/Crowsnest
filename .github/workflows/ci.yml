@@ -328,7 +328,12 @@ jobs:
           assert fleet["offlineOk"] is True, fleet
           assert fleet["selfOk"] is True, fleet
           assert fleet["summaryOk"] is True, fleet
-          print("fleet ok: %d configured peer(s), sharing %s"
+          assert fleet["sshOk"] is True, fleet
+          assert fleet["sshSkipOk"] is True, fleet
+          assert fleet["sshArgsOk"] is True, fleet
+          assert fleet["sshCpuOk"] is True, fleet
+          print("fleet ok: %d configured peer(s), agentless ssh parsers ok, "
+                "sharing %s"
                 % (fleet["peersConfigured"],
                    "on" if fleet["share"] else "off"))
           remote = d["remote"]
@@ -597,7 +602,12 @@ jobs:
           assert fleet["offlineOk"] is True, fleet
           assert fleet["selfOk"] is True, fleet
           assert fleet["summaryOk"] is True, fleet
-          print("fleet ok: %d configured peer(s), sharing %s"
+          assert fleet["sshOk"] is True, fleet
+          assert fleet["sshSkipOk"] is True, fleet
+          assert fleet["sshArgsOk"] is True, fleet
+          assert fleet["sshCpuOk"] is True, fleet
+          print("fleet ok: %d configured peer(s), agentless ssh parsers ok, "
+                "sharing %s"
                 % (fleet["peersConfigured"],
                    "on" if fleet["share"] else "off"))
           remote = d["remote"]

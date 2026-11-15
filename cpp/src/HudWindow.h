@@ -2,6 +2,7 @@
 
 #include "DisplaySnapshot.h"
 #include "TeamStatus.h"
+#include "FleetStatus.h"
 #include "HistoryLog.h"
 #include "DockerStatus.h"
 #include "WallpaperArt.h"
@@ -49,7 +50,6 @@ class QResizeEvent;
 class QTimer;
 class DashboardPanel;
 struct SettingsInfo;
-struct FleetStatus;
 
 class HudWindow : public QWidget {
     Q_OBJECT
@@ -67,6 +67,9 @@ public:
     // here, from the last snapshot this window rendered, so the table always
     // lists this machine first (netdata's mirrored_hosts includes itself).
     void setFleetSnapshot(const FleetStatus &status);
+    // Agentless peers: host readings over ssh, merged into the same table
+    // before the self row is computed, and carried to the scrape as well.
+    void setFleetSshPeers(const QList<FleetPeer> &peers);
     void setTeamStatus(const TeamStatus &status);
     void setTeamActionStatus(TeamAction action, const QString &incidentId,
                              bool ok, int httpStatus, const QString &detail);
@@ -111,6 +114,9 @@ signals:
     void teamSilenceRequested(const TeamIncident &incident, int minutes);
     // Cloud page visibility and CHECK NOW, forwarded to the sampler thread.
     void cloudPageVisibleChanged(bool visible);
+    // The merged peer list (HTTP peers + agentless ssh peers + this machine),
+    // so the scrape and the page describe the same fleet.
+    void fleetStatusChanged(const FleetStatus &status);
     void cloudRefreshRequested();
     // M97: one report's worth of bytes. Emitted with the sample id already
     // fixed, so a retry of the same envelope cannot mint a second report.
@@ -286,9 +292,12 @@ private:
     void restoreOverlay();
     void ensureOnScreen();
     void verifyOverlayStates(int attempt);
+    void publishFleet();
     void publishOverlayState();
     void refreshOverlayState();
     DisplaySnapshot m_lastSnapshot;
+    FleetStatus m_fleetStatus;
+    QList<FleetPeer> m_fleetSshPeers;
     bool m_detailsExpanded = false;
     void applySurfaceAppearance();
     void scheduleAppearanceSave();

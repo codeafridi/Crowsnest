@@ -1627,6 +1627,34 @@ int main(int argc, char *argv[]) {
                      12.0, 6100000, 0.24, 45000),
         };
 
+        // An agentless peer: reached over ssh, host readings only, and the
+        // row says so instead of showing zeros for what it cannot see.
+        FleetPeer agentless;
+        agentless.name = QStringLiteral("prod");
+        agentless.address = QStringLiteral("ssh://ops@10.0.0.9:2222");
+        agentless.configured = true;
+        agentless.agentless = true;
+        agentless.online = true;
+        agentless.everSeen = true;
+        agentless.hostname = QStringLiteral("prod-web-01");
+        agentless.version = QStringLiteral("agentless (ssh, Linux 6.8.0-45)");
+        agentless.memTotalKb = 16384000;
+        agentless.memAvailableKb = 11468800;
+        agentless.cpuPercent = 8.0;
+        agentless.load1 = 0.36;
+        agentless.uptimeSec = 864000;
+        agentless.lastAttemptMs = now - 900;
+        agentless.lastSeenMs = now - 900;
+        agentless.latencyMs = 34;
+        FleetPeer pendingSsh;
+        pendingSsh.name = QStringLiteral("vps");
+        pendingSsh.address = QStringLiteral("ssh://deploy@vps.example");
+        pendingSsh.configured = true;
+        pendingSsh.agentless = true;
+        pendingSsh.connecting = true;
+        fleet.peers.append(agentless);
+        fleet.peers.append(pendingSsh);
+
         DisplaySnapshot here = demoSnapshot(240);
         here.sequence = 240;
         const FleetStatus withSelf =

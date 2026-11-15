@@ -75,6 +75,38 @@ A bare host is completed rather than rejected — that is the mistake people mak
 most often. An entry with no usable host (`https://`, `:`, a bad port) is
 refused and the row states why instead of disappearing.
 
+### Machines with nothing installed (agentless)
+
+A machine you only have an ssh account on — a friend's VPS, a production box
+whose distro you will not touch — joins the same list with an `ssh://` entry:
+
+```ini
+[fleet]
+peers = db=build-03:9107, prod=ssh://ops@10.0.0.9:2222
+```
+
+One non-interactive `ssh` runs per peer per poll, with a single `sh` line that
+reads `/proc/stat`, `/proc/meminfo`, `/proc/loadavg` and `/proc/uptime` and
+prints the host name and kernel. Nothing is installed, written or left behind
+on the remote host, and the command runs under `BatchMode=yes`, so a host with
+no key fails immediately instead of waiting for a password:
+
+```sh
+ssh -o BatchMode=yes -o ConnectTimeout=2 \
+    -o StrictHostKeyChecking=accept-new -p 2222 ops@10.0.0.9 '<one shell line>'
+```
+
+An agentless row is marked `agentless (ssh)` in its detail block and reports
+**CPU, memory, load and uptime only** — no process list, no disks, no
+containers, and no alert counts, because the mechanism cannot see them. The
+state column says `connecting` until the first answer arrives, so a host that
+never answers is visible for the length of its budget instead of missing from
+the table. A refused key reads `permission denied - set up a key (ssh-copy-id)`,
+a changed host key names `known_hosts`, and a host that is not Linux says so.
+
+The HTTP peers still share one `[metrics] token`; an agentless peer needs
+none, because it authenticates with the ssh key you already have.
+
 `bind = 0.0.0.0` is required for peers to reach this machine; a non-loopback
 bind with an empty token is refused at startup and the endpoint drops back to
 `127.0.0.1` with a log line saying so. `[metrics] token` and `[fleet] token`

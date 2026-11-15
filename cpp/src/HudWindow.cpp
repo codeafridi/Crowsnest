@@ -397,11 +397,45 @@ QLayout *HudWindow::makeMetricBlock(const QString &caption, QLabel *value) {
 }
 
 void HudWindow::setFleetSnapshot(const FleetStatus &status) {
-    const FleetPeer self = fleetSelfPeer(
-        m_lastSnapshot, status.selfName, QDateTime::currentMSecsSinceEpoch());
-    if (m_panel != nullptr) {
-        m_panel->setFleetSnapshot(fleetWithSelf(status, self));
+    m_fleetStatus = status;
+    publishFleet();
+}
+
+void HudWindow::setFleetSshPeers(const QList<FleetPeer> &peers) {
+    m_fleetSshPeers = peers;
+    publishFleet();
+}
+
+void HudWindow::publishFleet() {
+    FleetStatus merged = m_fleetStatus;
+    // The ssh peers are appended after the HTTP peers so one [fleet] peers=
+    // list can carry both and the table reads in the order the user wrote.
+    QSet<QString> seen;
+    for (const FleetPeer &peer : merged.peers) {
+        seen.insert(peer.address);
     }
+    for (const FleetPeer &peer : m_fleetSshPeers) {
+        if (!seen.contains(peer.address)) {
+            merged.peers.append(peer);
+        }
+    }
+    // The HTTP poller sets lastPollMs only when it had HTTP peers to poll, so
+    // an ssh-only fleet would publish no gauges at all. The newest attempt
+    // across both mechanisms is the honest "polled at".
+    if (merged.lastPollMs < 0) {
+        for (const FleetPeer &peer : merged.peers) {
+            if (peer.lastAttemptMs > merged.lastPollMs) {
+                merged.lastPollMs = peer.lastAttemptMs;
+            }
+        }
+    }
+    const FleetPeer self = fleetSelfPeer(
+        m_lastSnapshot, merged.selfName, QDateTime::currentMSecsSinceEpoch());
+    const FleetStatus status = fleetWithSelf(merged, self);
+    if (m_panel != nullptr) {
+        m_panel->setFleetSnapshot(status);
+    }
+    emit fleetStatusChanged(status);
 }
 
 void HudWindow::setTeamStatus(const TeamStatus &status) {

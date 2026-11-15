@@ -51,6 +51,7 @@
 #include "CloudSpendSource.h"
 #include "TimelineStatus.h"
 #include "FleetStatus.h"
+#include "FleetSshStatus.h"
 #include "RemoteStatus.h"
 #include "RemoteSource.h"
 #include "RemoteSpool.h"
@@ -7599,6 +7600,135 @@ int main(int argc, char *argv[]) {
                              "http://build-03:9109/api/v1/snapshot"),
               "fleet: name=<host> names a peer, a bare entry keeps its own");
 
+        // Agentless peers: a machine you can ssh into with nothing installed.
+        // The sample is the same /proc data the local backend reads, and the
+        // markers keep the parse independent of proc's own formatting.
+        const FleetSshSample sshSample = parseFleetSshSample(QByteArrayLiteral(
+            "@@CPU 1000 10 500 8000 100 5 5 0\n"
+            "@@MEMT 16384000\n"
+            "@@MEMA 4096000\n"
+            "@@LOAD 1.25 1.00 0.75\n"
+            "@@UP 172800.5\n"
+            "@@HOST db-01\n"
+            "@@UNAME Linux 6.8.0-45-generic\n"));
+        check(sshSample.ok && sshSample.cpuTotalJiffies == 9620
+                  && sshSample.cpuIdleJiffies == 8100
+                  && sshSample.memTotalKb == 16384000
+                  && sshSample.memAvailableKb == 4096000
+                  && sshSample.load1 == 1.25
+                  && sshSample.uptimeSec == 172800
+                  && sshSample.hostname == QStringLiteral("db-01")
+                  && sshSample.kernel
+                         == QStringLiteral("Linux 6.8.0-45-generic"),
+              "fleet ssh: a proc sample parses into readings");
+        check(!parseFleetSshSample(QByteArrayLiteral(
+                  "@@CPU 1 2 3\n@@LOAD 0.1\n"))
+                   .ok,
+              "fleet ssh: a truncated sample is refused, not half-parsed");
+        check(parseFleetSshSample(QByteArrayLiteral(
+                  "Linux db-01 6.8.0 #1 SMP x86_64\n"))
+                  .error.contains(QStringLiteral("/proc/stat")),
+              "fleet ssh: a non-Linux answer names the reason");
+
+        check(qAbs(fleetSshCpuPercent(1000, 800, 2000, 1700) - 10.0) < 0.001
+                  && fleetSshCpuPercent(0, 0, 2000, 1700) < 0.0
+                  && fleetSshCpuPercent(2000, 1700, 1000, 900) < 0.0
+                  && fleetSshCpuPercent(1000, 900, 2000, 1900) == 0.0,
+              "fleet ssh: cpu between two samples, never a guess");
+
+        const QStringList sshArgs =
+            fleetSshArguments(QStringLiteral("ops@10.0.0.9:2222"), 5);
+        check(sshArgs.contains(QStringLiteral("BatchMode=yes"))
+                  && sshArgs.contains(QStringLiteral("ConnectTimeout=5"))
+                  && sshArgs.contains(
+                      QStringLiteral("StrictHostKeyChecking=accept-new"))
+                  && sshArgs.contains(QStringLiteral("-p"))
+                  && sshArgs.contains(QStringLiteral("2222"))
+                  && sshArgs.contains(QStringLiteral("ops@10.0.0.9"))
+                  && sshArgs.last() == fleetSshCommand()
+                  && sshArgs.last().contains(QStringLiteral("@@CPU"))
+                  && sshArgs.last().contains(QStringLiteral("/proc/meminfo")),
+              "fleet ssh: the argv is non-interactive and both ends agree");
+        check(fleetSshArguments(QStringLiteral("ssh://box"), 0).contains(
+                  QStringLiteral("ConnectTimeout=1"))
+                  && fleetSshArguments(QStringLiteral("ssh://box"), 600)
+                         .contains(QStringLiteral("ConnectTimeout=60")),
+              "fleet ssh: the connect timeout is bounded");
+
+        const FleetPeer sshPeer =
+            fleetSshPeer(QStringLiteral("db=ssh://ops@10.0.0.9:2222"));
+        check(sshPeer.agentless && sshPeer.configured
+                  && sshPeer.name == QStringLiteral("db")
+                  && sshPeer.address
+                         == QStringLiteral("db=ssh://ops@10.0.0.9:2222"),
+              "fleet ssh: a peer keeps its authored name");
+        QString sshError;
+        check(!fleetSshPeer(QStringLiteral("ssh://"), &sshError).configured
+                  && !sshError.isEmpty(),
+              "fleet ssh: an empty host is refused with a reason");
+
+        check(fleetIsSshSpec(QStringLiteral("ssh://box"))
+                  && fleetIsSshSpec(QStringLiteral("DB=SSH://box"))
+                  && !fleetIsSshSpec(QStringLiteral("box:9107"))
+                  && fleetSshSpecs({QStringLiteral("db=build-02"),
+                                    QStringLiteral("ssh://ops@10.0.0.9")})
+                         == QStringList({QStringLiteral("ssh://ops@10.0.0.9")}),
+              "fleet ssh: one peers list carries both mechanisms");
+        check(parseFleetPeers({QStringLiteral("http://a:9107"),
+                               QStringLiteral("ssh://ops@b")})
+                      .size() == 1
+                  && parseFleetPeers({QStringLiteral("ssh://ops@b")}).isEmpty(),
+              "fleet ssh: the http poller skips ssh entries");
+
+        // The merged fleet counts the agentless peer and says what it cannot
+        // see, instead of a zero that reads like a reading.
+        FleetStatus sshFleet;
+        sshFleet.enabled = true;
+        sshFleet.tokenConfigured = false;
+        sshFleet.pollMs = 10000;
+        sshFleet.timeoutMs = 5000;
+        FleetPeer agentRow = fleetSshPeer(QStringLiteral("ssh://ops@b"));
+        agentRow.online = true;
+        agentRow.everSeen = true;
+        agentRow.lastSeenMs = 1000;
+        agentRow.hostname = QStringLiteral("b");
+        agentRow.version = QStringLiteral("agentless (ssh, Linux 6.8.0)");
+        agentRow.memTotalKb = 1000;
+        agentRow.memAvailableKb = 250;
+        sshFleet.peers = {agentRow};
+        check(fleetPeerStateText(sshFleet.peers.first(), 3000, 10000)
+                      == QStringLiteral("online 2s")
+                  && fleetPeerDetailText(sshFleet.peers.first(), 3000, 10000)
+                         .contains(QStringLiteral("agentless (ssh)"))
+                  && fleetPeerDetailText(sshFleet.peers.first(), 3000, 10000)
+                         .contains(QStringLiteral("host only"))
+                  && !fleetPeerDetailText(sshFleet.peers.first(), 3000, 10000)
+                          .contains(QStringLiteral("0 processes")),
+              "fleet ssh: the row names the mechanism and its limit");
+        check(fleetSummaryText(sshFleet, 1000)
+                  .contains(QStringLiteral("1 agentless (ssh)"))
+                  && !fleetNoteText(sshFleet).contains(
+                      QStringLiteral("[metrics] token")),
+              "fleet ssh: no token is demanded for an ssh-only fleet");
+        // A peer still waiting for its first answer is not an outage.
+        {
+            FleetStatus waitingFleet = sshFleet;
+            FleetPeer waiting = agentRow;
+            waiting.connecting = true;
+            waiting.online = false;
+            waitingFleet.peers = {waiting};
+            check(fleetDownCount(waitingFleet) == 0
+                      && fleetOnlineCount(waitingFleet) == 0,
+                  "fleet ssh: a pending peer is counted as neither up nor down");
+        }
+        agentRow.connecting = true;
+        check(fleetPeerStateText(agentRow, 3000, 10000)
+                  == QStringLiteral("connecting")
+                  && fleetPeerDetailText(agentRow, 3000, 10000)
+                         .contains(QStringLiteral("waiting for the first "
+                                                  "answer")),
+              "fleet ssh: a peer whose first answer is pending says so");
+
         DisplaySnapshot sample;
         sample.appName = QStringLiteral("web");
         sample.pid = QStringLiteral("77");
@@ -7799,7 +7929,200 @@ int main(int argc, char *argv[]) {
                          QStringLiteral("crowsnest_fleet_peer_cpu_percent{peer=\"hot-box\"}"))
                       == 1,
               "fleet: one HELP/TYPE block per family, however many peers");
+
+        // An agentless peer publishes the host gauges it can answer and
+        // nothing it cannot: no fabricated processes or listen counts.
+        {
+            FleetStatus mixed = withSelf;
+            FleetPeer sshRow = fleetSshPeer(QStringLiteral("prod=ssh://ops@b"));
+            sshRow.online = true;
+            sshRow.everSeen = true;
+            sshRow.lastSeenMs = 100000;
+            sshRow.lastAttemptMs = 100000;
+            sshRow.cpuPercent = 8.0;
+            sshRow.memTotalKb = 1000;
+            sshRow.memAvailableKb = 700;
+            sshRow.load1 = 0.5;
+            sshRow.uptimeSec = 3600;
+            mixed.peers.append(sshRow);
+            mixed.tokenConfigured = true;
+            const QString sshText = prometheusFleetText(mixed);
+            check(sshText.contains(QStringLiteral(
+                      "crowsnest_fleet_peer_cpu_percent{peer=\"prod\"} 8.000"))
+                      && sshText.contains(QStringLiteral(
+                          "crowsnest_fleet_peers_total 3"))
+                      && !sshText.contains(QStringLiteral("processes{")),
+                  "fleet ssh: the scrape carries the host gauges it has");
+            check(fleetNoteText(mixed).contains(
+                      QStringLiteral("1 agentless (ssh) peer(s)")),
+                  "fleet ssh: the note names the agentless peers");
+        }
     }
+
+#if !defined(Q_OS_WIN)
+    {
+        // Agentless peers end to end against a fake `ssh` on PATH: the argv a
+        // real sshd would see, the connecting row, the answer, the delta
+        // between two polls and the refusal text.
+        QTemporaryDir sshDir;
+        check(sshDir.isValid(), "fleet ssh: a temp dir for the fake ssh");
+        const QString binDir = sshDir.path();
+        const QByteArray script =
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> \"$CROWSNEST_FAKE_SSH_LOG\"\n"
+            "if [ -n \"$CROWSNEST_FAKE_SSH_EXIT\" ]; then\n"
+            "  printf '%s\\n' \"$CROWSNEST_FAKE_SSH_ERR\" >&2\n"
+            "  exit \"$CROWSNEST_FAKE_SSH_EXIT\"\n"
+            "fi\n"
+            "n=$(cat \"$CROWSNEST_FAKE_SSH_COUNTER\" 2>/dev/null || echo 0)\n"
+            "n=$((n+1)); printf '%s' \"$n\" > \"$CROWSNEST_FAKE_SSH_COUNTER\"\n"
+            "if [ \"$n\" -le 1 ]; then\n"
+            "  printf '@@CPU 1000 0 0 800 0 0 0 0\\n'\n"
+            "else\n"
+            "  printf '@@CPU 2000 0 0 1500 0 0 0 0\\n'\n"
+            "fi\n"
+            "printf '@@MEMT 16384000\\n@@MEMA 8192000\\n'\n"
+            "printf '@@LOAD 0.50 0.40 0.30\\n@@UP 3600.5\\n'\n"
+            "printf '@@HOST fake-box\\n@@UNAME Linux 6.8.0-fake\\n'\n";
+        QFile sshFile(binDir + QStringLiteral("/ssh"));
+        bool wrote = sshFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        if (wrote) {
+            sshFile.write(script);
+            sshFile.close();
+            sshFile.setPermissions(QFile::ReadOwner | QFile::WriteOwner
+                                   | QFile::ExeOwner | QFile::ReadGroup
+                                   | QFile::ExeGroup | QFile::ReadOther
+                                   | QFile::ExeOther);
+        }
+        check(wrote, "fleet ssh: the fake ssh binary is written");
+
+        const QString oldPath = QString::fromLocal8Bit(qgetenv("PATH"));
+        const QString argvLog = binDir + QStringLiteral("/argv.log");
+        const QString counter = binDir + QStringLiteral("/counter");
+        qputenv("PATH", (binDir + QLatin1Char(':') + oldPath).toUtf8());
+        qputenv("CROWSNEST_FAKE_SSH_LOG", argvLog.toUtf8());
+        qputenv("CROWSNEST_FAKE_SSH_COUNTER", counter.toUtf8());
+        qunsetenv("CROWSNEST_FAKE_SSH_EXIT");
+        QFile::remove(argvLog);
+        QFile::remove(counter);
+
+        FleetSshOptions options;
+        options.enabled = true;
+        options.peers = {QStringLiteral("db=ssh://ops@fake-box:2222")};
+        options.timeoutMs = 5000;
+        options.pollMs = 10000;
+        const QList<FleetPeer> probed =
+            probeFleetSsh(options, QDateTime::currentMSecsSinceEpoch());
+        check(probed.size() == 1 && probed.first().online
+                  && probed.first().agentless
+                  && probed.first().name == QStringLiteral("db")
+                  && probed.first().hostname == QStringLiteral("fake-box")
+                  && probed.first().memTotalKb == 16384000
+                  && probed.first().memAvailableKb == 8192000
+                  && probed.first().load1 > 0.49
+                  && probed.first().uptimeSec == 3600
+                  && probed.first().version.contains(
+                      QStringLiteral("agentless (ssh")),
+              "fleet ssh: a one-shot probe answers host readings");
+        QFile logFile(argvLog);
+        QByteArray logged;
+        if (logFile.open(QIODevice::ReadOnly)) {
+            logged = logFile.readAll();
+            logFile.close();
+        }
+        check(logged.contains("BatchMode=yes")
+                  && logged.contains("-p 2222")
+                  && logged.contains("ops@fake-box")
+                  && logged.contains("@@CPU"),
+              "fleet ssh: ssh is called non-interactively with the port");
+
+        // A refused login names the fix, not ssh's own sentence.
+        qputenv("CROWSNEST_FAKE_SSH_EXIT", "255");
+        qputenv("CROWSNEST_FAKE_SSH_ERR", "Permission denied (publickey).");
+        const QList<FleetPeer> refused = probeFleetSsh(options, 5000);
+        qunsetenv("CROWSNEST_FAKE_SSH_EXIT");
+        qunsetenv("CROWSNEST_FAKE_SSH_ERR");
+        check(refused.size() == 1 && !refused.first().online
+                  && refused.first().error.contains(
+                      QStringLiteral("ssh-copy-id")),
+              "fleet ssh: a refused key says how to fix it");
+
+        // The runner: the row exists while the first answer is pending, then
+        // the readings land, then the next poll computes CPU from the delta.
+        QFile::remove(counter);
+        FleetSshRunner runner;
+        runner.setOptions(options);
+        runner.update(100000);
+        const QList<FleetPeer> pending = runner.peers();
+        check(pending.size() == 1 && pending.first().connecting
+                  && fleetPeerStateText(pending.first(), 100000, 10000)
+                         == QStringLiteral("connecting"),
+              "fleet ssh: a peer whose answer is pending is on the table");
+        const auto waitFor = [](FleetSshRunner &subject, int want,
+                                int budgetMs) {
+            QElapsedTimer clock;
+            clock.start();
+            while (clock.elapsed() < budgetMs) {
+                subject.update(100000);
+                int online = 0;
+                for (const FleetPeer &peer : subject.peers()) {
+                    if (peer.online) {
+                        ++online;
+                    }
+                }
+                if (online >= want) {
+                    return true;
+                }
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                QThread::msleep(10);
+            }
+            return false;
+        };
+        check(waitFor(runner, 1, 4000),
+              "fleet ssh: the runner delivers the first answer");
+        const QList<FleetPeer> firstPoll = runner.peers();
+        check(firstPoll.size() == 1 && firstPoll.first().online
+                  && !firstPoll.first().connecting
+                  && firstPoll.first().hostname == QStringLiteral("fake-box")
+                  && firstPoll.first().cpuPercent < 0.0,
+              "fleet ssh: the first answer has readings and no cpu yet");
+        runner.update(100000 + 10000);
+        // The row is already online, so wait for the READING the second poll
+        // brings rather than for the row.
+        bool cpuSeen = false;
+        QElapsedTimer cpuClock;
+        cpuClock.start();
+        while (cpuClock.elapsed() < 4000) {
+            runner.update(110000);
+            cpuSeen = !runner.peers().isEmpty()
+                      && runner.peers().first().cpuPercent >= 0.0;
+            if (cpuSeen) {
+                break;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            QThread::msleep(10);
+        }
+        const QList<FleetPeer> secondPoll = runner.peers();
+        check(cpuSeen, "fleet ssh: the second poll answers");
+        check(secondPoll.size() == 1
+                  && qAbs(secondPoll.first().cpuPercent - 58.8235) < 0.1,
+              "fleet ssh: cpu is the delta between two polls");
+
+        // A poll in flight must not blank what the last one answered: the AGE
+        // column dates the reading, and only a failed poll dashes it.
+        runner.update(120000);
+        check(!runner.peers().isEmpty()
+                  && !runner.peers().first().connecting
+                  && runner.peers().first().online
+                  && qAbs(runner.peers().first().cpuPercent - 58.8235) < 0.1,
+              "fleet ssh: the last answer survives the next poll in flight");
+
+        runner.stop();
+        qputenv("PATH", oldPath.toUtf8());
+        qunsetenv("CROWSNEST_FAKE_SSH_LOG");
+        qunsetenv("CROWSNEST_FAKE_SSH_COUNTER");
+    }
+#endif
 
     {
         QString error;

@@ -488,7 +488,7 @@ int main(int argc, char *argv[]) {
             "enabled=false\n"
             "share=false\n"
             "name=  edge-box  \n"
-            "peers=db=build-02:9107,build-03\n"
+            "peers=db=build-02:9107,build-03,ssh://ops@10.0.0.9:2222\n"
             "token=  fleet-token  \n"
             "poll_ms=15000\n"
             "timeout_ms=4000\n"));
@@ -499,10 +499,13 @@ int main(int argc, char *argv[]) {
         check(c.fleet.name == QStringLiteral("edge-box")
                   && c.fleet.token == QStringLiteral("fleet-token"),
               "fleet: the name and token load trimmed");
-        check(c.fleet.peers.size() == 2
+        check(c.fleet.peers.size() == 3
                   && c.fleet.peers.at(0) == QStringLiteral("db=build-02:9107")
-                  && c.fleet.peers.at(1) == QStringLiteral("build-03"),
-              "fleet: peers load as a list, authored names included");
+                  && c.fleet.peers.at(1) == QStringLiteral("build-03")
+                  && c.fleet.peers.at(2)
+                         == QStringLiteral("ssh://ops@10.0.0.9:2222"),
+              "fleet: peers load as a list, authored names and ssh entries "
+              "included");
         check(c.fleet.pollMs == 15000 && c.fleet.timeoutMs == 4000,
               "fleet: cadence and budget load");
     }

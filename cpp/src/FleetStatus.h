@@ -44,6 +44,14 @@ struct FleetPeer {
     QString url;      // normalised request target
     bool configured = true;  // false when the entry was refused
     QString configNote;      // why an entry was refused
+    // An agentless peer is reached over ssh and answers host readings only:
+    // nothing is installed on it, so there are no processes, disks or
+    // containers to report (the row says so instead of showing zeros).
+    bool agentless = false;
+    // A peer whose first answer has not arrived yet. Without this a configured
+    // host that never answers would simply be absent from the table until its
+    // budget expires, which reads as "no such peer" rather than "not answering".
+    bool connecting = false;
 
     // Link state, measured locally.
     bool online = false;
@@ -116,6 +124,13 @@ struct FleetStatus {
 // A bare host is a mistake people make constantly, so it is completed rather
 // than rejected: http, default port, /api/v1/snapshot.
 QString fleetNormalizePeerUrl(const QString &spec, QString *error = nullptr);
+
+// Peers that are polled over the Crowsnest HTTP API. An ssh:// entry is a
+// different mechanism (FleetSshStatus) and is skipped here, so one [fleet]
+// peers= list can carry both without either poller failing on the other's
+// entries.
+bool fleetIsSshSpec(const QString &spec);
+QStringList fleetSshSpecs(const QStringList &specs);
 
 QList<FleetPeer> parseFleetPeers(const QStringList &specs,
                                  QString *error = nullptr);

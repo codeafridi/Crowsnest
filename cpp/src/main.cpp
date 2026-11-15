@@ -18,6 +18,7 @@
 #include "MetricsServer.h"
 #include "MetricsEndpoint.h"
 #include "FleetSource.h"
+#include "FleetSshStatus.h"
 #include "RemoteSource.h"
 #include "TeamSource.h"
 #include "RemoteStatus.h"
@@ -958,11 +959,40 @@ int main(int argc, char *argv[]) {
                      &QObject::deleteLater);
     QObject::connect(fleetRunner, &FleetRunner::fleetUpdated, &hud,
                      &HudWindow::setFleetSnapshot);
+    // The page and the scrape read one merged fleet: HudWindow appends the
+    // agentless ssh peers, adds this machine and re-emits.
     if (metricsServer != nullptr) {
-        QObject::connect(fleetRunner, &FleetRunner::fleetUpdated, metricsServer,
+        QObject::connect(&hud, &HudWindow::fleetStatusChanged, metricsServer,
                          &MetricsServer::setFleetStatus);
     }
     fleetThread->start();
+
+    // Agentless peers: the ssh:// entries of the same [fleet] peers= list, on
+    // a thread of their own (one non-interactive ssh per peer, its own budget).
+    QThread *fleetSshThread = nullptr;
+    FleetSshRunner *fleetSshRunner = nullptr;
+    const QStringList fleetSshPeers = fleetSshSpecs(config.fleet.peers);
+    if (config.fleet.enabled && !fleetSshPeers.isEmpty()) {
+        qRegisterMetaType<QList<FleetPeer>>("QList<FleetPeer>");
+        fleetSshThread = new QThread;
+        fleetSshRunner = new FleetSshRunner;
+        fleetSshRunner->moveToThread(fleetSshThread);
+        FleetSshOptions sshOptions;
+        sshOptions.enabled = true;
+        sshOptions.peers = fleetSshPeers;
+        // The connect timeout and the whole-call budget share one setting, so a
+        // blackholed host cannot hold a slot for two minutes.
+        sshOptions.timeoutMs = qBound(2000, config.fleet.timeoutMs * 2, 30000);
+        sshOptions.pollMs = config.fleet.pollMs;
+        fleetSshRunner->setOptions(sshOptions);
+        QObject::connect(fleetSshThread, &QThread::started, fleetSshRunner,
+                         &FleetSshRunner::start);
+        QObject::connect(fleetSshThread, &QThread::finished, fleetSshRunner,
+                         &FleetSshRunner::deleteLater);
+        QObject::connect(fleetSshRunner, &FleetSshRunner::peersReady, &hud,
+                         &HudWindow::setFleetSshPeers);
+        fleetSshThread->start();
+    }
 
     // M97: the paid-tier reporter. Same discipline as the peer poll (own thread,
     // blocking socket with a hard budget) with one difference that matters: the
@@ -1338,6 +1368,14 @@ int main(int argc, char *argv[]) {
     fleetThread->quit();
     fleetThread->wait();
     delete fleetThread;
+
+    if (fleetSshRunner != nullptr) {
+        QMetaObject::invokeMethod(fleetSshRunner, "stop",
+                                  Qt::BlockingQueuedConnection);
+        fleetSshThread->quit();
+        fleetSshThread->wait();
+        delete fleetSshThread;
+    }
 
     // A report can be inside a blocking POST with the full budget, same as a
     // peer poll: ask it to stop on its own thread and let the socket timeout

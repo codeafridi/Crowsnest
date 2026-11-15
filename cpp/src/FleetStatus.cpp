@@ -170,6 +170,25 @@ QString fleetNormalizePeerUrl(const QString &spec, QString *error) {
         + (port.isEmpty() ? QString() : QLatin1Char(':') + port) + path;
 }
 
+bool fleetIsSshSpec(const QString &spec) {
+    QString text = spec.trimmed();
+    const int equals = text.indexOf(QLatin1Char('='));
+    if (equals > 0) {
+        text = text.mid(equals + 1).trimmed();
+    }
+    return text.startsWith(QLatin1String("ssh://"), Qt::CaseInsensitive);
+}
+
+QStringList fleetSshSpecs(const QStringList &specs) {
+    QStringList ssh;
+    for (const QString &spec : specs) {
+        if (fleetIsSshSpec(spec)) {
+            ssh.append(spec.trimmed());
+        }
+    }
+    return ssh;
+}
+
 QList<FleetPeer> parseFleetPeers(const QStringList &specs, QString *error) {
     if (error != nullptr) {
         error->clear();
@@ -178,6 +197,10 @@ QList<FleetPeer> parseFleetPeers(const QStringList &specs, QString *error) {
     for (const QString &raw : specs) {
         const QString spec = raw.trimmed();
         if (spec.isEmpty()) {
+            continue;
+        }
+        if (fleetIsSshSpec(spec)) {
+            // Handled by the ssh runner, not the HTTP poller.
             continue;
         }
         FleetPeer peer;
@@ -563,7 +586,11 @@ int fleetOnlineCount(const FleetStatus &status) {
 int fleetDownCount(const FleetStatus &status) {
     int count = 0;
     for (const FleetPeer &peer : status.peers) {
-        if (!peer.isSelf && peer.configured && !peer.online) {
+        // A peer whose first answer has not arrived yet is not down: counting
+        // it would make the first tick of every poll (and every brand new
+        // peer) read as an outage.
+        if (!peer.isSelf && peer.configured && !peer.online
+            && !peer.connecting) {
             ++count;
         }
     }
@@ -660,6 +687,9 @@ QString fleetPeerStateText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
                    ? QStringLiteral("refused")
                    : QStringLiteral("refused: %1").arg(peer.configNote);
     }
+    if (peer.connecting) {
+        return QStringLiteral("connecting");
+    }
     if (!peer.online) {
         if (peer.error.isEmpty()) {
             return QStringLiteral("down");
@@ -709,6 +739,12 @@ QString fleetPeerDetailText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
         return QStringLiteral("%1 - remove it or fix it in [fleet] peers=")
             .arg(peer.address);
     }
+    if (peer.connecting) {
+        return QStringLiteral("%1 (%2 - waiting for the first answer)")
+            .arg(peer.address,
+                 peer.agentless ? QStringLiteral("agentless ssh")
+                                : QStringLiteral("http"));
+    }
     if (!peer.online) {
         return QStringLiteral("%1 (%2)").arg(peer.address,
                                              fleetPeerStateText(peer, nowMs,
@@ -716,14 +752,24 @@ QString fleetPeerDetailText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
     }
     QStringList parts;
     parts << (peer.hostname.isEmpty() ? peer.address : peer.hostname);
-    if (!peer.version.isEmpty()) {
-        parts << QStringLiteral("crowsnest %1").arg(peer.version);
+    if (peer.agentless) {
+        // The honest limit of the mechanism: host readings only.
+        parts << QStringLiteral("agentless (ssh)");
+        if (!peer.version.isEmpty()) {
+            parts << peer.version;
+        }
+        parts << QStringLiteral(
+            "host only - no processes, disks or containers over ssh");
+    } else {
+        if (!peer.version.isEmpty()) {
+            parts << QStringLiteral("crowsnest %1").arg(peer.version);
+        }
+        if (!peer.platform.isEmpty()) {
+            parts << peer.platform;
+        }
+        parts << QStringLiteral("%1 processes").arg(peer.processCount);
+        parts << QStringLiteral("%1 listening").arg(peer.listeningCount);
     }
-    if (!peer.platform.isEmpty()) {
-        parts << peer.platform;
-    }
-    parts << QStringLiteral("%1 processes").arg(peer.processCount);
-    parts << QStringLiteral("%1 listening").arg(peer.listeningCount);
     if (peer.uptimeSec >= 0) {
         const qint64 hours = peer.uptimeSec / 3600;
         if (hours >= 24) {
@@ -759,6 +805,15 @@ QString fleetSummaryText(const FleetStatus &status, qint64 nowMs) {
                  .arg(peerCount)
                  .arg(online)
                  .arg(down);
+    int agentless = 0;
+    for (const FleetPeer &peer : status.peers) {
+        if (!peer.isSelf && peer.agentless) {
+            ++agentless;
+        }
+    }
+    if (agentless > 0) {
+        parts << QStringLiteral("%1 agentless (ssh)").arg(agentless);
+    }
     double worst = fleetWorstCpu(status);
     if (worst >= 0.0) {
         QString owner;
@@ -840,32 +895,51 @@ QString fleetNoteText(const FleetStatus &status) {
             "the peers that list it; nothing is polled from here");
     }
     int peerTotal = 0;
+    int httpPeers = 0;
+    int sshPeers = 0;
     for (const FleetPeer &peer : status.peers) {
-        if (!peer.isSelf) {
-            ++peerTotal;
+        if (peer.isSelf) {
+            continue;
+        }
+        ++peerTotal;
+        if (peer.agentless) {
+            ++sshPeers;
+        } else {
+            ++httpPeers;
         }
     }
     if (peerTotal == 0) {
         return QStringLiteral(
             "polling: no peers yet - add them to [fleet] peers= as host, "
-            "host:port or name=host:port");
+            "host:port, name=host:port, or ssh://user@host for a machine with "
+            "nothing installed");
     }
-    if (!status.tokenConfigured) {
+    // A token is the price of the HTTP peer only: an agentless peer
+    // authenticates with the ssh key the user already has.
+    if (httpPeers > 0 && !status.tokenConfigured) {
         return fleetTokenMissingText();
     }
-    return QStringLiteral(
+    QString note = QStringLiteral(
         "%1 peer(s) polled every %2s with a %3ms budget each - the summary "
         "carries load, memory, sockets and alert counts, never your process "
         "list, command lines or environment")
         .arg(peerTotal)
         .arg(qMax(1, status.pollMs / 1000))
         .arg(status.timeoutMs);
+    if (sshPeers > 0) {
+        note += QStringLiteral(
+            "; %1 agentless (ssh) peer(s) answer host readings only - nothing "
+            "is installed or written on them")
+            .arg(sshPeers);
+    }
+    return note;
 }
 
 QString fleetNoPeersText() {
     return QStringLiteral(
-        "fleet: no peers yet - list them in [fleet] peers= as host, host:port "
-        "or name=host:port, and each machine's summary shows up here");
+        "fleet: no peers yet - list them in [fleet] peers= as host, host:port, "
+        "name=host:port, or ssh://user@host for a machine you cannot install "
+        "on, and each machine's summary shows up here");
 }
 
 QString fleetTokenMissingText() {

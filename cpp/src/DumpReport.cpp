@@ -2,6 +2,7 @@
 
 #include "FleetSource.h"
 #include "FleetStatus.h"
+#include "FleetSshStatus.h"
 
 #include "CloudProbe.h"
 #include "CloudStatus.h"
@@ -1333,6 +1334,46 @@ QString dumpReportJson(int maxProcs) {
                          && !fleetNoteText(withSelf).isEmpty());
         fleet.insert(QStringLiteral("peersConfigured"),
                      parseFleetPeers(dumpConfig.fleet.peers).size());
+        // Agentless ssh peers: the parser, the argv and the CPU delta, none of
+        // which needs a reachable host.
+        const FleetSshSample sshSample = parseFleetSshSample(QByteArrayLiteral(
+            "@@CPU 100 0 50 800 50 0 0 0\n"
+            "@@MEMT 16384000\n"
+            "@@MEMA 8192000\n"
+            "@@LOAD 0.42 0.30 0.20\n"
+            "@@UP 86400.12\n"
+            "@@HOST build-02\n"
+            "@@UNAME Linux 6.8.0\n"));
+        const QStringList sshSpecs = fleetSshSpecs(
+            {QStringLiteral("db=build-02"), QStringLiteral("ssh://ops@10.0.0.9:2222")});
+        const QStringList sshArgs =
+            fleetSshArguments(QStringLiteral("ssh://ops@10.0.0.9:2222"), 5);
+        fleet.insert(
+            QStringLiteral("sshOk"),
+            sshSample.ok && sshSample.cpuTotalJiffies == 1000
+                && sshSample.cpuIdleJiffies == 850
+                && sshSample.memTotalKb == 16384000
+                && sshSample.memAvailableKb == 8192000
+                && sshSample.load1 > 0.41 && sshSample.load1 < 0.43
+                && sshSample.uptimeSec == 86400
+                && sshSample.hostname == QStringLiteral("build-02")
+                && sshSample.kernel == QStringLiteral("Linux 6.8.0"));
+        fleet.insert(QStringLiteral("sshSkipOk"),
+                     sshSpecs.size() == 1
+                         && parseFleetPeers({QStringLiteral("db=build-02"),
+                                             QStringLiteral("ssh://ops@10.0.0.9")})
+                                .size() == 1);
+        fleet.insert(QStringLiteral("sshArgsOk"),
+                     sshArgs.contains(QStringLiteral("BatchMode=yes"))
+                         && sshArgs.contains(QStringLiteral("-p"))
+                         && sshArgs.contains(QStringLiteral("2222"))
+                         && sshArgs.contains(QStringLiteral("ops@10.0.0.9"))
+                         && sshArgs.last().contains(QStringLiteral("@@CPU"))
+                         && !fleetSshPeer(QStringLiteral("ssh://")).configured);
+        fleet.insert(QStringLiteral("sshCpuOk"),
+                     qAbs(fleetSshCpuPercent(1000, 850, 2000, 1700) - 15.0) < 0.01
+                         && fleetSshCpuPercent(0, 0, 1000, 500) < 0.0
+                         && fleetSshCpuPercent(2000, 1700, 1000, 500) < 0.0);
         root.insert(QStringLiteral("fleet"), fleet);
     }
 
