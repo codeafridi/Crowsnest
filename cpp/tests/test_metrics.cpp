@@ -6326,15 +6326,20 @@ int main(int argc, char *argv[]) {
                       && fan.identitySource
                              == QStringLiteral("aws sts get-caller-identity"),
                   "aws: the CLI names the account and the home region");
-            if (fan.rows.size() != 2 || fan.regions.size() != 2) {
-                std::printf("DEBUG fan rows=%d regions=%d failed=%d note=%s\n",
-                            int(fan.rows.size()), int(fan.regions.size()),
-                            int(fan.regionFailures.size()),
-                            qUtf8Printable(fan.note));
-                for (const QString &line : fanCalls) {
-                    std::printf("DEBUG call: %s\n", qUtf8Printable(line));
+            // Two regions run at once, so their *log* lines can land in either
+            // order (spawn order is pinned by fan.regions below); the setup
+            // calls are sequential and the type query starts last.
+            QStringList listedRegions;
+            for (const QString &line : fanCalls) {
+                if (!line.startsWith(QStringLiteral("ec2 describe-instances"))) {
+                    continue;
+                }
+                const int at = line.indexOf(QStringLiteral("--region "));
+                if (at >= 0) {
+                    listedRegions.append(line.mid(at + 9).section(' ', 0, 0));
                 }
             }
+            listedRegions.sort();
             check(fanCalls.size() == 6
                       && fanCalls.at(0)
                              == QStringLiteral(
@@ -6344,15 +6349,12 @@ int main(int argc, char *argv[]) {
                       && fanCalls.at(2)
                              == QStringLiteral("ec2 describe-regions --output "
                                                "json --region eu-west-1")
-                      && fanCalls.at(3).startsWith(
-                          QStringLiteral("ec2 describe-instances --output json "
-                                         "--region eu-west-1"))
-                      && fanCalls.at(4).startsWith(
-                          QStringLiteral("ec2 describe-instances --output json "
-                                         "--region us-west-2"))
-                      && fanCalls.at(5).startsWith(
+                      && listedRegions
+                             == QStringList({QStringLiteral("eu-west-1"),
+                                             QStringLiteral("us-west-2")})
+                      && fanCalls.last().startsWith(
                           QStringLiteral("ec2 describe-instance-types")),
-                  "aws: identity, the region list, the home region first, then "
+                  "aws: identity, the region list, one call per region, then "
                   "the type specs");
             QStringList fanRowRegions;
             for (const CloudFleetInstance &row : fan.rows) {
@@ -6381,7 +6383,9 @@ int main(int argc, char *argv[]) {
             {
                 CloudFleetRunner runner;
                 runner.setOptions(fanOptions);
-                for (int i = 0; i < 600; ++i) {
+                QElapsedTimer guard;
+                guard.start();
+                while (guard.elapsed() < 40000) {
                     runner.update(autoIdentity,
                                   QDateTime::currentMSecsSinceEpoch());
                     if (runner.status().fetchedAtMs > 0
@@ -6426,7 +6430,9 @@ int main(int argc, char *argv[]) {
                 knownOptions.knownCadenceMs = 1000;
                 runner.setOptions(knownOptions);
                 qint64 clock = cliNow;
-                for (int i = 0; i < 600; ++i) {
+                QElapsedTimer guard;
+                guard.start();
+                while (guard.elapsed() < 40000) {
                     runner.update(autoIdentity, clock);
                     if (runner.status().fetchedAtMs > 0 &&
                         runner.status().rows.size() == 2) {
@@ -6438,7 +6444,8 @@ int main(int argc, char *argv[]) {
                 }
                 const bool seeded = runner.status().rows.size() == 2;
                 setFake(QByteArrayLiteral("[]"), QByteArray(), 0);
-                for (int i = 0; i < 600; ++i) {
+                guard.restart();
+                while (guard.elapsed() < 40000) {
                     clock += 60;
                     runner.update(autoIdentity, clock);
                     if (runner.status().rows.isEmpty()) {
