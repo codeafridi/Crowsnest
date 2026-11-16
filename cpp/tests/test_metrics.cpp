@@ -8460,6 +8460,10 @@ int main(int argc, char *argv[]) {
         RemoteOptions options;
         options.machineId = QStringLiteral("mid-golden");
         options.name = QStringLiteral("build-box");
+        // M160: the golden document carries labels, so the wire shape is
+        // proved on every run rather than only when a user happens to set one.
+        options.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                          {QStringLiteral("role"), QStringLiteral("web")}};
         const RemoteMachine machine =
             remoteMachine(options, QStringLiteral("0.11.2"),
                           QStringLiteral("linux"), 1762000000000LL);

@@ -1,1 +1,1 @@
-{"id":"mid-golden","name":"build-box","platform":"linux","sentAtMs":1762000000000,"version":"0.11.2"}
+{"id":"mid-golden","labels":{"env":"prod","role":"web"},"name":"build-box","platform":"linux","sentAtMs":1762000000000,"version":"0.11.2"}

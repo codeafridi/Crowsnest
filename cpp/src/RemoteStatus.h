@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QJsonObject>
+#include <QMap>
 #include <QMetaType>
 #include <QString>
 #include <QStringList>
@@ -58,6 +59,10 @@ struct RemoteMachine {
     QString version;  // Crowsnest version
     QString platform;
     qint64 sentAtMs = 0;
+    // M160: [fleet] labels.self. Emitted only when non-empty, so a machine
+    // without labels keeps the exact bytes it sent before this milestone and an
+    // older relay (which ignores unknown fields) loses nothing.
+    QMap<QString, QString> labels;
 };
 
 // Counts that live outside DisplaySnapshot today (the console polls containers

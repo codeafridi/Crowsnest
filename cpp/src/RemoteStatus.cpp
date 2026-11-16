@@ -102,14 +102,22 @@ const QStringList &forbiddenKeys() {
     return keys;
 }
 
-QString scanForbidden(const QJsonValue &value) {
+// `insideLabels` is true for the machine.labels object only: its keys are the
+// operator's own label names (env, role, team...), not collector field names,
+// and `env=prod` is a label - not an environment dump. A value there is a
+// string the user typed, which the disclosure card names as "labels".
+QString scanForbidden(const QJsonValue &value, bool insideLabels = false) {
     if (value.isObject()) {
         const QJsonObject object = value.toObject();
         for (auto it = object.begin(); it != object.end(); ++it) {
-            if (forbiddenKeys().contains(it.key().toLower())) {
+            if (!insideLabels && forbiddenKeys().contains(it.key().toLower())) {
                 return it.key();
             }
-            const QString nested = scanForbidden(it.value());
+            const bool childInsideLabels =
+                insideLabels
+                || it.key().compare(QStringLiteral("labels"), Qt::CaseInsensitive)
+                       == 0;
+            const QString nested = scanForbidden(it.value(), childInsideLabels);
             if (!nested.isEmpty()) {
                 return nested;
             }
@@ -119,7 +127,7 @@ QString scanForbidden(const QJsonValue &value) {
     if (value.isArray()) {
         const QJsonArray array = value.toArray();
         for (const QJsonValue &entry : array) {
-            const QString nested = scanForbidden(entry);
+            const QString nested = scanForbidden(entry, insideLabels);
             if (!nested.isEmpty()) {
                 return nested;
             }
@@ -340,6 +348,11 @@ RemoteMachine remoteMachine(const RemoteOptions &options, const QString &version
     machine.version = version;
     machine.platform = platform;
     machine.sentAtMs = sentAtMs;
+    for (const QPair<QString, QString> &label : options.labels) {
+        if (!label.first.isEmpty()) {
+            machine.labels.insert(label.first, label.second);
+        }
+    }
     return machine;
 }
 
@@ -488,6 +501,14 @@ QJsonObject remoteEnvelopeObject(const RemoteEnvelope &envelope) {
     machine.insert(QStringLiteral("platform"), envelope.machine.platform);
     machine.insert(QStringLiteral("sentAtMs"),
                    double(envelope.machine.sentAtMs));
+    if (!envelope.machine.labels.isEmpty()) {
+        QJsonObject labels;
+        for (auto it = envelope.machine.labels.cbegin();
+             it != envelope.machine.labels.cend(); ++it) {
+            labels.insert(it.key(), it.value());
+        }
+        machine.insert(QStringLiteral("labels"), labels);
+    }
     root.insert(QStringLiteral("machine"), machine);
 
     const RemoteSample &sample = envelope.sample;
@@ -657,6 +678,13 @@ bool parseRemoteEnvelopeJson(const QByteArray &json, RemoteEnvelope *out,
         machineObject.value(QStringLiteral("platform")).toString();
     envelope.machine.sentAtMs =
         readInt64(machineObject, QStringLiteral("sentAtMs"));
+    const QJsonObject machineLabels =
+        machineObject.value(QStringLiteral("labels")).toObject();
+    for (auto it = machineLabels.begin(); it != machineLabels.end(); ++it) {
+        if (it.value().isString()) {
+            envelope.machine.labels.insert(it.key(), it.value().toString());
+        }
+    }
 
     const QJsonValue sampleValue = root.value(QStringLiteral("sample"));
     if (!sampleValue.isObject()) {

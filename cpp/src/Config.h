@@ -133,6 +133,10 @@ struct RemoteOptions {
     // [remote] machine_id: derived once by M100 and kept, never regenerated on
     // a restart.
     QString machineId;
+    // M160: [fleet] labels.self, reported as machine.labels so the relay's
+    // fleet and Team page can filter by them. Authored locally only - nothing
+    // here is derived from the environment.
+    QList<QPair<QString, QString>> labels;
     int intervalMs = 15000;
     int timeoutMs = 3000;
     // [remote] ca_file: a private CA for a self-hosted relay. Verification is
