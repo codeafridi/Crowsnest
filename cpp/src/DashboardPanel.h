@@ -394,6 +394,9 @@ private:
     QTreeWidget *m_fleetTable = nullptr;
     // M159: one combo of the distinct key=value pairs in the fleet. Selecting
     // one scopes the rows, the tiles and the chart to the peers that carry it.
+    QComboBox *m_fleetGroup = nullptr;
+    QString m_fleetGroupKey;
+    QString m_fleetGroupSignature;
     QComboBox *m_fleetFilter = nullptr;
     QString m_fleetFilterValue;
     QString m_fleetFilterSignature;

@@ -382,6 +382,112 @@ QStringList fleetLabelFacets(const QList<FleetPeer> &peers) {
     return facets;
 }
 
+QStringList fleetLabelKeys(const QList<FleetPeer> &peers) {
+    QStringList keys;
+    for (const FleetPeer &peer : peers) {
+        if (peer.isSelf) {
+            continue;
+        }
+        for (const QPair<QString, QString> &label : peer.labels) {
+            if (!keys.contains(label.first)) {
+                keys.append(label.first);
+            }
+        }
+    }
+    keys.sort();
+    return keys;
+}
+
+QList<FleetGroup> fleetGroups(const QList<FleetPeer> &peers,
+                              const QString &key) {
+    QList<FleetGroup> groups;
+    if (key.isEmpty()) {
+        return groups;
+    }
+    for (const FleetPeer &peer : peers) {
+        if (peer.isSelf) {
+            continue;
+        }
+        // A peer without the key is its own group rather than being dropped:
+        // a grouped table whose counts do not add up to the fleet is a table
+        // that hides machines.
+        QString value = fleetLabelValue(peer, key);
+        if (value.isEmpty()) {
+            value = QStringLiteral("(no %1)").arg(key);
+        }
+        int index = -1;
+        for (int i = 0; i < groups.size(); ++i) {
+            if (groups.at(i).value == value) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            FleetGroup group;
+            group.key = key;
+            group.value = value;
+            groups.append(group);
+            index = groups.size() - 1;
+        }
+        FleetGroup &group = groups[index];
+        ++group.count;
+        if (peer.online) {
+            ++group.online;
+            if (peer.cpuPercent >= 0.0
+                && (group.worstCpu < 0.0 || peer.cpuPercent > group.worstCpu)) {
+                group.worstCpu = peer.cpuPercent;
+            }
+        } else if (peer.configured && !peer.connecting) {
+            ++group.down;
+        }
+    }
+    std::sort(groups.begin(), groups.end(),
+              [](const FleetGroup &left, const FleetGroup &right) {
+                  // "(no env)" sorts last: the peers that answered the
+                  // question are the ones a person reads first.
+                  const bool leftMissing =
+                      left.value.startsWith(QLatin1Char('('));
+                  const bool rightMissing =
+                      right.value.startsWith(QLatin1Char('('));
+                  if (leftMissing != rightMissing) {
+                      return rightMissing;
+                  }
+                  return left.value.compare(right.value,
+                                            Qt::CaseInsensitive) < 0;
+              });
+    return groups;
+}
+
+QString fleetGroupRowText(const FleetGroup &group) {
+    QString text = QStringLiteral("%1 = %2 - %3 peer(s)")
+                       .arg(group.key, group.value)
+                       .arg(group.count);
+    text += QStringLiteral(", %1 online").arg(group.online);
+    if (group.down > 0) {
+        text += QStringLiteral(", %1 down").arg(group.down);
+    }
+    if (group.worstCpu >= 0.0) {
+        text += QStringLiteral(", worst cpu %1%")
+                    .arg(group.worstCpu, 0, 'f', 0);
+    }
+    return text;
+}
+
+QString fleetGroupsNote(const QList<FleetPeer> &peers, const QString &key) {
+    if (key.isEmpty()) {
+        return QString();
+    }
+    const QList<FleetGroup> groups = fleetGroups(peers, key);
+    int counted = 0;
+    for (const FleetGroup &group : groups) {
+        counted += group.count;
+    }
+    return QStringLiteral("grouped by %1 - %2 group(s) over %3 peer(s)")
+        .arg(key)
+        .arg(groups.size())
+        .arg(counted);
+}
+
 bool fleetIsSshSpec(const QString &spec) {
     QString text = spec.trimmed();
     const int equals = text.indexOf(QLatin1Char('='));

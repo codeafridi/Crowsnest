@@ -167,6 +167,25 @@ void fleetApplyPeerLabels(QList<FleetPeer> &peers,
                           QStringList *unused = nullptr);
 // Every distinct key=value in the fleet, sorted, for the page's filter.
 QStringList fleetLabelFacets(const QList<FleetPeer> &peers);
+// Every label key present in the fleet, sorted, for the GROUP BY picker.
+QStringList fleetLabelKeys(const QList<FleetPeer> &peers);
+
+// One row of a grouped fleet: the value every member carries, how many there
+// are, and the two numbers that decide whether the group needs attention. A
+// peer without the key lands in the "(no <key>)" group, so the counts always
+// add up to the fleet.
+struct FleetGroup {
+    QString key;
+    QString value;   // "(no env)" for peers without the label
+    int count = 0;
+    int online = 0;
+    int down = 0;
+    double worstCpu = -1.0;
+};
+
+QList<FleetGroup> fleetGroups(const QList<FleetPeer> &peers, const QString &key);
+QString fleetGroupRowText(const FleetGroup &group);
+QString fleetGroupsNote(const QList<FleetPeer> &peers, const QString &key);
 
 QList<FleetPeer> parseFleetPeers(const QStringList &specs,
                                  QString *error = nullptr);

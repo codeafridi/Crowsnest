@@ -8,6 +8,7 @@
 #include "Theme.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QStyleFactory>
 #include <QListWidget>
 #include <QLabel>
@@ -1693,6 +1694,14 @@ int main(int argc, char *argv[]) {
             wave.lastPollMs = now - (40 - i) * 10000;
             panel.setFleetSnapshot(wave);
             app.processEvents();
+        }
+        panel.setFleetSnapshot(withSelf);
+        // M163: the group-by control demonstrates itself on the shot.
+        if (auto *group = panel.findChild<QComboBox *>(
+                QStringLiteral("ddFleetGroup"))) {
+            if (const int at = group->findData(QStringLiteral("env")); at >= 0) {
+                group->setCurrentIndex(at);
+            }
         }
         panel.setFleetSnapshot(withSelf);
         app.processEvents();

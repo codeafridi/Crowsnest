@@ -103,6 +103,16 @@ reported by `--dump` (`labels for X name no peer`), never dropped silently.
 Labels are yours and are never derived from the environment, the hostname or a
 cloud tag: a label that appears by itself is a label nobody can explain.
 
+### Grouping
+
+The **GROUP BY** picker next to the filter groups the table by one label key:
+one header row per value with the count, how many answered, how many are down
+and the group's worst CPU, then its members. It composes with the filter (group
+within the filter), a peer without the key lands in an explicit `(no <key>)`
+group so the counts always add up to the fleet, and this machine stays at the
+top because it is the reference point rather than a peer. The note states what
+is grouped.
+
 `peers` (up to 64 entries) accepts:
 
 | Written | Requests |

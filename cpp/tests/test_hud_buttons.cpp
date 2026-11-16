@@ -2670,6 +2670,46 @@ int main(int argc, char *argv[]) {
                           && filter->currentData().toString().isEmpty()
                           && fleetTable->topLevelItemCount() == 2,
                       "a filter whose label disappears resets to all peers");
+
+                // M163: grouping adds one header row per value and keeps this
+                // machine at the top; the counts are the fleet's own.
+                auto *group = hud.findChild<QComboBox *>(
+                    QStringLiteral("ddFleetGroup"));
+                check(group != nullptr && group->count() == 4
+                          && group->itemText(0) == QStringLiteral("none")
+                          && group->findData(QStringLiteral("env")) >= 0,
+                      "the fleet group picker lists the label keys");
+                // The filter block above left one peer on screen; grouping is
+                // tested against a fleet of two labels.
+                FleetStatus grouped = fleet;
+                grouped.peers = {hot, dead};
+                hud.setFleetSnapshot(grouped);
+                group->setCurrentIndex(
+                    group->findData(QStringLiteral("env")));
+                const auto *note =
+                    hud.findChild<QLabel *>(QStringLiteral("ddFleetNote"));
+                // self + 2 group headers + 2 peers: prod (hot) and dev (dead).
+                check(fleetTable->topLevelItemCount() == 5
+                          && fleetTable->topLevelItem(0)->text(0).startsWith(
+                              QStringLiteral("* "))
+                          && fleetTable->topLevelItem(1)->text(0)
+                                 == QStringLiteral("env = dev - 1 peer(s), "
+                                                   "0 online, 1 down")
+                          && fleetTable->topLevelItem(2)->text(0)
+                                 == QStringLiteral("dead-box")
+                          && fleetTable->topLevelItem(3)->text(0)
+                                 == QStringLiteral("env = prod - 1 peer(s), "
+                                                   "1 online, worst cpu 88%")
+                          && fleetTable->topLevelItem(4)->text(0)
+                                 == QStringLiteral("hot-box"),
+                      "grouping inserts a header per value, members under it");
+                check(note != nullptr
+                          && note->text().contains(
+                              QStringLiteral("grouped by env - 2 group(s)")),
+                      "the note states the grouping and its group count");
+                group->setCurrentIndex(0);
+                check(fleetTable->topLevelItemCount() == 3,
+                      "grouping off restores the plain table");
             }
         }
 

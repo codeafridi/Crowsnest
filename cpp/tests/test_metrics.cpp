@@ -8025,6 +8025,70 @@ int main(int argc, char *argv[]) {
                       "crowsnest_fleet_peer_cpu_percent{peer=\"prod-web\","
                       "role=\"web\",env=\"prod\"} 12.000")),
                   "labels: the scrape carries the pairs on the peer family");
+
+        // M163: grouping answers "how is the fleet split", and its counts must
+        // add up to the fleet - an unlabelled peer is a group, not a hole.
+        {
+            auto peer = [](const QString &name, const QString &labels,
+                           bool online, double cpu) {
+                FleetPeer row = fleetSshPeer(QStringLiteral("ssh://%1").arg(name));
+                row.name = name;
+                row.configured = true;
+                row.online = online;
+                row.labels = fleetParseLabels(labels);
+                row.cpuPercent = online ? cpu : -1.0;
+                return row;
+            };
+            const QList<FleetPeer> fleet = {
+                peer(QStringLiteral("web-1"), QStringLiteral("env=prod role=web"),
+                     true, 12.0),
+                peer(QStringLiteral("web-2"), QStringLiteral("env=prod role=web"),
+                     false, -1.0),
+                peer(QStringLiteral("db-1"), QStringLiteral("env=prod role=db"),
+                     true, 71.0),
+                peer(QStringLiteral("lab-1"), QStringLiteral("env=dev role=lab"),
+                     true, 4.0),
+                peer(QStringLiteral("bare"), QString(), true, 2.0),
+            };
+            check(fleetLabelKeys(fleet)
+                      == QStringList({QStringLiteral("env"),
+                                      QStringLiteral("role")}),
+                  "groups: the keys come from the peers that carry labels");
+            const QList<FleetGroup> byEnv =
+                fleetGroups(fleet, QStringLiteral("env"));
+            check(byEnv.size() == 3, "groups: one row per value");
+            check(byEnv.at(0).value == QStringLiteral("dev")
+                      && byEnv.at(0).count == 1,
+                  "groups: values sort, and each counts its members");
+            check(byEnv.at(1).value == QStringLiteral("prod")
+                      && byEnv.at(1).count == 3
+                      && byEnv.at(1).online == 2
+                      && byEnv.at(1).down == 1
+                      && byEnv.at(1).worstCpu > 70.9,
+                  "groups: prod counts three, one down, and its worst cpu");
+            check(byEnv.last().value == QStringLiteral("(no env)")
+                      && byEnv.last().count == 1,
+                  "groups: a peer without the key is its own group, last");
+            int counted = 0;
+            for (const FleetGroup &group : byEnv) {
+                counted += group.count;
+            }
+            check(counted == fleet.size(),
+                  "groups: the counts add up to the fleet");
+            check(fleetGroups(fleet, QString()).isEmpty(),
+                  "groups: no key means no grouping");
+            check(fleetGroupRowText(byEnv.at(1))
+                      .contains(QStringLiteral("3 peer(s)"))
+                      && fleetGroupRowText(byEnv.at(1))
+                             .contains(QStringLiteral("1 down"))
+                      && fleetGroupRowText(byEnv.at(1))
+                             .contains(QStringLiteral("worst cpu 71%")),
+                  "groups: the header states count, down and worst cpu");
+            check(fleetGroupsNote(fleet, QStringLiteral("env"))
+                      == QStringLiteral("grouped by env - 3 group(s) over 5 "
+                                        "peer(s)"),
+                  "groups: the note counts groups and members");
+        }
         }
 
         DisplaySnapshot sample;

@@ -5497,11 +5497,35 @@ QWidget *DashboardPanel::buildFleetView() {
     auto *filterRow = new QHBoxLayout;
     filterRow->setContentsMargins(0, 0, 0, 0);
     filterRow->setSpacing(6);
+    // M163: group by one label key. The filter answers "show me prod"; this
+    // answers "how is the fleet split", which is the question a fleet page is
+    // opened with once there is more than one team.
+    m_fleetGroup = new QComboBox(view);
+    m_fleetGroup->setObjectName(QStringLiteral("ddFleetGroup"));
+    m_fleetGroup->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_fleetGroup->setMinimumWidth(160);
+    m_fleetGroup->setFocusPolicy(Qt::NoFocus);
+    m_fleetGroup->setToolTip(
+        QStringLiteral("group the peers by one of their labels"));
+    connect(m_fleetGroup, &QComboBox::currentIndexChanged, this,
+            [this](int index) {
+                if (m_fleetGroup == nullptr || index < 0) {
+                    return;
+                }
+                m_fleetGroupKey = m_fleetGroup->itemData(index).toString();
+                updateFleetPanel();
+            });
     auto *filterLabel = new QLabel(QStringLiteral("FILTER"), view);
     filterLabel->setObjectName(QStringLiteral("ddFleetFilterLabel"));
     filterLabel->setFont(monoFont(10, true));
     filterRow->addWidget(filterLabel);
     filterRow->addWidget(m_fleetFilter, 0);
+    auto *groupLabel = new QLabel(QStringLiteral("GROUP BY"), view);
+    groupLabel->setObjectName(QStringLiteral("ddFleetFilterLabel"));
+    groupLabel->setFont(monoFont(10, true));
+    filterRow->addSpacing(10);
+    filterRow->addWidget(groupLabel);
+    filterRow->addWidget(m_fleetGroup, 0);
     filterRow->addStretch(1);
 
     m_fleetTable = new QTreeWidget(view);
@@ -9107,6 +9131,10 @@ void DashboardPanel::updateFleetPanel() {
     if (unlabelled > 0 && !facets.isEmpty()) {
         note += QStringLiteral("; %1 peer(s) carry no labels").arg(unlabelled);
     }
+    const QString groupNote = fleetGroupsNote(shown.peers, m_fleetGroupKey);
+    if (!groupNote.isEmpty()) {
+        note += QStringLiteral("; ") + groupNote;
+    }
     if (!m_fleet.unusedLabels.isEmpty()) {
         note += QStringLiteral("; labels for %1 name no peer")
                     .arg(m_fleet.unusedLabels.join(QStringLiteral(", ")));
@@ -9131,11 +9159,65 @@ void DashboardPanel::updateFleetPanel() {
         }
     }
 
+    // --- M163: grouping. The key list comes from the peers the filter shows,
+    // so a group-by never offers a key the visible rows do not carry.
+    const QStringList groupKeys = fleetLabelKeys(shown.peers);
+    if (m_fleetGroup != nullptr) {
+        const QString groupSignature = groupKeys.join(QLatin1Char('|'));
+        if (groupSignature != m_fleetGroupSignature) {
+            if (!m_fleetGroupKey.isEmpty() && !groupKeys.contains(m_fleetGroupKey)) {
+                m_fleetGroupKey.clear();
+            }
+            m_fleetGroupSignature = groupSignature;
+            const QSignalBlocker blocker(m_fleetGroup);
+            m_fleetGroup->clear();
+            m_fleetGroup->addItem(QStringLiteral("none"), QString());
+            for (const QString &key : groupKeys) {
+                m_fleetGroup->addItem(key, key);
+            }
+            m_fleetGroup->setCurrentIndex(
+                qMax(0, m_fleetGroup->findData(m_fleetGroupKey)));
+            m_fleetGroup->setEnabled(!groupKeys.isEmpty());
+        }
+    }
+    const QList<FleetGroup> groups = fleetGroups(shown.peers, m_fleetGroupKey);
+    QList<int> order;
+    if (m_fleetGroupKey.isEmpty()) {
+        for (int i = 0; i < m_fleet.peers.size(); ++i) {
+            order.append(i);
+        }
+    } else {
+        // This machine first (it is the reference point, not a peer), then the
+        // groups in their own order, each followed by its members in the
+        // fleet's order.
+        for (int i = 0; i < m_fleet.peers.size(); ++i) {
+            if (m_fleet.peers.at(i).isSelf) {
+                order.append(i);
+            }
+        }
+        for (const FleetGroup &group : groups) {
+            for (int i = 0; i < m_fleet.peers.size(); ++i) {
+                const FleetPeer &peer = m_fleet.peers.at(i);
+                if (peer.isSelf) {
+                    continue;
+                }
+                QString value = fleetLabelValue(peer, group.key);
+                if (value.isEmpty()) {
+                    value = QStringLiteral("(no %1)").arg(group.key);
+                }
+                if (value == group.value) {
+                    order.append(i);
+                }
+            }
+        }
+    }
+
     const int selected = qBound(0, m_fleetSelected,
                                 qMax(0, m_fleet.peers.size() - 1));
     m_fleetTable->blockSignals(true);
     m_fleetTable->clear();
-    for (int i = 0; i < m_fleet.peers.size(); ++i) {
+    QString currentGroup;
+    for (const int i : order) {
         const FleetPeer &peer = m_fleet.peers.at(i);
         bool visible = true;
         if (!m_fleetFilterValue.isEmpty() && !peer.isSelf) {
@@ -9149,6 +9231,28 @@ void DashboardPanel::updateFleetPanel() {
         }
         if (!visible) {
             continue;
+        }
+        if (!m_fleetGroupKey.isEmpty() && !peer.isSelf) {
+            QString value = fleetLabelValue(peer, m_fleetGroupKey);
+            if (value.isEmpty()) {
+                value = QStringLiteral("(no %1)").arg(m_fleetGroupKey);
+            }
+            if (value != currentGroup) {
+                currentGroup = value;
+                for (const FleetGroup &group : groups) {
+                    if (group.value != value) {
+                        continue;
+                    }
+                    auto *header = new QTreeWidgetItem(m_fleetTable);
+                    header->setText(0, fleetGroupRowText(group));
+                    header->setForeground(0, QColor(ui_theme::accent()));
+                    header->setFlags(Qt::NoItemFlags);
+                    m_fleetTable->setFirstColumnSpanned(
+                        m_fleetTable->topLevelItemCount() - 1, QModelIndex(),
+                        true);
+                    break;
+                }
+            }
         }
         auto *item = new QTreeWidgetItem(m_fleetTable);
         item->setData(0, Qt::UserRole, i);
