@@ -1604,6 +1604,21 @@ int main(int argc, char *argv[]) {
             peer.lastSeenMs = online ? now - lastSeenDeltaMs : -1;
             peer.latencyMs = online ? 3 : -1;
             peer.schema = kFleetSchemaVersion;
+            // M159: every fixture peer is labelled, so the filter combo has
+            // something to list and the LABELS column is not a wall of dashes.
+            if (name == QStringLiteral("db")) {
+                peer.labels = fleetParseLabels(
+                    QStringLiteral("role=db env=prod team=data"));
+            } else if (name == QStringLiteral("edge")) {
+                peer.labels = fleetParseLabels(
+                    QStringLiteral("role=web env=prod team=payments"));
+            } else if (name == QStringLiteral("ci")) {
+                peer.labels = fleetParseLabels(
+                    QStringLiteral("role=ci env=build team=platform"));
+            } else if (name == QStringLiteral("lab")) {
+                peer.labels = fleetParseLabels(
+                    QStringLiteral("role=test env=dev team=platform"));
+            }
             if (!online) {
                 peer.error = QStringLiteral("Connection refused");
             }
@@ -1619,6 +1634,9 @@ int main(int argc, char *argv[]) {
         fleet.sharePort = 9107;
         fleet.tokenConfigured = true;
         fleet.selfName = QStringLiteral("workstation");
+        fleet.selfLabels = fleetParseLabels(
+            QStringLiteral("role=workstation env=dev team=platform"));
+        fleet.tokenConfigured = true;
         fleet.lastPollMs = now - 1200;
         fleet.peers = {
             makePeer(QStringLiteral("db"), QStringLiteral("build-03"), true,
@@ -1661,9 +1679,10 @@ int main(int argc, char *argv[]) {
 
         DisplaySnapshot here = demoSnapshot(240);
         here.sequence = 240;
-        const FleetStatus withSelf =
-            fleetWithSelf(fleet, fleetSelfPeer(here, QStringLiteral("workstation"),
-                                               now));
+        const FleetStatus withSelf = fleetWithSelf(
+            fleet,
+            fleetSelfPeer(here, QStringLiteral("workstation"), now,
+                          fleet.selfLabels));
         // A chart needs more than one sample: replay the same peer set with a
         // drifting worst CPU so the panel's fleet line has a shape.
         for (int i = 0; i < 40; ++i) {

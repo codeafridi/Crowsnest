@@ -617,6 +617,8 @@ enabled = true          ; poll the peers below
 share = true            ; answer peers asking who I am
 name = workstation      ; what the others call this machine
 peers = db=build-03:9107, edge=edge-01, ci=ci-runner-7:9107
+labels.db   = role=db env=prod team=data      ; shown, filterable, exported
+labels.self = role=workstation env=dev        ; this machine
 poll_ms = 10000
 timeout_ms = 2000
 ```

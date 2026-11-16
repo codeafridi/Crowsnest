@@ -7814,6 +7814,144 @@ int main(int argc, char *argv[]) {
                                                   "answer")),
               "fleet ssh: a peer whose first answer is pending says so");
 
+        // M159: labels are authored text, parsed once, refused with a reason.
+        {
+            QString labelError;
+            const QList<QPair<QString, QString>> parsed = fleetParseLabels(
+                QStringLiteral("  role=web   env=prod team=payments  "),
+                &labelError);
+            check(labelError.isEmpty() && parsed.size() == 3
+                      && parsed.at(0).first == QStringLiteral("role")
+                      && parsed.at(0).second == QStringLiteral("web")
+                      && parsed.at(2).second == QStringLiteral("payments")
+                      && fleetLabelsText(parsed)
+                             == QStringLiteral("role=web env=prod "
+                                               "team=payments"),
+                  "labels: a line parses into ordered pairs");
+
+            check(fleetParseLabels(QString()).isEmpty()
+                      && fleetParseLabels(QStringLiteral("   ")).isEmpty(),
+                  "labels: an empty line means no labels, not an error");
+
+            const auto refused = [](const QString &text) {
+                QString error;
+                const auto labels = fleetParseLabels(text, &error);
+                return labels.isEmpty() && !error.isEmpty();
+            };
+            check(refused(QStringLiteral("role")), "labels: a pair needs =");
+            check(refused(QStringLiteral("=web")),
+                  "labels: a pair needs a name");
+            check(refused(QStringLiteral("role=")),
+                  "labels: an empty value is refused, not silently dropped");
+            check(refused(QStringLiteral("_auto=1"))
+                      && refused(QStringLiteral("__name=x")),
+                  "labels: the _ prefix is reserved");
+            check(refused(QStringLiteral("peer=x"))
+                      && refused(QStringLiteral("job=x"))
+                      && refused(QStringLiteral("instance=x")),
+                  "labels: keys that name the scrape target are reserved");
+            check(refused(QStringLiteral("role=web role=db")),
+                  "labels: a key set twice is refused");
+            check(refused(QStringLiteral("role=web\\nb=2")),
+                  "labels: a value cannot carry a control character");
+            check(refused(QStringLiteral("role=we b")),
+                  "labels: whitespace separates pairs, it is not a value");
+            check(refused(QStringLiteral("role=\"web\"")),
+                  "labels: quotes are refused so the scrape needs no guessing");
+            QString longKey(64, QLatin1Char('k'));
+            check(refused(QStringLiteral("%1=v").arg(longKey)),
+                  "labels: a name longer than 63 characters is refused");
+            QString longValue(64, QLatin1Char('v'));
+            check(refused(QStringLiteral("role=%1").arg(longValue)),
+                  "labels: a value longer than 63 characters is refused");
+            QStringList nine;
+            for (int i = 0; i < 9; ++i) {
+                nine << QStringLiteral("k%1=v").arg(i);
+            }
+            QString capError;
+            check(fleetParseLabels(nine.join(QLatin1Char(' ')), &capError)
+                          .isEmpty()
+                      && capError.contains(QStringLiteral("at most 8")),
+                  "labels: the cap is named when it is hit");
+            // A UTF-8 value is allowed: Prometheus does, and refusing it would
+            // be arbitrary.
+            const QList<QPair<QString, QString>> utf8 =
+                fleetParseLabels(QStringLiteral("team=k\u00fcche"));
+            check(utf8.size() == 1
+                      && utf8.first().second == QStringLiteral("k\u00fcche"),
+                  "labels: a UTF-8 value is kept as written");
+        }
+
+        // Labels attach by peer name, an unused line is reported, and a
+        // refused line keeps the peer (a loud typo beats a silent one).
+        {
+            QList<FleetPeer> labelled = parseFleetPeers(
+                {QStringLiteral("db=build-03"), QStringLiteral("web=build-04")});
+            QStringList unused;
+            fleetApplyPeerLabels(
+                labelled,
+                {{QStringLiteral("db"), QStringLiteral("role=db env=prod")},
+                 {QStringLiteral("web"), QStringLiteral("role")},
+                 {QStringLiteral("typo"), QStringLiteral("role=web")}},
+                &unused);
+            check(labelled.size() == 2
+                      && labelled.at(0).labels.size() == 2
+                      && fleetLabelValue(labelled.at(0), QStringLiteral("env"))
+                             == QStringLiteral("prod")
+                      && labelled.at(0).labelsNote.isEmpty(),
+                  "labels: a line attaches to the peer it names");
+            check(labelled.at(1).labels.isEmpty()
+                      && !labelled.at(1).labelsNote.isEmpty()
+                      && fleetLabelsRefusalText(labelled.at(1))
+                             .startsWith(QStringLiteral("labels refused:")),
+                  "labels: a refused line keeps the peer and says why");
+            check(unused == QStringList({QStringLiteral("typo")}),
+                  "labels: a line naming no peer is reported, not dropped");
+            check(fleetLabelFacets(labelled)
+                      == QStringList({QStringLiteral("env=prod"),
+                                      QStringLiteral("role=db")}),
+                  "labels: the filter facets are distinct and sorted");
+        }
+
+        // The self row carries [fleet] labels.self, and the scrape carries the
+        // pairs on every per-peer family.
+        {
+            DisplaySnapshot selfSnap;
+            selfSnap.appName = QStringLiteral("web");
+            selfSnap.sequence = 3;
+            const QList<QPair<QString, QString>> selfLabels =
+                fleetParseLabels(QStringLiteral("role=workstation env=dev"));
+            const FleetPeer selfRow = fleetSelfPeer(
+                selfSnap, QStringLiteral("here"), 5000, selfLabels);
+            check(selfRow.isSelf && selfRow.labels.size() == 2
+                      && fleetLabelValue(selfRow, QStringLiteral("role"))
+                             == QStringLiteral("workstation"),
+                  "labels: this machine carries its own labels");
+
+            FleetStatus labelled;
+            labelled.enabled = true;
+            labelled.tokenConfigured = true;
+            labelled.lastPollMs = 5000;
+            QList<FleetPeer> peers = parseFleetPeers(
+                {QStringLiteral("prod-web=127.0.0.1:9107")});
+            fleetApplyPeerLabels(
+                peers,
+                {{QStringLiteral("prod-web"),
+                  QStringLiteral("role=web env=prod")}});
+            FleetPeer row = peers.first();
+            row.online = true;
+            row.lastSeenMs = 5000;
+            row.memTotalKb = 1000;
+            row.memAvailableKb = 500;
+            row.cpuPercent = 12.0;
+            labelled.peers = {row};
+            const QString text = prometheusFleetText(labelled);
+            check(text.contains(QStringLiteral(
+                      "crowsnest_fleet_peer_cpu_percent{peer=\"prod-web\","
+                      "role=\"web\",env=\"prod\"} 12.000")),
+                  "labels: the scrape carries the pairs on the peer family");
+        }
+
         DisplaySnapshot sample;
         sample.appName = QStringLiteral("web");
         sample.pid = QStringLiteral("77");

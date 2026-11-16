@@ -681,6 +681,22 @@ Config loadConfig(const QString &path, QString *errorMessage) {
         if (timeout > 0) {
             config.fleet.timeoutMs = timeout;
         }
+        // M159: the labels.<name> keys. QSettings hands them back with the
+        // prefix intact; the peer name is everything after the dot, which is
+        // why a label line is keyed by name and not by address.
+        config.fleet.labels.clear();
+        for (const QString &key : settings.allKeys()) {
+            if (!key.startsWith(QStringLiteral("labels."))) {
+                continue;
+            }
+            const QString name = key.mid(7).trimmed();
+            if (name.isEmpty()) {
+                continue;
+            }
+            const QString line =
+                settings.value(key).toString().trimmed();
+            config.fleet.labels.append({name, line});
+        }
     }
     settings.endGroup();
 

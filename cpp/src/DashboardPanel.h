@@ -392,6 +392,11 @@ private:
     QLabel *m_fleetDetail = nullptr;
     QLabel *m_fleetShare = nullptr;
     QTreeWidget *m_fleetTable = nullptr;
+    // M159: one combo of the distinct key=value pairs in the fleet. Selecting
+    // one scopes the rows, the tiles and the chart to the peers that carry it.
+    QComboBox *m_fleetFilter = nullptr;
+    QString m_fleetFilterValue;
+    QString m_fleetFilterSignature;
     TimeseriesChart *m_chartFleet = nullptr;
     FleetStatus m_fleet;
     int m_fleetSelected = 0;

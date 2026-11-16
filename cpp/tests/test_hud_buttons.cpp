@@ -2608,6 +2608,69 @@ int main(int argc, char *argv[]) {
                           QStringLiteral("host only")),
                   "the agentless detail names the mechanism and its limit");
             hud.setFleetSshPeers({});
+
+            // M159: labels on the table, and a filter that scopes the rows,
+            // the tiles and the detail. This machine never disappears.
+            {
+                FleetStatus labelled = fleet;
+                hot.labels = fleetParseLabels(
+                    QStringLiteral("role=db env=prod team=data"));
+                dead.labels = fleetParseLabels(
+                    QStringLiteral("role=web env=dev team=web"));
+                labelled.peers = {hot, dead};
+                labelled.selfLabels =
+                    fleetParseLabels(QStringLiteral("role=workstation env=dev"));
+                hud.setFleetSnapshot(labelled);
+                check(fleetTable->topLevelItemCount() == 3
+                          && fleetTable->topLevelItem(0)->text(6)
+                                 == QStringLiteral("role=workstation env=dev")
+                          && fleetTable->topLevelItem(1)->text(6)
+                                 == QStringLiteral("role=db env=prod "
+                                                   "team=data"),
+                      "fleet table carries the authored labels");
+                auto *filter = hud.findChild<QComboBox *>(
+                    QStringLiteral("ddFleetFilter"));
+                check(filter != nullptr && filter->count() == 7
+                          && filter->itemText(0)
+                                 == QStringLiteral("all peers (2)")
+                          && filter->itemText(1)
+                                 == QStringLiteral("env=dev (1)"),
+                      "the fleet filter lists every key=value with its count");
+                const int prod = filter->findData(QStringLiteral("env=prod"));
+                filter->setCurrentIndex(prod);
+                check(fleetTable->topLevelItemCount() == 2
+                          && fleetTable->topLevelItem(0)->text(0).startsWith(
+                              QStringLiteral("* "))
+                          && fleetTable->topLevelItem(1)->text(0)
+                                 == QStringLiteral("hot-box")
+                          && fleetPeers->text() == QStringLiteral("1 / 1")
+                          && fleetSummary->text().startsWith(
+                              QStringLiteral("filter env=prod - ")),
+                      "a label filter scopes rows, tiles and summary");
+                fleetTable->setCurrentItem(fleetTable->topLevelItem(1));
+                check(fleetDetail->text().contains(
+                          QStringLiteral("role=db env=prod team=data")),
+                      "the filtered row's detail carries its labels");
+                filter->setCurrentIndex(filter->findData(
+                    QStringLiteral("team=web")));
+                check(fleetTable->topLevelItemCount() == 2
+                          && fleetTable->topLevelItem(1)->text(0)
+                                 == QStringLiteral("dead-box")
+                          && fleetTable->topLevelItem(1)->text(6)
+                                 == QStringLiteral("role=web env=dev "
+                                                   "team=web"),
+                      "the filter follows a different label");
+                filter->setCurrentIndex(0);
+                check(fleetTable->topLevelItemCount() == 3,
+                      "all peers restores every row");
+                labelled.peers = {hot};
+                hud.setFleetSnapshot(labelled);
+                const int gone = filter->findData(QStringLiteral("team=web"));
+                check(gone < 0
+                          && filter->currentData().toString().isEmpty()
+                          && fleetTable->topLevelItemCount() == 2,
+                      "a filter whose label disappears resets to all peers");
+            }
         }
 
         {

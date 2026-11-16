@@ -77,7 +77,15 @@ QString prometheusFleetText(const FleetStatus &fleet) {
         if (peer.isSelf) {
             continue;
         }
-        const QString label = escapeLabel(peerLabel(peer, i));
+        // M159: the peer's authored labels ride the same label set, so one
+        // query answers "which peers are in env=prod" without a join. The
+        // loader already refused names the exposition cannot carry.
+        QString label = QStringLiteral("peer=\"")
+                        + escapeLabel(peerLabel(peer, i)) + QLatin1Char('"');
+        for (const QPair<QString, QString> &pair : peer.labels) {
+            label += QLatin1Char(',') + pair.first + QStringLiteral("=\"")
+                     + escapeLabel(pair.second) + QLatin1Char('"');
+        }
         labels << label;
         online << QStringLiteral("1");
         if (!peer.online) {
@@ -133,8 +141,8 @@ QString prometheusFleetText(const FleetStatus &fleet) {
             if (i >= values.size() || values.at(i).isEmpty()) {
                 continue;
             }
-            lines.append(name + QStringLiteral("{peer=\"") + labels.at(i)
-                         + QStringLiteral("\"} ") + values.at(i));
+            lines.append(name + QLatin1Char('{') + labels.at(i)
+                         + QStringLiteral("} ") + values.at(i));
         }
     };
 

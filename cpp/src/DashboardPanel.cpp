@@ -737,7 +737,9 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddRemoteReport"
         " { color: %MUTED%; }"
         "#ddCloudShare { color: %DIM%; }"
-        "#ddFleetSummary, #ddFleetNote, #ddFleetDetail { color: %MUTED%; }"
+        "#ddFleetSummary, #ddFleetNote, #ddFleetDetail, #ddFleetFilterLabel"
+        " { color: %MUTED%; }"
+        "#ddFleetFilter { color: %TEXT%; }"
         "#ddTeamSummary, #ddTeamNote, #ddTeamDetail, #ddTeamIncidentSummary,"
         " #ddTeamIncidentDetail, #ddTeamActionStatus { color: %MUTED%; }"
         "#ddFleetShare { color: %DIM%; }"
@@ -5473,20 +5475,50 @@ QWidget *DashboardPanel::buildFleetView() {
     m_chartFleet->setUnit(QStringLiteral("Percent"));
     m_chartFleet->setSeriesName(QStringLiteral("crowsnest.fleet.worst_cpu"));
 
+    // --- What the fleet is made of: every distinct key=value in [fleet]
+    // labels.<name>. Picking one is how "how many prod boxes are down" becomes
+    // one selection instead of reading rows.
+    m_fleetFilter = new QComboBox(view);
+    m_fleetFilter->setObjectName(QStringLiteral("ddFleetFilter"));
+    m_fleetFilter->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_fleetFilter->setMinimumWidth(220);
+    m_fleetFilter->setFocusPolicy(Qt::NoFocus);
+    m_fleetFilter->setToolTip(
+        QStringLiteral("show only the peers carrying this label"));
+    connect(m_fleetFilter, &QComboBox::currentIndexChanged, this,
+            [this](int index) {
+                if (m_fleetFilter == nullptr || index < 0) {
+                    return;
+                }
+                m_fleetFilterValue =
+                    m_fleetFilter->itemData(index).toString();
+                updateFleetPanel();
+            });
+    auto *filterRow = new QHBoxLayout;
+    filterRow->setContentsMargins(0, 0, 0, 0);
+    filterRow->setSpacing(6);
+    auto *filterLabel = new QLabel(QStringLiteral("FILTER"), view);
+    filterLabel->setObjectName(QStringLiteral("ddFleetFilterLabel"));
+    filterLabel->setFont(monoFont(10, true));
+    filterRow->addWidget(filterLabel);
+    filterRow->addWidget(m_fleetFilter, 0);
+    filterRow->addStretch(1);
+
     m_fleetTable = new QTreeWidget(view);
     m_fleetTable->setObjectName(QStringLiteral("ddFleetTable"));
-    m_fleetTable->setColumnCount(6);
+    m_fleetTable->setColumnCount(7);
     m_fleetTable->setHeaderLabels({QStringLiteral("NAME"),
                                    QStringLiteral("CPU %"),
                                    QStringLiteral("MEM AVL"),
                                    QStringLiteral("LOAD"),
                                    QStringLiteral("AGE"),
-                                   QStringLiteral("STATE")});
+                                   QStringLiteral("STATE"),
+                                   QStringLiteral("LABELS")});
     m_fleetTable->setRootIsDecorated(false);
     m_fleetTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_fleetTable->setFocusPolicy(Qt::NoFocus);
     m_fleetTable->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    for (int column = 1; column < 6; ++column) {
+    for (int column = 1; column < 7; ++column) {
         m_fleetTable->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
@@ -5507,6 +5539,7 @@ QWidget *DashboardPanel::buildFleetView() {
 
     layout->addWidget(makeBanner(QStringLiteral("PEERS"),
                                  ui_theme::banner(), view));
+    layout->addLayout(filterRow);
     layout->addWidget(makeChartCard(QStringLiteral("worst peer CPU (%)"),
                                     m_chartFleet, view));
     layout->addWidget(makeCard(QStringLiteral("machines"), m_fleetTable, view));
@@ -8826,35 +8859,157 @@ void DashboardPanel::updateFleetPanel() {
     }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
+    // --- M159: the filter. The combo is rebuilt only when the distinct set of
+    // key=value pairs changes: a per-tick rebuild would close the popup under
+    // the user's cursor.
+    const QStringList facets = fleetLabelFacets(m_fleet.peers);
     int peerTotal = 0;
     for (const FleetPeer &peer : m_fleet.peers) {
         if (!peer.isSelf) {
             ++peerTotal;
         }
     }
-    const int online = fleetOnlineCount(m_fleet);
-    const int down = fleetDownCount(m_fleet);
-    const double worst = fleetWorstCpu(m_fleet);
-    const double lowest = fleetLowestMemPct(m_fleet);
+    auto facetCount = [this](const QString &facet) {
+        const int equals = facet.indexOf(QLatin1Char('='));
+        const QString key = facet.left(equals);
+        const QString value = facet.mid(equals + 1);
+        int count = 0;
+        for (const FleetPeer &peer : m_fleet.peers) {
+            if (peer.isSelf) {
+                continue;
+            }
+            for (const QPair<QString, QString> &label : peer.labels) {
+                if (label.first == key && label.second == value) {
+                    ++count;
+                    break;
+                }
+            }
+        }
+        return count;
+    };
+    const QString signature = facets.join(QLatin1Char('\u0001'));
+    if (m_fleetFilter != nullptr) {
+        const bool facetGone =
+            !m_fleetFilterValue.isEmpty()
+            && !facets.contains(m_fleetFilterValue);
+        if (signature != m_fleetFilterSignature || facetGone) {
+            if (facetGone) {
+                m_fleetFilterValue.clear();
+            }
+            m_fleetFilterSignature = signature;
+            const QSignalBlocker blocker(m_fleetFilter);
+            m_fleetFilter->clear();
+            m_fleetFilter->addItem(QStringLiteral("all peers (%1)")
+                                       .arg(peerTotal),
+                                   QString());
+            for (const QString &facet : facets) {
+                m_fleetFilter->addItem(
+                    QStringLiteral("%1 (%2)").arg(facet).arg(facetCount(facet)),
+                    facet);
+            }
+            const int restored =
+                m_fleetFilter->findData(m_fleetFilterValue);
+            m_fleetFilter->setCurrentIndex(restored >= 0 ? restored : 0);
+            m_fleetFilter->setEnabled(!facets.isEmpty());
+        }
+    }
 
-    m_fleetTilePeers->setText(m_fleet.peers.size() <= 1
+    // What the tiles and the summary describe: every peer when no filter is
+    // on, otherwise the ones that carry the chosen label. This machine is
+    // never hidden - it is the reference point, and the counts already exclude
+    // it - but it is also not counted.
+    FleetStatus shown = m_fleet;
+    int hidden = 0;
+    if (!m_fleetFilterValue.isEmpty()) {
+        const int equals = m_fleetFilterValue.indexOf(QLatin1Char('='));
+        const QString key = m_fleetFilterValue.left(equals);
+        const QString value = m_fleetFilterValue.mid(equals + 1);
+        QList<FleetPeer> kept;
+        for (const FleetPeer &peer : m_fleet.peers) {
+            bool match = peer.isSelf;
+            for (const QPair<QString, QString> &label : peer.labels) {
+                if (label.first == key && label.second == value) {
+                    match = true;
+                }
+            }
+            if (match) {
+                kept.append(peer);
+            } else {
+                ++hidden;
+            }
+        }
+        shown.peers = kept;
+    }
+
+    const int online = fleetOnlineCount(shown);
+    const int down = fleetDownCount(shown);
+    const double worst = fleetWorstCpu(shown);
+    const double lowest = fleetLowestMemPct(shown);
+    int shownPeers = 0;
+    for (const FleetPeer &peer : shown.peers) {
+        if (!peer.isSelf) {
+            ++shownPeers;
+        }
+    }
+
+    m_fleetTilePeers->setText(peerTotal == 0
                                   ? QStringLiteral("--")
-                                  : QStringLiteral("%1 / %2").arg(online).arg(peerTotal));
+                                  : QStringLiteral("%1 / %2").arg(online).arg(shownPeers));
     m_fleetTileCpu->setText(worst < 0.0
                                 ? QStringLiteral("--")
                                 : QStringLiteral("%1%").arg(worst, 0, 'f', 0));
     m_fleetTileMem->setText(lowest < 0.0
                                 ? QStringLiteral("--")
                                 : QStringLiteral("%1% avail").arg(lowest, 0, 'f', 0));
-    m_fleetTileDown->setText(peerTotal == 0 ? QStringLiteral("--")
-                                            : QString::number(down));
+    m_fleetTileDown->setText(shownPeers == 0 ? QStringLiteral("--")
+                                             : QString::number(down));
     m_fleetTileDown->setStyleSheet(
         down > 0 ? QStringLiteral("color: %1;").arg(ui_theme::crit())
                  : QString());
 
-    m_fleetSummary->setText(fleetSummaryText(m_fleet, now));
-    m_fleetNote->setText(fleetNoteText(m_fleet));
+    QString summary = fleetSummaryText(shown, now);
+    if (!m_fleetFilterValue.isEmpty()) {
+        summary = QStringLiteral("filter %1 - %2")
+                      .arg(m_fleetFilterValue, summary);
+    }
+    m_fleetSummary->setText(summary);
+
+    QString note = fleetNoteText(shown);
+    if (hidden > 0) {
+        note += QStringLiteral("; the filter hides %1 peer(s)").arg(hidden);
+    }
+    int unlabelled = 0;
+    for (const FleetPeer &peer : m_fleet.peers) {
+        if (!peer.isSelf && peer.labels.isEmpty()) {
+            ++unlabelled;
+        }
+    }
+    if (unlabelled > 0 && !facets.isEmpty()) {
+        note += QStringLiteral("; %1 peer(s) carry no labels").arg(unlabelled);
+    }
+    if (!m_fleet.unusedLabels.isEmpty()) {
+        note += QStringLiteral("; labels for %1 name no peer")
+                    .arg(m_fleet.unusedLabels.join(QStringLiteral(", ")));
+    }
+    m_fleetNote->setText(note);
     m_fleetShare->setText(fleetShareText(m_fleet));
+
+    // A selected row that the filter hides falls back to this machine, so the
+    // detail card never describes a machine that is not on screen.
+    if (!m_fleetFilterValue.isEmpty() && m_fleetSelected >= 0
+        && m_fleetSelected < m_fleet.peers.size()) {
+        const FleetPeer &selectedPeer = m_fleet.peers.at(m_fleetSelected);
+        bool visible = selectedPeer.isSelf;
+        for (const QPair<QString, QString> &label : selectedPeer.labels) {
+            if (QStringLiteral("%1=%2").arg(label.first, label.second)
+                == m_fleetFilterValue) {
+                visible = true;
+            }
+        }
+        if (!visible) {
+            m_fleetSelected = 0;
+        }
+    }
 
     const int selected = qBound(0, m_fleetSelected,
                                 qMax(0, m_fleet.peers.size() - 1));
@@ -8862,6 +9017,19 @@ void DashboardPanel::updateFleetPanel() {
     m_fleetTable->clear();
     for (int i = 0; i < m_fleet.peers.size(); ++i) {
         const FleetPeer &peer = m_fleet.peers.at(i);
+        bool visible = true;
+        if (!m_fleetFilterValue.isEmpty() && !peer.isSelf) {
+            visible = false;
+            for (const QPair<QString, QString> &label : peer.labels) {
+                if (QStringLiteral("%1=%2").arg(label.first, label.second)
+                    == m_fleetFilterValue) {
+                    visible = true;
+                }
+            }
+        }
+        if (!visible) {
+            continue;
+        }
         auto *item = new QTreeWidgetItem(m_fleetTable);
         item->setData(0, Qt::UserRole, i);
         QString name = peer.name.isEmpty() ? peer.address : peer.name;
@@ -8888,7 +9056,21 @@ void DashboardPanel::updateFleetPanel() {
         item->setText(4, peer.everSeen ? fleetPeerAgeText(peer, now)
                                        : QStringLiteral("--"));
         item->setText(5, fleetPeerStateText(peer, now, m_fleet.pollMs));
-        for (int column = 1; column < 5; ++column) {
+        if (!peer.labelsNote.isEmpty()) {
+            // A refused label line is loud: the peer keeps polling, the row
+            // says the labels are wrong, and the detail says what to fix.
+            item->setText(6, QStringLiteral("refused"));
+            item->setForeground(6, QColor(ui_theme::warn()));
+            item->setToolTip(6, fleetLabelsRefusalText(peer));
+        } else {
+            item->setText(6, peer.labels.isEmpty()
+                                 ? QStringLiteral("--")
+                                 : fleetLabelsText(peer.labels));
+            if (!peer.labels.isEmpty()) {
+                item->setForeground(6, QColor(ui_theme::muted()));
+            }
+        }
+        for (int column = 1; column < 6; ++column) {
             item->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
         }
 
@@ -8914,9 +9096,10 @@ void DashboardPanel::updateFleetPanel() {
             m_fleetTable->setCurrentItem(item);
         }
     }
-    if (m_fleet.peers.isEmpty()) {
+    if (m_fleetTable->topLevelItemCount() == 0) {
         auto *item = new QTreeWidgetItem(m_fleetTable);
-        item->setText(0, fleetSummaryText(m_fleet, now));
+        item->setText(0, QStringLiteral("no peer carries %1")
+                             .arg(m_fleetFilterValue));
         item->setForeground(0, QColor(ui_theme::dim()));
         m_fleetTable->setFirstColumnSpanned(0, QModelIndex(), true);
     }

@@ -54,6 +54,11 @@ struct FleetPollOptions {
     QString version;
     QString platform;
     QStringList peers;
+    // M159: [fleet] labels.<name> lines (name -> "key=value ..."), and this
+    // machine's own line. Parsed once by fillHeader/probeFleet so every
+    // surface (page, scrape, --dump) reads the same result.
+    QList<QPair<QString, QString>> labelLines;
+    QString selfLabelsRaw;
     int pollMs = kFleetDefaultPollMs;
     int timeoutMs = kFleetDefaultTimeoutMs;
 };

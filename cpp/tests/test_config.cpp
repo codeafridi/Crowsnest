@@ -491,7 +491,9 @@ int main(int argc, char *argv[]) {
             "peers=db=build-02:9107,build-03,ssh://ops@10.0.0.9:2222\n"
             "token=  fleet-token  \n"
             "poll_ms=15000\n"
-            "timeout_ms=4000\n"));
+            "timeout_ms=4000\n"
+            "labels.db=role=db env=prod\n"
+            "labels.self=role=workstation env=dev\n"));
         QString error;
         const Config c = loadConfig(path, &error);
         check(!c.fleet.enabled && !c.fleet.share,
@@ -508,6 +510,17 @@ int main(int argc, char *argv[]) {
               "included");
         check(c.fleet.pollMs == 15000 && c.fleet.timeoutMs == 4000,
               "fleet: cadence and budget load");
+
+        // M159: labels.<name> keys, including this machine's own line. The
+        // key keeps the peer name verbatim (dots and all).
+        check(c.fleet.labels.size() == 2
+                  && c.fleet.labels.at(0).first == QStringLiteral("db")
+                  && c.fleet.labels.at(0).second
+                         == QStringLiteral("role=db env=prod")
+                  && c.fleet.labels.at(1).first == QStringLiteral("self")
+                  && c.fleet.labels.at(1).second
+                         == QStringLiteral("role=workstation env=dev"),
+              "fleet: label lines load, keyed by peer name");
     }
     {
         QTemporaryDir fleetDir;

@@ -432,7 +432,8 @@ void HudWindow::publishFleet() {
         }
     }
     const FleetPeer self = fleetSelfPeer(
-        m_lastSnapshot, merged.selfName, QDateTime::currentMSecsSinceEpoch());
+        m_lastSnapshot, merged.selfName, QDateTime::currentMSecsSinceEpoch(),
+        merged.selfLabels);
     const FleetStatus status = fleetWithSelf(merged, self);
     if (m_panel != nullptr) {
         m_panel->setFleetSnapshot(status);

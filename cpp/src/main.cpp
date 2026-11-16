@@ -954,6 +954,15 @@ int main(int argc, char *argv[]) {
         options.version = fleetSelf.version;
         options.platform = fleetSelf.platform;
         options.peers = config.fleet.peers;
+        // M159: labels travel with the options so the poller, the page, the
+        // scrape and --dump all read one parse. "self" is this machine.
+        for (const QPair<QString, QString> &label : config.fleet.labels) {
+            if (label.first == QStringLiteral("self")) {
+                options.selfLabelsRaw = label.second;
+            } else {
+                options.labelLines.append(label);
+            }
+        }
         options.pollMs = config.fleet.pollMs;
         options.timeoutMs = config.fleet.timeoutMs;
         return options;

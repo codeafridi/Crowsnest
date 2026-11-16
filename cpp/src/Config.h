@@ -103,6 +103,10 @@ struct FleetConfig {
     bool share = true;
     QString name;
     QStringList peers;
+    // M159: [fleet] labels.<name> = "key=value ...", keyed by the peer name
+    // (or "self" for this machine). Kept as authored text so a refusal can
+    // quote the line the user wrote.
+    QList<QPair<QString, QString>> labels;
     QString token;
     int pollMs = 10000;
     int timeoutMs = 2000;

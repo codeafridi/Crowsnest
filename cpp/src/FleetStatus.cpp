@@ -170,6 +170,218 @@ QString fleetNormalizePeerUrl(const QString &spec, QString *error) {
         + (port.isEmpty() ? QString() : QLatin1Char(':') + port) + path;
 }
 
+namespace {
+
+const char *const kReservedLabelKeys[] = {"peer", "job", "instance"};
+
+bool labelKeyOk(const QString &key) {
+    if (key.isEmpty() || key.size() > kFleetLabelMaxLen) {
+        return false;
+    }
+    const QChar first = key.at(0);
+    if (!(first.isLetter() && first.unicode() < 128) && first != QLatin1Char('_')) {
+        return false;
+    }
+    for (const QChar c : key) {
+        if (!((c.isLetterOrNumber() && c.unicode() < 128)
+              || c == QLatin1Char('_'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+QList<QPair<QString, QString>> fleetParseLabels(const QString &text,
+                                                QString *error) {
+    QList<QPair<QString, QString>> labels;
+    if (error != nullptr) {
+        error->clear();
+    }
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return labels; // no labels is a legal answer, not a mistake
+    }
+    const QStringList parts =
+        trimmed.split(QRegularExpression(QStringLiteral("\\s+")),
+                      Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const int equals = part.indexOf(QLatin1Char('='));
+        if (equals < 0) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is not key=value").arg(part);
+            }
+            return {};
+        }
+        const QString key = part.left(equals);
+        const QString value = part.mid(equals + 1);
+        if (!labelKeyOk(key)) {
+            if (error != nullptr) {
+                *error = QStringLiteral(
+                    "\"%1\" is not a label name (letters, digits and _ only, "
+                    "not starting with a digit, at most %2 characters)")
+                    .arg(key.isEmpty() ? part : key)
+                    .arg(kFleetLabelMaxLen);
+            }
+            return {};
+        }
+        if (key.startsWith(QLatin1Char('_'))) {
+            if (error != nullptr) {
+                *error = QStringLiteral(
+                    "\"%1\" starts with _ - that prefix is reserved for "
+                    "automatic labels").arg(key);
+            }
+            return {};
+        }
+        bool reserved = false;
+        for (const char *reservedKey : kReservedLabelKeys) {
+            if (key == QLatin1String(reservedKey)) {
+                reserved = true;
+            }
+        }
+        if (reserved) {
+            if (error != nullptr) {
+                *error = QStringLiteral(
+                    "\"%1\" is not yours to set: it names the scrape "
+                    "target, not this machine").arg(key);
+            }
+            return {};
+        }
+        if (value.isEmpty()) {
+            if (error != nullptr) {
+                // Prometheus treats an empty label value as no label at all,
+                // so writing one would claim a label that never appears.
+                *error = QStringLiteral("\"%1\" has no value - remove the "
+                                        "pair instead").arg(key);
+            }
+            return {};
+        }
+        if (value.size() > kFleetLabelMaxLen) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is longer than %2 characters")
+                    .arg(key)
+                    .arg(kFleetLabelMaxLen);
+            }
+            return {};
+        }
+        bool badChar = false;
+        for (const QChar c : value) {
+            if (c.isSpace() || c == QLatin1Char('"') || c == QLatin1Char('\\')
+                || c.unicode() < 0x20) {
+                badChar = true;
+            }
+        }
+        if (badChar) {
+            if (error != nullptr) {
+                *error = QStringLiteral(
+                    "the value of \"%1\" may not contain spaces, quotes, "
+                    "backslashes or control characters").arg(key);
+            }
+            return {};
+        }
+        bool duplicate = false;
+        for (const QPair<QString, QString> &seen : labels) {
+            if (seen.first == key) {
+                duplicate = true;
+            }
+        }
+        if (duplicate) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is set twice").arg(key);
+            }
+            return {};
+        }
+        if (labels.size() >= kFleetMaxLabels) {
+            if (error != nullptr) {
+                *error = QStringLiteral("at most %1 labels per peer")
+                             .arg(kFleetMaxLabels);
+            }
+            return {};
+        }
+        labels.append({key, value});
+    }
+    return labels;
+}
+
+QString fleetLabelsText(const QList<QPair<QString, QString>> &labels) {
+    QStringList parts;
+    parts.reserve(labels.size());
+    for (const QPair<QString, QString> &label : labels) {
+        parts << QStringLiteral("%1=%2").arg(label.first, label.second);
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
+QString fleetLabelsRefusalText(const FleetPeer &peer) {
+    if (peer.labelsNote.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("labels refused: %1").arg(peer.labelsNote);
+}
+
+QString fleetLabelValue(const FleetPeer &peer, const QString &key) {
+    for (const QPair<QString, QString> &label : peer.labels) {
+        if (label.first == key) {
+            return label.second;
+        }
+    }
+    return QString();
+}
+
+void fleetApplyPeerLabels(QList<FleetPeer> &peers,
+                          const QList<QPair<QString, QString>> &lines,
+                          QStringList *unused) {
+    if (unused != nullptr) {
+        unused->clear();
+    }
+    for (const QPair<QString, QString> &line : lines) {
+        const QString name = line.first.trimmed();
+        if (name.isEmpty() || name == QStringLiteral("self")) {
+            continue; // self labels travel on FleetStatus, not on a peer
+        }
+        bool matched = false;
+        for (FleetPeer &peer : peers) {
+            if (peer.name != name) {
+                continue;
+            }
+            matched = true;
+            QString failure;
+            const QList<QPair<QString, QString>> parsed =
+                fleetParseLabels(line.second, &failure);
+            if (!failure.isEmpty()) {
+                peer.labels.clear();
+                peer.labelsNote = failure;
+            } else {
+                peer.labels = parsed;
+                peer.labelsNote.clear();
+            }
+            break;
+        }
+        if (!matched && unused != nullptr) {
+            unused->append(name);
+        }
+    }
+}
+
+QStringList fleetLabelFacets(const QList<FleetPeer> &peers) {
+    QStringList facets;
+    for (const FleetPeer &peer : peers) {
+        if (peer.isSelf) {
+            continue;
+        }
+        for (const QPair<QString, QString> &label : peer.labels) {
+            const QString facet =
+                QStringLiteral("%1=%2").arg(label.first, label.second);
+            if (!facets.contains(facet)) {
+                facets.append(facet);
+            }
+        }
+    }
+    facets.sort();
+    return facets;
+}
+
 bool fleetIsSshSpec(const QString &spec) {
     QString text = spec.trimmed();
     const int equals = text.indexOf(QLatin1Char('='));
@@ -240,13 +452,15 @@ QList<FleetPeer> parseFleetPeers(const QStringList &specs, QString *error) {
 }
 
 FleetPeer fleetSelfPeer(const DisplaySnapshot &snapshot, const QString &name,
-                        qint64 nowMs) {
+                        qint64 nowMs,
+                        const QList<QPair<QString, QString>> &labels) {
     FleetPeer self;
     self.name = name.isEmpty() ? QStringLiteral("this machine") : name;
     self.address = QStringLiteral("self");
     self.url = QStringLiteral("self");
     self.isSelf = true;
     self.configured = true;
+    self.labels = labels;
     self.online = true;
     self.everSeen = true;
     self.schema = kFleetSchemaVersion;
@@ -731,9 +945,13 @@ QString fleetPeerAgeText(const FleetPeer &peer, qint64 nowMs) {
 
 QString fleetPeerDetailText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
     if (peer.isSelf) {
-        return QStringLiteral(
+        QString text = QStringLiteral(
             "this machine - it serves /api/v1/snapshot and polls the peers "
             "below; nothing about it is sent anywhere else");
+        if (!peer.labels.isEmpty()) {
+            text += QStringLiteral(" - %1").arg(fleetLabelsText(peer.labels));
+        }
+        return text;
     }
     if (!peer.configured) {
         return QStringLiteral("%1 - remove it or fix it in [fleet] peers=")
@@ -746,9 +964,16 @@ QString fleetPeerDetailText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
                                 : QStringLiteral("http"));
     }
     if (!peer.online) {
-        return QStringLiteral("%1 (%2)").arg(peer.address,
-                                             fleetPeerStateText(peer, nowMs,
-                                                                pollMs));
+        QString text = QStringLiteral("%1 (%2)")
+                           .arg(peer.address,
+                                fleetPeerStateText(peer, nowMs, pollMs));
+        if (!peer.labels.isEmpty()) {
+            text += QStringLiteral(" - %1").arg(fleetLabelsText(peer.labels));
+        }
+        if (!peer.labelsNote.isEmpty()) {
+            text += QStringLiteral(" - %1").arg(fleetLabelsRefusalText(peer));
+        }
+        return text;
     }
     QStringList parts;
     parts << (peer.hostname.isEmpty() ? peer.address : peer.hostname);
@@ -781,6 +1006,12 @@ QString fleetPeerDetailText(const FleetPeer &peer, qint64 nowMs, int pollMs) {
     if (peer.openIncidents > 0) {
         parts << QStringLiteral("%1 open incident(s)")
                      .arg(peer.openIncidents);
+    }
+    if (!peer.labels.isEmpty()) {
+        parts << fleetLabelsText(peer.labels);
+    }
+    if (!peer.labelsNote.isEmpty()) {
+        parts << fleetLabelsRefusalText(peer);
     }
     return parts.join(QStringLiteral(" - "));
 }

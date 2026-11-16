@@ -12,6 +12,7 @@
 #include "RemoteSpool.h"
 #include "TickBudget.h"
 #include "MetricsEndpoint.h"
+#include "PrometheusStatus.h"
 #include "CloudFleetSource.h"
 #include "CloudSpendSource.h"
 #include "CloudPricing.h"
@@ -1334,6 +1335,83 @@ QString dumpReportJson(int maxProcs) {
                          && !fleetNoteText(withSelf).isEmpty());
         fleet.insert(QStringLiteral("peersConfigured"),
                      parseFleetPeers(dumpConfig.fleet.peers).size());
+
+        // M159: labels parse, refuse, attach and cap. None of this needs a
+        // reachable peer, so a runner with no fleet still proves the rules.
+        QString labelError;
+        const QList<QPair<QString, QString>> labels = fleetParseLabels(
+            QStringLiteral("role=web env=prod team=payments owner=alice"),
+            &labelError);
+        QString refusedError;
+        const QList<QPair<QString, QString>> refusedLabels =
+            fleetParseLabels(QStringLiteral("_auto=1"), &refusedError);
+        QString dupError;
+        fleetParseLabels(QStringLiteral("role=web role=db"), &dupError);
+        QString capError;
+        fleetParseLabels(QStringLiteral(
+                             "a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=9"),
+                         &capError);
+        QString reservedError;
+        fleetParseLabels(QStringLiteral("peer=x"), &reservedError);
+        fleet.insert(QStringLiteral("labelsOk"),
+                     labelError.isEmpty() && labels.size() == 4
+                         && labels.first().first == QStringLiteral("role")
+                         && fleetLabelsText(labels)
+                                == QStringLiteral("role=web env=prod "
+                                                  "team=payments owner=alice")
+                         && fleetLabelValue(fleetSshPeer(QStringLiteral("ssh://a")),
+                                            QStringLiteral("role"))
+                                .isEmpty());
+        fleet.insert(QStringLiteral("labelsRefusedOk"),
+                     refusedLabels.isEmpty()
+                         && refusedError.contains(QStringLiteral("reserved"))
+                         && dupError.contains(QStringLiteral("twice"))
+                         && capError.contains(QStringLiteral("at most"))
+                         && reservedError.contains(QStringLiteral("not yours")));
+
+        QList<FleetPeer> labelPeers =
+            parseFleetPeers({QStringLiteral("db=build-02"),
+                             QStringLiteral("web=build-03")});
+        QStringList unusedLabels;
+        fleetApplyPeerLabels(labelPeers,
+                             {{QStringLiteral("db"),
+                               QStringLiteral("role=db env=prod")},
+                              {QStringLiteral("ghost"),
+                               QStringLiteral("role=none")}},
+                             &unusedLabels);
+        fleet.insert(QStringLiteral("labelsApplyOk"),
+                     labelPeers.size() == 2
+                         && labelPeers.first().labels.size() == 2
+                         && fleetLabelValue(labelPeers.first(),
+                                            QStringLiteral("env"))
+                                == QStringLiteral("prod")
+                         && labelPeers.last().labels.isEmpty()
+                         && unusedLabels == QStringList({QStringLiteral("ghost")}));
+        fleet.insert(QStringLiteral("labelsFacetsOk"),
+                     fleetLabelFacets(labelPeers)
+                         == QStringList({QStringLiteral("env=prod"),
+                                         QStringLiteral("role=db")}));
+        const QList<QPair<QString, QString>> selfLabels =
+            fleetParseLabels(QStringLiteral("role=workstation env=dev"));
+        FleetPeer labelledSelf =
+            fleetSelfPeer(sample, QStringLiteral("here"),
+                          QDateTime::currentMSecsSinceEpoch(), selfLabels);
+        fleet.insert(QStringLiteral("labelsSelfOk"),
+                     labelledSelf.isSelf && labelledSelf.labels.size() == 2
+                         && fleetLabelValue(labelledSelf,
+                                            QStringLiteral("role"))
+                                == QStringLiteral("workstation"));
+        FleetStatus labelStatus;
+        labelStatus.enabled = true;
+        labelStatus.lastPollMs = QDateTime::currentMSecsSinceEpoch();
+        labelStatus.tokenConfigured = true;
+        labelStatus.peers = labelPeers;
+        const QString labelScrape = prometheusFleetText(labelStatus);
+        fleet.insert(
+            QStringLiteral("labelsScrapeOk"),
+            labelScrape.contains(QStringLiteral(
+                "crowsnest_fleet_peer_online{peer=\"db\",role=\"db\","
+                "env=\"prod\"}")));
         // Agentless ssh peers: the parser, the argv and the CPU delta, none of
         // which needs a reachable host.
         const FleetSshSample sshSample = parseFleetSshSample(QByteArrayLiteral(

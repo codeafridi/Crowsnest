@@ -60,6 +60,49 @@ poll_ms = 10000               ; clamp 2000..600000
 timeout_ms = 2000             ; clamp 200..30000
 ```
 
+### Labels
+
+A peer can carry a handful of `key=value` labels, and so can this machine:
+
+```ini
+[fleet]
+peers = prod-web=10.0.0.9:9107, db=10.0.0.5:9107
+labels.prod-web = role=web env=prod team=payments owner=payments-primary
+labels.db       = role=db  env=prod team=data
+labels.self     = role=workstation env=dev team=me
+```
+
+`labels.<name>` is keyed by the name the peer already has in `peers=`
+(`labels.self` is this machine). The Fleet page shows them in a `LABELS`
+column, the **FILTER** combo lists every distinct pair with its count, and
+choosing one scopes the rows, the tiles, the summary and the worst-cpu chart —
+so "how many prod boxes are down" is one selection. The scrape carries the same
+pairs:
+
+```
+crowsnest_fleet_peer_cpu_percent{peer="prod-web",role="web",env="prod"} 12.000
+```
+
+Rules, each with a reason:
+
+| Rule | Why |
+|---|---|
+| at most **8** pairs, name and value 1..63 characters | the scrape and the table stay bounded |
+| names match `[A-Za-z_][A-Za-z0-9_]*` | Prometheus documents that regex for label names; anything else needs quoting in every query |
+| names may not start with `_` | reserved for automatic labels (Netdata uses `_os_name`, `_is_child`; Prometheus MUST reserves `__`) |
+| names may not be `peer`, `job` or `instance` | those name the scrape target, not this machine |
+| values: no spaces, quotes, backslashes or control characters | spaces separate pairs, and the rest cannot be carried by the exposition format unescaped |
+| a key twice on one line | refused rather than last-wins, so a typo cannot silently reroute |
+| `labels.db =` (empty) | means "no labels" — Prometheus treats an empty value as an absent label |
+
+A refused line **keeps the peer**: the row's LABELS cell reads `refused`, the
+hover and the detail card name the fix, and the fleet note counts the peers
+that carry no labels. `labels.<name>` for a name that is not in `peers=` is
+reported by `--dump` (`labels for X name no peer`), never dropped silently.
+
+Labels are yours and are never derived from the environment, the hostname or a
+cloud tag: a label that appears by itself is a label nobody can explain.
+
 `peers` (up to 64 entries) accepts:
 
 | Written | Requests |

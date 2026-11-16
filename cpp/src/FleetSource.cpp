@@ -49,6 +49,8 @@ void fillHeader(const FleetPollOptions &options, FleetStatus *status) {
     status->platform = options.platform;
     status->pollMs = qMax(1, options.pollMs);
     status->timeoutMs = qMax(1, options.timeoutMs);
+    status->selfLabels =
+        fleetParseLabels(options.selfLabelsRaw, &status->selfLabelsNote);
 }
 
 void pollOne(FleetPeer &peer, const QByteArray &token, int timeoutMs,
@@ -289,6 +291,8 @@ FleetStatus probeFleet(const FleetPollOptions &options, qint64 nowMs) {
     fillHeader(options, &status);
     QString failure;
     status.peers = parseFleetPeers(options.peers, &failure);
+    fleetApplyPeerLabels(status.peers, options.labelLines,
+                         &status.unusedLabels);
     if (!options.enabled) {
         status.note = fleetGateText(status);
         return status;
@@ -381,6 +385,7 @@ void FleetRunner::poll() {
     if (options.peers != m_peerSpec) {
         QString failure;
         m_peers = parseFleetPeers(options.peers, &failure);
+        fleetApplyPeerLabels(m_peers, options.labelLines, nullptr);
         m_peerSpec = options.peers;
     }
     if (!options.enabled || m_peers.isEmpty()) {

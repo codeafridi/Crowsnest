@@ -31,6 +31,13 @@
 // is greater than this and names the fix.
 constexpr int kFleetSchemaVersion = 1;
 
+// M159: labels. Eight pairs is the cap: the same number Datadog documents for
+// a host's distinguishing tags and few enough that a table cell and a scrape
+// line stay readable. 63 is the label-name/value length Kubernetes and
+// Backstage both allow.
+constexpr int kFleetMaxLabels = 8;
+constexpr int kFleetLabelMaxLen = 63;
+
 constexpr int kFleetDefaultPort = 9107;
 constexpr int kFleetDefaultPollMs = 10000;
 constexpr int kFleetDefaultTimeoutMs = 2000;
@@ -52,6 +59,11 @@ struct FleetPeer {
     // host that never answers would simply be absent from the table until its
     // budget expires, which reads as "no such peer" rather than "not answering".
     bool connecting = false;
+    // M159: authored labels, in the order they were written. The scrape, the
+    // table and the detail all read this one list. A refused label line keeps
+    // the peer and sets labelsNote, so a typo is loud instead of unlabelled.
+    QList<QPair<QString, QString>> labels;
+    QString labelsNote;
 
     // Link state, measured locally.
     bool online = false;
@@ -109,6 +121,14 @@ struct FleetStatus {
     QString hostname;
     QString version;
     QString platform;
+    // M159: this machine's own labels ([fleet] labels.self). The self row
+    // carries them so the page and the scrape say the same thing about it.
+    QList<QPair<QString, QString>> selfLabels;
+    QString selfLabelsNote;
+    // [fleet] labels.<name> lines that name no peer. Reported, never dropped:
+    // a typo in a peer name is otherwise indistinguishable from a label that
+    // simply has not been written yet.
+    QStringList unusedLabels;
 
     QList<FleetPeer> peers;
     QString note;  // gate text: why there are no peers, or what went wrong
@@ -132,11 +152,28 @@ QString fleetNormalizePeerUrl(const QString &spec, QString *error = nullptr);
 bool fleetIsSshSpec(const QString &spec);
 QStringList fleetSshSpecs(const QStringList &specs);
 
+// --- labels (M159) -------------------------------------------------------
+// One line of space-separated key=value pairs. Refusals carry the reason, so
+// the row can say what to fix instead of showing nothing.
+QList<QPair<QString, QString>> fleetParseLabels(const QString &text,
+                                                QString *error = nullptr);
+QString fleetLabelsText(const QList<QPair<QString, QString>> &labels);
+QString fleetLabelsRefusalText(const FleetPeer &peer);
+QString fleetLabelValue(const FleetPeer &peer, const QString &key);
+// Assigns [fleet] labels.<name> lines onto the peers that carry that name.
+// A line naming no peer is reported through `unused`, never dropped silently.
+void fleetApplyPeerLabels(QList<FleetPeer> &peers,
+                          const QList<QPair<QString, QString>> &lines,
+                          QStringList *unused = nullptr);
+// Every distinct key=value in the fleet, sorted, for the page's filter.
+QStringList fleetLabelFacets(const QList<FleetPeer> &peers);
+
 QList<FleetPeer> parseFleetPeers(const QStringList &specs,
                                  QString *error = nullptr);
 
 FleetPeer fleetSelfPeer(const DisplaySnapshot &snapshot, const QString &name,
-                        qint64 nowMs);
+                        qint64 nowMs,
+                        const QList<QPair<QString, QString>> &labels = {});
 
 // --- payload -------------------------------------------------------------
 // The bounded summary this box publishes. Deliberately NOT the whole
