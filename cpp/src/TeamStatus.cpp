@@ -53,6 +53,18 @@ bool parseMachine(const QJsonObject &object, TeamMachine *machine,
         object.value(QStringLiteral("duplicate")).toBool(false);
     machine->duplicateName =
         object.value(QStringLiteral("duplicateName")).toString();
+    // Labels arrive only from a relay that has the column; anything else is an
+    // unlabelled machine, not an error - the page still has to render.
+    machine->labels.clear();
+    const QJsonObject labels = object.value(QStringLiteral("labels")).toObject();
+    QStringList keys = labels.keys();
+    keys.sort();
+    for (const QString &key : keys) {
+        const QJsonValue value = labels.value(key);
+        if (value.isString() && !key.isEmpty()) {
+            machine->labels.append({key, value.toString()});
+        }
+    }
 
     const QJsonValue latest = object.value(QStringLiteral("latest"));
     if (latest.isObject()) {
@@ -316,6 +328,78 @@ QString teamRowName(const TeamStatus &status, const TeamMachine &machine) {
     return name;
 }
 
+QString teamLabelsText(const TeamMachine &machine) {
+    if (machine.labels.isEmpty()) {
+        return QStringLiteral("no labels");
+    }
+    QStringList parts;
+    parts.reserve(machine.labels.size());
+    for (const QPair<QString, QString> &label : machine.labels) {
+        parts << QStringLiteral("%1=%2").arg(label.first, label.second);
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
+QString teamLabelsSummaryText(const QList<TeamMachine> &machines) {
+    if (machines.isEmpty()) {
+        return QString();
+    }
+    QSet<QString> teams;
+    QSet<QString> envs;
+    int labelled = 0;
+    for (const TeamMachine &machine : machines) {
+        if (!machine.labels.isEmpty()) {
+            ++labelled;
+        }
+        const QString team = teamLabelValue(machine, QStringLiteral("team"));
+        if (!team.isEmpty()) {
+            teams.insert(team);
+        }
+        const QString env = teamLabelValue(machine, QStringLiteral("env"));
+        if (!env.isEmpty()) {
+            envs.insert(env);
+        }
+    }
+    if (labelled == 0) {
+        return QStringLiteral("%1 machine(s), none labelled")
+            .arg(machines.size());
+    }
+    QString text = QStringLiteral("%1 of %2 machine(s) labelled")
+                       .arg(labelled)
+                       .arg(machines.size());
+    if (!teams.isEmpty()) {
+        text += QStringLiteral(" - %1 team(s)").arg(teams.size());
+    }
+    if (!envs.isEmpty()) {
+        text += QStringLiteral(" - %1 env(s)").arg(envs.size());
+    }
+    return text;
+}
+
+QStringList teamLabelFacets(const QList<TeamMachine> &machines) {
+    QStringList facets;
+    for (const TeamMachine &machine : machines) {
+        for (const QPair<QString, QString> &label : machine.labels) {
+            const QString facet =
+                QStringLiteral("%1=%2").arg(label.first, label.second);
+            if (!facets.contains(facet)) {
+                facets.append(facet);
+            }
+        }
+    }
+    facets.sort();
+    return facets;
+}
+
+QString teamLabelValue(const TeamMachine &machine, const QString &key) {
+    for (const QPair<QString, QString> &label : machine.labels) {
+        if (label.first == key) {
+            return label.second;
+        }
+    }
+    return QString();
+}
+
 QString teamSummaryText(const TeamStatus &status, qint64 nowMs) {
     if (!status.configured) {
         return teamLinkText(status, nowMs);
@@ -495,6 +579,9 @@ QString teamMachineDetailText(const TeamStatus &status,
         parts << QStringLiteral("values withheld: a reading past the silence "
                                 "threshold is a guess");
     }
+    // M161: the labels the operator wrote, and the owner among them when there
+    // is one - the page's whole question is "whose box is this".
+    parts << teamLabelsText(machine);
     return parts.join(QStringLiteral(" - "));
 }
 

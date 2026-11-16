@@ -48,6 +48,10 @@ struct TeamMachine {
     int intervalMs = 0;
     bool duplicate = false;
     QString duplicateName;
+    // M161: the machine's own labels, as the relay stored them (M160). Empty
+    // when the machine has none, or when the relay predates the column - the
+    // page says "no labels" rather than showing a blank cell either way.
+    QList<QPair<QString, QString>> labels;
     TeamSample latest;
 };
 
@@ -170,6 +174,14 @@ QString teamCellSource(const TeamStatus &status, const TeamMachine &machine);
 QString teamRowName(const TeamStatus &status, const TeamMachine &machine);
 
 QString teamSummaryText(const TeamStatus &status, qint64 nowMs);
+// M161: "role=web env=prod" in key order, or "no labels".
+QString teamLabelsText(const TeamMachine &machine);
+// Every distinct key=value across the relay's fleet, sorted, for the page's
+// filter - the same shape the Fleet page uses.
+QStringList teamLabelFacets(const QList<TeamMachine> &machines);
+// "3 of 4 machine(s) labelled - 2 team(s) - 2 env(s)" for the summary line.
+QString teamLabelsSummaryText(const QList<TeamMachine> &machines);
+QString teamLabelValue(const TeamMachine &machine, const QString &key);
 QString teamNoteText(const TeamStatus &status);
 QString teamMachineDetailText(const TeamStatus &status,
                               const TeamMachine &machine);

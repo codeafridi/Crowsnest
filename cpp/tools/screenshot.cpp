@@ -1720,6 +1720,23 @@ int main(int argc, char *argv[]) {
             machine.latest.cpu = cpu;
             machine.latest.memAvailableKb = memKb;
             machine.latest.load1 = load1;
+            // M161: labels on the relay's fleet, the same vocabulary the local
+            // fleet uses - owner included, because that is the page's question.
+            if (name == QStringLiteral("db-01")) {
+                machine.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                                  {QStringLiteral("owner"), QStringLiteral("data-oncall")},
+                                  {QStringLiteral("team"), QStringLiteral("data")}};
+            } else if (name == QStringLiteral("web-01")) {
+                machine.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                                  {QStringLiteral("owner"), QStringLiteral("payments-oncall")},
+                                  {QStringLiteral("team"), QStringLiteral("payments")}};
+            } else if (name == QStringLiteral("edge-01")) {
+                machine.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                                  {QStringLiteral("team"), QStringLiteral("platform")}};
+            } else if (name == QStringLiteral("ci-runner-7")) {
+                machine.labels = {{QStringLiteral("env"), QStringLiteral("build")},
+                                  {QStringLiteral("team"), QStringLiteral("platform")}};
+            }
             return machine;
         };
 

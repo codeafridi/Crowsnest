@@ -409,6 +409,13 @@ private:
     QLabel *m_teamNote = nullptr;
     QLabel *m_teamDetail = nullptr;
     QTreeWidget *m_teamTable = nullptr;
+    // M161: the relay fleet's labels, filterable the same way the local fleet
+    // is. The tiles stay workspace totals - the filter scopes the table, and
+    // the note says which is which.
+    QLabel *m_teamLabels = nullptr;
+    QComboBox *m_teamFilter = nullptr;
+    QString m_teamFilterValue;
+    QString m_teamFilterSignature;
     TeamStatus m_team;
     QString m_teamSelectedId;
     QLabel *m_teamIncidentSummary = nullptr;

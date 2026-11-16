@@ -7814,6 +7814,81 @@ int main(int argc, char *argv[]) {
                                                   "answer")),
               "fleet ssh: a peer whose first answer is pending says so");
 
+        // M161: the relay's machine rows carry labels, parsed additively - a
+        // relay without the column sends nothing and the row reads "no labels".
+        {
+            QByteArray body = QByteArrayLiteral(
+                "{\"schema\":1,\"asOfMs\":5000,\"total\":2,\"machines\":[");
+            body += QByteArrayLiteral(
+                "{\"id\":\"m-1\",\"name\":\"web-01\",\"state\":\"reporting\","
+                "\"intervalMs\":15000,\"labels\":{\"env\":\"prod\","
+                "\"owner\":\"ana\",\"role\":\"web\"}},");
+            body += QByteArrayLiteral(
+                "{\"id\":\"m-2\",\"name\":\"gate-02\",\"state\":\"silent\","
+                "\"intervalMs\":15000}");
+            body += QStringLiteral("],\"counts\":{\"total\":2,\"reporting\":1,"
+                                   "\"silent\":1}}")
+                        .toUtf8();
+            TeamStatus status;
+            QString error;
+            check(teamParseFleetJson(body, &status, &error)
+                      && status.machines.size() == 2,
+                  "team labels: a labelled relay answer parses");
+            const TeamMachine &first = status.machines.at(0);
+            check(first.labels.size() == 3
+                      && teamLabelValue(first, QStringLiteral("env"))
+                             == QStringLiteral("prod")
+                      && teamLabelValue(first, QStringLiteral("owner"))
+                             == QStringLiteral("ana")
+                      && teamLabelsText(first)
+                             == QStringLiteral("env=prod owner=ana role=web"),
+                  "team labels: pairs are kept in key order");
+            check(status.machines.at(1).labels.isEmpty()
+                      && teamLabelsText(status.machines.at(1))
+                             == QStringLiteral("no labels"),
+                  "team labels: a relay without the column reads 'no labels'");
+            check(teamLabelFacets(status.machines)
+                      == QStringList({QStringLiteral("env=prod"),
+                                      QStringLiteral("owner=ana"),
+                                      QStringLiteral("role=web")}),
+                  "team labels: the filter facets are distinct and sorted");
+            check(teamLabelsSummaryText(status.machines)
+                      == QStringLiteral("1 of 2 machine(s) labelled - 1 env(s)"),
+                  "team labels: the summary counts what is labelled");
+            check(teamLabelsSummaryText({})
+                          .isEmpty()
+                      && teamLabelsSummaryText(status.machines.mid(1))
+                             == QStringLiteral("1 machine(s), none labelled"),
+                  "team labels: an unlabelled fleet says so");
+
+            // A relay that predates the column answers without `labels` at all;
+            // the row is still a machine.
+            const QByteArray old = QByteArrayLiteral(
+                "{\"schema\":1,\"asOfMs\":5000,\"total\":1,\"machines\":["
+                "{\"id\":\"m-1\",\"name\":\"web-01\",\"state\":\"reporting\","
+                "\"intervalMs\":15000}],\"counts\":{\"total\":1,"
+                "\"reporting\":1}}");
+            TeamStatus legacy;
+            check(teamParseFleetJson(old, &legacy, &error)
+                      && legacy.machines.size() == 1
+                      && legacy.machines.first().labels.isEmpty(),
+                  "team labels: an older relay parses as unlabelled");
+
+            // Wrong-typed labels are skipped, never a parse failure: a string
+            // where an object belongs must not blank the whole page.
+            const QByteArray odd = QByteArrayLiteral(
+                "{\"schema\":1,\"asOfMs\":5000,\"total\":1,\"machines\":["
+                "{\"id\":\"m-1\",\"name\":\"web-01\",\"state\":\"reporting\","
+                "\"intervalMs\":15000,\"labels\":{\"env\":\"prod\","
+                "\"weird\":7}}],\"counts\":{\"total\":1,"
+                "\"reporting\":1}}");
+            TeamStatus oddStatus;
+            check(teamParseFleetJson(odd, &oddStatus, &error)
+                      && oddStatus.machines.size() == 1
+                      && oddStatus.machines.first().labels.size() == 1,
+                  "team labels: a non-string value is skipped, not fatal");
+        }
+
         // M159: labels are authored text, parsed once, refused with a reason.
         {
             QString labelError;

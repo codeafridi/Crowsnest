@@ -2746,6 +2746,67 @@ int main(int argc, char *argv[]) {
                           QStringLiteral("1 machine(s)")),
                   "team summary states the fleet the relay reported");
 
+            // M161: labels on the relay's fleet, and a filter that narrows the
+            // table without pretending the tiles are scoped too.
+            here.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                           {QStringLiteral("owner"), QStringLiteral("ana")},
+                           {QStringLiteral("role"), QStringLiteral("workstation")}};
+            quiet.labels = {{QStringLiteral("env"), QStringLiteral("dev")},
+                            {QStringLiteral("role"), QStringLiteral("gateway")}};
+            TeamMachine bare;
+            bare.id = QStringLiteral("m-bare");
+            bare.name = QStringLiteral("edge-03");
+            bare.state = QStringLiteral("reporting");
+            bare.lastSeenMs = teamNow;
+            bare.intervalMs = 15000;
+            team.machines = {here, quiet, bare};
+            hud.setTeamStatus(team);
+
+            check(teamTable->topLevelItemCount() == 3
+                      && teamTable->topLevelItem(0)->text(7)
+                             == QStringLiteral("env=prod owner=ana "
+                                               "role=workstation")
+                      && teamTable->topLevelItem(1)->text(7)
+                             == QStringLiteral("env=dev role=gateway")
+                      && teamTable->topLevelItem(2)->text(7)
+                             == QStringLiteral("no labels"),
+                  "an unlabelled relay machine reads 'no labels', not blank");
+            auto *teamLabels =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamLabels"));
+            check(teamLabels != nullptr
+                      && teamLabels->text().contains(
+                          QStringLiteral("2 of 3 machine(s) labelled"))
+                      && teamLabels->text().contains(
+                          QStringLiteral("2 env(s)")),
+                  "the team label line counts labels, teams and envs");
+
+            auto *teamFilter =
+                hud.findChild<QComboBox *>(QStringLiteral("ddTeamFilter"));
+            // 3 labelled pairs on this machine + 2 on the quiet one + all.
+            check(teamFilter != nullptr && teamFilter->count() == 6
+                      && teamFilter->itemText(0)
+                             == QStringLiteral("all machines (3)"),
+                  "the team filter lists every label with its count");
+            teamFilter->setCurrentIndex(
+                teamFilter->findData(QStringLiteral("env=dev")));
+            check(teamTable->topLevelItemCount() == 2
+                      && teamTable->topLevelItem(0)->text(0).startsWith(
+                          QStringLiteral("* "))
+                      && teamTable->topLevelItem(1)->text(0)
+                             == QStringLiteral("gate-02")
+                      && teamTable->topLevelItem(1)->text(7)
+                             == QStringLiteral("env=dev role=gateway"),
+                  "the team filter narrows the table and keeps this machine");
+            auto *teamNote =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamNote"));
+            check(teamNote != nullptr
+                      && teamNote->text().contains(
+                          QStringLiteral("tiles above are workspace totals")),
+                  "the filter says the tiles are not scoped");
+            teamFilter->setCurrentIndex(0);
+            check(teamTable->topLevelItemCount() == 3,
+                  "all machines restores every relay row");
+
             // Not linked: the page names both switches instead of an empty
             // table, and a 404 has its own sentence.
             TeamStatus unlinked;

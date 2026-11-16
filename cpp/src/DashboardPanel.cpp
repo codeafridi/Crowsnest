@@ -5620,31 +5620,66 @@ QWidget *DashboardPanel::buildTeamView() {
 
     layout->addWidget(makeBanner(QStringLiteral("TEAM"),
                                  ui_theme::accent(), view));
-    auto *summaryRow = new QHBoxLayout;
-    summaryRow->setSpacing(10);
-    summaryRow->addWidget(
-        makeCard(QStringLiteral("summary"), m_teamSummary, view), 1);
-    summaryRow->addWidget(
-        makeCard(QStringLiteral("what is read"), m_teamNote, view), 1);
-    layout->addLayout(summaryRow);
+    // Full width each, in reading order: a wrapped label in a 50% card gets
+    // the row's height rather than its own, and the longer of the two clipped
+    // its last line (the "what is read" card lost "or environment").
+    layout->addWidget(makeCard(QStringLiteral("summary"), m_teamSummary, view));
+    layout->addWidget(makeCard(QStringLiteral("what is read"), m_teamNote,
+                               view));
+
+    // The label census gets its own full-width line.
+    m_teamLabels = new QLabel(QStringLiteral("--"), view);
+    m_teamLabels->setObjectName(QStringLiteral("ddTeamLabels"));
+    m_teamLabels->setFont(monoFont(10));
+    m_teamLabels->setWordWrap(true);
+    m_teamLabels->setMinimumWidth(1);
+    layout->addWidget(m_teamLabels);
 
     // --- Every machine the relay lists, this one first and marked, exactly
     // like the Fleet page (netdata's mirrored_hosts includes itself).
+    m_teamFilter = new QComboBox(view);
+    m_teamFilter->setObjectName(QStringLiteral("ddTeamFilter"));
+    m_teamFilter->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_teamFilter->setMinimumWidth(220);
+    m_teamFilter->setFocusPolicy(Qt::NoFocus);
+    m_teamFilter->setToolTip(
+        QStringLiteral("show only the relay's machines carrying this label"));
+    connect(m_teamFilter, &QComboBox::currentIndexChanged, this,
+            [this](int index) {
+                if (m_teamFilter == nullptr || index < 0) {
+                    return;
+                }
+                m_teamFilterValue = m_teamFilter->itemData(index).toString();
+                // Re-applying the snapshot is the one code path that renders
+                // the table, so a filter change cannot drift from a poll.
+                setTeamStatus(m_team);
+            });
+    auto *teamFilterRow = new QHBoxLayout;
+    teamFilterRow->setContentsMargins(0, 0, 0, 0);
+    teamFilterRow->setSpacing(6);
+    auto *teamFilterLabel = new QLabel(QStringLiteral("FILTER"), view);
+    teamFilterLabel->setObjectName(QStringLiteral("ddTeamFilterLabel"));
+    teamFilterLabel->setFont(monoFont(10, true));
+    teamFilterRow->addWidget(teamFilterLabel);
+    teamFilterRow->addWidget(m_teamFilter, 0);
+    teamFilterRow->addStretch(1);
+
     m_teamTable = new QTreeWidget(view);
     m_teamTable->setObjectName(QStringLiteral("ddTeamTable"));
-    m_teamTable->setColumnCount(7);
+    m_teamTable->setColumnCount(8);
     m_teamTable->setHeaderLabels({QStringLiteral("NAME"),
                                   QStringLiteral("STATE"),
                                   QStringLiteral("CPU %"),
                                   QStringLiteral("MEM AVL"),
                                   QStringLiteral("LOAD"),
                                   QStringLiteral("LAST SEEN"),
-                                  QStringLiteral("SOURCE")});
+                                  QStringLiteral("SOURCE"),
+                                  QStringLiteral("LABELS")});
     m_teamTable->setRootIsDecorated(false);
     m_teamTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_teamTable->setFocusPolicy(Qt::NoFocus);
     m_teamTable->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    for (int column = 1; column < 7; ++column) {
+    for (int column = 1; column < 8; ++column) {
         m_teamTable->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
@@ -5665,6 +5700,7 @@ QWidget *DashboardPanel::buildTeamView() {
 
     layout->addWidget(makeBanner(QStringLiteral("MACHINES"),
                                  ui_theme::banner(), view));
+    layout->addLayout(teamFilterRow);
     layout->addWidget(makeCard(QStringLiteral("the relay's fleet"),
                                m_teamTable, view));
     layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail,
@@ -8585,11 +8621,56 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
             ? QStringLiteral("color: %1;").arg(ui_theme::crit())
             : QString());
 
+    // --- M161: labels. The combo is rebuilt only when the distinct set
+    // changes, for the same reason as the Fleet page: a per-tick rebuild closes
+    // the popup under the cursor.
+    const QStringList facets = teamLabelFacets(status.machines);
+    const QString filterSignature = facets.join(QLatin1Char('\u0001'));
+    if (m_teamFilter != nullptr) {
+        const bool facetGone = !m_teamFilterValue.isEmpty()
+                               && !facets.contains(m_teamFilterValue);
+        if (filterSignature != m_teamFilterSignature || facetGone) {
+            if (facetGone) {
+                m_teamFilterValue.clear();
+            }
+            m_teamFilterSignature = filterSignature;
+            const QSignalBlocker blocker(m_teamFilter);
+            m_teamFilter->clear();
+            m_teamFilter->addItem(
+                QStringLiteral("all machines (%1)").arg(status.machines.size()),
+                QString());
+            for (const QString &facet : facets) {
+                int owners = 0;
+                for (const TeamMachine &machine : status.machines) {
+                    const int equals = facet.indexOf(QLatin1Char('='));
+                    if (teamLabelValue(machine, facet.left(equals))
+                        == facet.mid(equals + 1)) {
+                        ++owners;
+                    }
+                }
+                m_teamFilter->addItem(
+                    QStringLiteral("%1 (%2)").arg(facet).arg(owners), facet);
+            }
+            const int restored = m_teamFilter->findData(m_teamFilterValue);
+            m_teamFilter->setCurrentIndex(restored >= 0 ? restored : 0);
+            m_teamFilter->setEnabled(!facets.isEmpty());
+        }
+    }
+
     m_teamSummary->setText(teamSummaryText(status, now));
-    m_teamNote->setText(teamNoteText(status));
+    if (m_teamLabels != nullptr) {
+        const QString labelsSummary = teamLabelsSummaryText(status.machines);
+        m_teamLabels->setText(
+            facets.isEmpty()
+                ? QStringLiteral("labels: none - add [fleet] labels.self and the "
+                                 "same line on every machine to group this "
+                                 "fleet by role, env or team")
+                : QStringLiteral("labels: %1").arg(labelsSummary));
+    }
 
     // Self first, then the relay's own order: the star marks the window, and
-    // the counters above already left it out.
+    // the counters above already left it out. A label filter narrows the table
+    // only - the four tiles stay workspace totals, and the note says so.
     QList<TeamMachine> rows;
     const int self = teamSelfIndex(status);
     if (self >= 0) {
@@ -8600,6 +8681,32 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
             rows.append(status.machines.at(i));
         }
     }
+    int hidden = 0;
+    if (!m_teamFilterValue.isEmpty()) {
+        const int equals = m_teamFilterValue.indexOf(QLatin1Char('='));
+        const QString key = m_teamFilterValue.left(equals);
+        const QString value = m_teamFilterValue.mid(equals + 1);
+        QList<TeamMachine> kept;
+        for (const TeamMachine &machine : rows) {
+            const bool isSelfRow = !status.selfId.isEmpty()
+                                   && machine.id == status.selfId;
+            if (isSelfRow || teamLabelValue(machine, key) == value) {
+                kept.append(machine);
+            } else {
+                ++hidden;
+            }
+        }
+        rows = kept;
+    }
+    QString note = teamNoteText(status);
+    if (!m_teamFilterValue.isEmpty()) {
+        note += QStringLiteral("; the filter %1 shows %2 machine(s) and hides "
+                               "%3 - the tiles above are workspace totals")
+                    .arg(m_teamFilterValue)
+                    .arg(rows.size())
+                    .arg(hidden);
+    }
+    m_teamNote->setText(note);
 
     const QString keep = m_teamSelectedId;
     m_teamTable->blockSignals(true);
@@ -8614,6 +8721,19 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
         item->setText(4, teamCellLoad(status, machine));
         item->setText(5, teamCellLastSeen(status, machine));
         item->setText(6, teamCellSource(status, machine));
+        item->setText(7, teamLabelsText(machine));
+        if (!machine.labels.isEmpty()) {
+            // An owner is the one label with a consequence: it names who is
+            // paged, so it reads in the accent colour rather than as trivia.
+            const QString owner =
+                teamLabelValue(machine, QStringLiteral("owner"));
+            item->setForeground(7, QColor(owner.isEmpty() ? ui_theme::muted()
+                                                          : ui_theme::accent()));
+            if (!owner.isEmpty()) {
+                item->setToolTip(
+                    7, QStringLiteral("owner: %1").arg(owner));
+            }
+        }
         for (int column = 2; column <= 5; ++column) {
             item->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
         }
