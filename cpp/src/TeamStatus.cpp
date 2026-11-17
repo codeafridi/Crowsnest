@@ -750,6 +750,19 @@ QString teamIncidentDetailText(const TeamStatus &status,
     parts << QStringLiteral("%1 [%2]").arg(incident.title, incident.severity);
     parts << QStringLiteral("machine %1")
                  .arg(teamIncidentMachineName(status, incident.machineId));
+    // M164: whose machine the incident is about, from the fleet row the page
+    // already holds - one lookup, no second request per incident.
+    for (const TeamMachine &machine : status.machines) {
+        if (machine.id != incident.machineId || machine.labels.isEmpty()) {
+            continue;
+        }
+        QStringList pairs;
+        for (const QPair<QString, QString> &label : machine.labels) {
+            pairs << QStringLiteral("%1=%2").arg(label.first, label.second);
+        }
+        parts << pairs.join(QLatin1Char(' '));
+        break;
+    }
     parts << QStringLiteral("rule %1").arg(incident.ruleId);
     parts << teamIncidentStateCell(status, incident);
     if (incident.openedAtMs > 0) {

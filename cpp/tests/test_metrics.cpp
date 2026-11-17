@@ -7887,6 +7887,45 @@ int main(int argc, char *argv[]) {
                       && oddStatus.machines.size() == 1
                       && oddStatus.machines.first().labels.size() == 1,
                   "team labels: a non-string value is skipped, not fatal");
+
+        // M164: the incident detail names whose machine it is about, from the
+        // fleet row the page already holds.
+        {
+            TeamStatus withIncident;
+            withIncident.answered = true;
+            withIncident.asOfMs = 600000;
+            withIncident.machines = {
+                [] {
+                    TeamMachine machine;
+                    machine.id = QStringLiteral("m-1");
+                    machine.name = QStringLiteral("db-01");
+                    machine.state = QStringLiteral("reporting");
+                    machine.intervalMs = 15000;
+                    machine.lastSeenMs = 595000;
+                    machine.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                                      {QStringLiteral("team"), QStringLiteral("data")}};
+                    return machine;
+                }(),
+            };
+            TeamIncident incident;
+            incident.id = QStringLiteral("inc-1");
+            incident.ruleId = QStringLiteral("host_cpu");
+            incident.machineId = QStringLiteral("m-1");
+            incident.severity = QStringLiteral("critical");
+            incident.title = QStringLiteral("db-01 cpu high");
+            incident.state = QStringLiteral("open");
+            incident.openedAtMs = 590000;
+            const QString detail = teamIncidentDetailText(withIncident, incident);
+            check(detail.contains(QStringLiteral("env=prod team=data")),
+                  "team labels: the incident detail names the machine's labels");
+
+            TeamMachine bare = withIncident.machines.first();
+            bare.labels.clear();
+            withIncident.machines = {bare};
+            check(!teamIncidentDetailText(withIncident, incident)
+                       .contains(QStringLiteral("env=")),
+                  "team labels: an unlabelled machine adds nothing to the detail");
+        }
         }
 
         // M159: labels are authored text, parsed once, refused with a reason.
