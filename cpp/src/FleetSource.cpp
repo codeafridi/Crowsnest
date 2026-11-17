@@ -81,7 +81,19 @@ void pollOne(FleetPeer &peer, const QByteArray &token, int timeoutMs,
     const bool authored = peer.nameAuthored;
     const QString address = peer.address;
     const QString url = peer.url;
+    // M159: the authored labels are configuration, not part of the answer, so
+    // they survive the snapshot replace. Dropping them here made the scrape
+    // carry labels for a peer that had not answered yet and lose them the
+    // moment it did.
+    const QList<QPair<QString, QString>> keptLabels = peer.labels;
+    const QString keptLabelsNote = peer.labelsNote;
     peer = parsed;
+    if (!keptLabels.isEmpty()) {
+        peer.labels = keptLabels;
+    }
+    if (!keptLabelsNote.isEmpty()) {
+        peer.labelsNote = keptLabelsNote;
+    }
     peer.address = address;
     peer.url = url;
     peer.configured = true;

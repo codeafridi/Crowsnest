@@ -4556,6 +4556,74 @@ int main(int argc, char *argv[]) {
                   && qAbs(seen.cpuPercent - 44.5) < 0.001
                   && seen.memAvailableKb == 1000000,
               "fleet server: what a peer reads back is this machine's summary");
+
+        // M159: authored labels survive a successful poll. They used to be
+        // applied before the request and wiped by `peer = parsed` the moment
+        // the peer answered - the scrape carried labels only for a peer that
+        // had never replied.
+        {
+            DisplaySnapshot canned;
+            canned.appName = QStringLiteral("web");
+            canned.pid = QStringLiteral("21");
+            canned.hostAvailable = true;
+            canned.hostCpuPercent = 12.5;
+            canned.hostMemTotalKb = 4000000;
+            canned.hostMemAvailableKb = 2000000;
+            const QByteArray body = fleetSnapshotJson(
+                canned, QStringLiteral("probe"), QStringLiteral("probe"),
+                QStringLiteral("0.0.0"), QStringLiteral("linux"));
+            quint16 port2 = 0;
+            std::thread serverThread([&]() {
+                QTcpServer oneShot;
+                if (!oneShot.listen(QHostAddress::LocalHost, 0)) {
+                    return;
+                }
+                port2 = oneShot.serverPort();
+                if (!oneShot.waitForNewConnection(5000)) {
+                    return;
+                }
+                QTcpSocket *socket = oneShot.nextPendingConnection();
+                if (socket == nullptr) {
+                    return;
+                }
+                socket->waitForReadyRead(2000);
+                const QByteArray response =
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    "Content-Length: "
+                    + QByteArray::number(body.size())
+                    + "\r\nConnection: close\r\n\r\n" + body;
+                socket->write(response);
+                socket->flush();
+                socket->waitForBytesWritten(2000);
+                socket->disconnectFromHost();
+                socket->waitForDisconnected(2000);
+                delete socket;
+            });
+            while (port2 == 0) {
+                QThread::msleep(5);
+            }
+            FleetPollOptions live2;
+            live2.enabled = true;
+            live2.selfName = QStringLiteral("probe-box");
+            live2.peers = {QStringLiteral("probe=127.0.0.1:%1").arg(port2)};
+            live2.labelLines = {{QStringLiteral("probe"),
+                                 QStringLiteral("env=prod team=data")}};
+            live2.timeoutMs = 3000;
+            const FleetStatus polled =
+                probeFleet(live2, QDateTime::currentMSecsSinceEpoch());
+            serverThread.join();
+            check(polled.peers.size() == 1 && polled.peers.at(0).online
+                      && polled.peers.at(0).labels.size() == 2
+                      && fleetLabelValue(polled.peers.at(0),
+                                         QStringLiteral("env"))
+                             == QStringLiteral("prod"),
+                  "fleet server: labels survive the peer's own answer");
+            check(prometheusFleetText(polled).contains(
+                      QStringLiteral("peer=\"probe\",env=\"prod\","
+                                     "team=\"data\"")),
+                  "fleet server: the scrape carries the labels after the poll");
+        }
+
         check(!bodyOf(snapshot).contains("cmdline")
                   && !bodyOf(snapshot).contains("environ"),
               "fleet server: the served body carries no process detail");
@@ -8225,10 +8293,6 @@ int main(int argc, char *argv[]) {
                                                  QStringLiteral("env"),
                                                  QStringLiteral("owner")}),
                   "tags: required keys are trimmed and deduped");
-            fprintf(stderr, "DBG audit considered=%d offenders=%d team=%d owner=%d\\n",
-                    audit.considered, int(audit.offenders.size()),
-                    audit.missing.value(QStringLiteral("team")),
-                    audit.missing.value(QStringLiteral("owner")));
             check(audit.considered == 5 && audit.offenders.size() == 4
                       && audit.missing.value(QStringLiteral("team")) == 3
                       && audit.missing.value(QStringLiteral("owner")) == 2

@@ -84,6 +84,17 @@ int serveRun(int argc, char **argv) {
     fleetOptions.version = self.version;
     fleetOptions.platform = self.platform;
     fleetOptions.peers = config.fleet.peers;
+    // M159: labels travel with the poller here too. `serve` is the shape a
+    // display-less fleet member runs, and its scrape is usually the only
+    // place another machine reads these pairs - a HUD-only wiring left that
+    // mode unlabelled.
+    for (const QPair<QString, QString> &label : config.fleet.labels) {
+        if (label.first == QStringLiteral("self")) {
+            fleetOptions.selfLabelsRaw = label.second;
+        } else {
+            fleetOptions.labelLines.append(label);
+        }
+    }
     fleetOptions.pollMs = config.fleet.pollMs;
     fleetOptions.timeoutMs = config.fleet.timeoutMs;
 
