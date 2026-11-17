@@ -4,6 +4,7 @@
 #include "CloudProbe.h"
 #include "Config.h"
 #include "FleetSource.h"
+#include "FleetSshStatus.h"
 #include "FleetStatus.h"
 #include "FocusProviderFactory.h"
 #include "FocusedWindowProvider.h"
@@ -107,33 +108,81 @@ int serveRun(int argc, char **argv) {
                      &FleetRunner::start);
     QObject::connect(fleetThread, &QThread::finished, fleetRunner,
                      &QObject::deleteLater);
+    // M58b/M8b: the ssh:// entries of the same list are agentless peers. The
+    // HUD merged them with the HTTP poll in publishFleet; serve has no console,
+    // so the merge happens here - without it a headless member printed "no
+    // peers yet" for a list that named one.
+    auto httpStatus = std::make_shared<FleetStatus>();
+    auto sshPeers = std::make_shared<QList<FleetPeer>>();
+    const auto publishMerged = [server, httpStatus, sshPeers]() {
+        FleetStatus merged = *httpStatus;
+        QSet<QString> seen;
+        for (const FleetPeer &peer : merged.peers) {
+            seen.insert(peer.address);
+        }
+        for (const FleetPeer &peer : *sshPeers) {
+            if (!seen.contains(peer.address)) {
+                merged.peers.append(peer);
+            }
+        }
+        if (merged.lastPollMs < 0) {
+            for (const FleetPeer &peer : merged.peers) {
+                if (peer.lastAttemptMs > merged.lastPollMs) {
+                    merged.lastPollMs = peer.lastAttemptMs;
+                }
+            }
+        }
+        server->setFleetStatus(merged);
+        // One line per completed poll over the MERGED list: the HTTP runner
+        // alone would print "no peers yet" for an ssh-only fleet.
+        if (merged.polling) {
+            return;
+        }
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        std::printf("serve: %s\n",
+                    fleetSummaryText(merged, now).toUtf8().constData());
+        for (const FleetPeer &peer : merged.peers) {
+            std::printf("serve:   %-24s %s\n",
+                        (peer.name.isEmpty() ? peer.address : peer.name)
+                            .toUtf8().constData(),
+                        fleetPeerStateText(peer, now, merged.pollMs)
+                            .toUtf8().constData());
+        }
+        std::fflush(stdout);
+    };
     QObject::connect(fleetRunner, &FleetRunner::fleetUpdated, server,
-                     &MetricsServer::setFleetStatus);
-    QObject::connect(fleetRunner, &FleetRunner::fleetUpdated, &app,
-                     [](const FleetStatus &status) {
-                         // One line per completed poll: the runner also
-                         // announces the poll in progress, which would double
-                         // every line here.
-                         if (status.polling) {
-                             return;
-                         }
-                         const qint64 now =
-                             QDateTime::currentMSecsSinceEpoch();
-                         std::printf("serve: %s\n",
-                                     fleetSummaryText(status, now)
-                                         .toUtf8().constData());
-                         for (const FleetPeer &peer : status.peers) {
-                             std::printf("serve:   %-24s %s\n",
-                                         (peer.name.isEmpty() ? peer.address
-                                                              : peer.name)
-                                             .toUtf8().constData(),
-                                         fleetPeerStateText(peer, now,
-                                                            status.pollMs)
-                                             .toUtf8().constData());
-                         }
-                         std::fflush(stdout);
+                     [httpStatus, publishMerged](const FleetStatus &status) {
+                         *httpStatus = status;
+                         publishMerged();
                      });
-
+    const QStringList sshSpecs = fleetSshSpecs(config.fleet.peers);
+    if (config.fleet.enabled && !sshSpecs.isEmpty()) {
+        QThread *sshThread = new QThread;
+        auto *sshRunner = new FleetSshRunner;
+        sshRunner->moveToThread(sshThread);
+        FleetSshOptions sshOptions;
+        sshOptions.enabled = true;
+        sshOptions.peers = sshSpecs;
+        for (const QPair<QString, QString> &label : config.fleet.labels) {
+            if (label.first != QStringLiteral("self")) {
+                sshOptions.labelLines.append(label);
+            }
+        }
+        sshOptions.timeoutMs = qBound(2000, config.fleet.timeoutMs * 2, 30000);
+        sshOptions.pollMs = config.fleet.pollMs;
+        sshRunner->setOptions(sshOptions);
+        QObject::connect(sshThread, &QThread::started, sshRunner,
+                         &FleetSshRunner::start);
+        QObject::connect(sshThread, &QThread::finished, sshRunner,
+                         &QObject::deleteLater);
+        QObject::connect(sshRunner, &FleetSshRunner::peersReady, server,
+                         [sshPeers, publishMerged](
+                             const QList<FleetPeer> &peers) {
+                             *sshPeers = peers;
+                             publishMerged();
+                         });
+        sshThread->start();
+    }
     std::printf("serve: %s\n",
                 metricsEndpointText(endpoint).toUtf8().constData());
     if (config.fleet.share) {

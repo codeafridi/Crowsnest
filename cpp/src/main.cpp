@@ -1001,6 +1001,12 @@ int main(int argc, char *argv[]) {
         FleetSshOptions sshOptions;
         sshOptions.enabled = true;
         sshOptions.peers = fleetSshPeers;
+        // M159: the same labels.<name> lines the HTTP poller gets.
+        for (const QPair<QString, QString> &label : config.fleet.labels) {
+            if (label.first != QStringLiteral("self")) {
+                sshOptions.labelLines.append(label);
+            }
+        }
         // The connect timeout and the whole-call budget share one setting, so a
         // blackholed host cannot hold a slot for two minutes.
         sshOptions.timeoutMs = qBound(2000, config.fleet.timeoutMs * 2, 30000);

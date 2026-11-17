@@ -61,6 +61,10 @@ struct FleetSshOptions {
     bool enabled = false;
     // Only the ssh:// entries of [fleet] peers=.
     QStringList peers;
+    // M159: the same [fleet] labels.<name> lines the HTTP poller gets. An ssh
+    // peer is a peer for every purpose the page and the scrape have, so its
+    // labels must survive too.
+    QList<QPair<QString, QString>> labelLines;
     int timeoutMs = 5000;
     int pollMs = kFleetDefaultPollMs;
 };

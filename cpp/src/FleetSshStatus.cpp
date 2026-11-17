@@ -305,6 +305,7 @@ QList<FleetPeer> probeFleetSsh(const FleetSshOptions &options, qint64 nowMs) {
         peer.load1 = sample.load1;
         peers.append(peer);
     }
+    fleetApplyPeerLabels(peers, options.labelLines, nullptr);
     return peers;
 }
 
@@ -472,6 +473,7 @@ void FleetSshRunner::begin(qint64 nowMs) {
         job.startedMs = nowMs;
         m_jobs.append(job);
     }
+    fleetApplyPeerLabels(m_peers, m_options.labelLines, nullptr);
     emit peersReady(m_peers);
 }
 
@@ -498,6 +500,7 @@ void FleetSshRunner::poll(qint64 nowMs) {
         changed = true;
     }
     if (changed) {
+        fleetApplyPeerLabels(m_peers, m_options.labelLines, nullptr);
         emit peersReady(m_peers);
     }
 }

@@ -9184,6 +9184,9 @@ int main(int argc, char *argv[]) {
         FleetSshOptions options;
         options.enabled = true;
         options.peers = {QStringLiteral("db=ssh://ops@fake-box:2222")};
+        // M159: an ssh peer is a peer, so the authored labels ride it too.
+        options.labelLines = {{QStringLiteral("db"),
+                               QStringLiteral("env=prod team=data")}};
         options.timeoutMs = 5000;
         options.pollMs = 10000;
         const QList<FleetPeer> probed =
@@ -9197,7 +9200,10 @@ int main(int argc, char *argv[]) {
                   && probed.first().load1 > 0.49
                   && probed.first().uptimeSec == 3600
                   && probed.first().version.contains(
-                      QStringLiteral("agentless (ssh")),
+                      QStringLiteral("agentless (ssh"))
+                  && probed.first().labels.size() == 2
+                  && fleetLabelValue(probed.first(), QStringLiteral("env"))
+                         == QStringLiteral("prod"),
               "fleet ssh: a one-shot probe answers host readings");
         QFile logFile(argvLog);
         QByteArray logged;
