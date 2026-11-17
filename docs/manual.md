@@ -562,7 +562,16 @@ me?" without touching a control plane:
   inventory_timeout_ms = 25000  ; per listing; clamped 2000..120000
   rates                =        ; empty = ~/.config/crowsnest/cloud-rates.txt
   timeout_ms           = 450    ; the whole four-provider sweep; IMDS answers in ms
+  profiles             =        ; AWS: prod:work, staging:work-staging
   ```
+
+  **Several AWS accounts**: `profiles = label:profile[/region]` lists each
+  account through `--profile`, one after another, with the per-account sequence
+  above. Rows gain an `ACCOUNT` column, the summary carries one
+  `profile <label> (<account>) - N row(s)` line each, and this machine is matched
+  by instance id and then — inside its own account only — by name and private
+  address, because `web-01` exists in three accounts at once. A logged-out
+  profile names its own fix and the others still list.
 
   No CLI on `PATH`, no login, or an expired session prints the exact refusal
   and the fix (`aws configure`, `az login`, `gcloud auth login`,

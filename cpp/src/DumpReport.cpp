@@ -1452,6 +1452,85 @@ QString dumpReportJson(int maxProcs) {
                      qAbs(fleetSshCpuPercent(1000, 850, 2000, 1700) - 15.0) < 0.01
                          && fleetSshCpuPercent(0, 0, 1000, 500) < 0.0
                          && fleetSshCpuPercent(2000, 1700, 1000, 500) < 0.0);
+
+        // M165: the multi-account entries, their refusals, and the profile
+        // flag on every call the listing makes.
+        QString profileError;
+        const QList<CloudProfile> profiles = cloudParseProfiles(
+            {QStringLiteral("prod:work"), QStringLiteral("staging:work-staging/eu-west-1"),
+             QStringLiteral("sandbox:default")},
+            &profileError);
+        QString duplicateError;
+        cloudParseProfiles({QStringLiteral("a:one"), QStringLiteral("a:two")},
+                           &duplicateError);
+        QString sameProfileError;
+        cloudParseProfiles({QStringLiteral("a:one"), QStringLiteral("b:one")},
+                           &sameProfileError);
+        QString shapeError;
+        cloudParseProfiles({QStringLiteral("nocolon")}, &shapeError);
+        QString profileCapError;
+        cloudParseProfiles({QStringLiteral("a:1"), QStringLiteral("b:2"),
+                            QStringLiteral("c:3"), QStringLiteral("d:4"),
+                            QStringLiteral("e:5"), QStringLiteral("f:6"),
+                            QStringLiteral("g:7"), QStringLiteral("h:8"),
+                            QStringLiteral("i:9")},
+                           &profileCapError);
+        fleet.insert(
+            QStringLiteral("profilesOk"),
+            profileError.isEmpty() && profiles.size() == 3
+                && profiles.at(0).label == QStringLiteral("prod")
+                && profiles.at(0).profile == QStringLiteral("work")
+                && profiles.at(0).region.isEmpty()
+                && profiles.at(1).profile == QStringLiteral("work-staging")
+                && profiles.at(1).region == QStringLiteral("eu-west-1")
+                && cloudProfilesText(profiles)
+                       == QStringLiteral("prod (work), staging "
+                                         "(work-staging/eu-west-1), sandbox "
+                                         "(default)"));
+        fleet.insert(
+            QStringLiteral("profileRefusalsOk"),
+            duplicateError.contains(QStringLiteral("twice"))
+                && sameProfileError.contains(QStringLiteral("listed twice"))
+                && shapeError.contains(QStringLiteral("label:profile"))
+                && profileCapError.contains(QStringLiteral("at most 8")));
+        const QStringList identityArgs = cloudAwsIdentityArguments(
+            QStringLiteral("staging"));
+        fleet.insert(
+            QStringLiteral("profileArgsOk"),
+            identityArgs.contains(QStringLiteral("--profile"))
+                && identityArgs.contains(QStringLiteral("staging"))
+                && cloudAwsRegionArguments(QStringLiteral("staging"))
+                       .contains(QStringLiteral("staging"))
+                && cloudAwsDescribeRegionsArguments(QString(), QStringLiteral("p"))
+                       .contains(QStringLiteral("p"))
+                && cloudAwsDescribeInstancesArguments(QStringLiteral("eu-west-1"),
+                                                      QStringLiteral("p"))
+                       .contains(QStringLiteral("--profile"))
+                && cloudAwsDescribeImagesArguments(QStringLiteral("eu-west-1"),
+                                                   {QStringLiteral("ami-1")},
+                                                   QStringLiteral("p"))
+                       .contains(QStringLiteral("p"))
+                && cloudAwsDescribeInstanceTypesArguments(
+                       QStringLiteral("eu-west-1"), {QStringLiteral("t3.micro")},
+                       QStringLiteral("p"))
+                       .contains(QStringLiteral("p"))
+                && cloudAwsDescribeVolumesArguments(QStringLiteral("eu-west-1"),
+                                                    {QStringLiteral("vol-1")},
+                                                    QStringLiteral("p"))
+                       .contains(QStringLiteral("p"))
+                && !cloudAwsDescribeInstancesArguments(QStringLiteral("eu-west-1"))
+                        .contains(QStringLiteral("--profile")));
+        QJsonArray profileArray;
+        for (const CloudProfile &profile : dumpConfig.cloud.profiles) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("label"), profile.label);
+            entry.insert(QStringLiteral("profile"), profile.profile);
+            if (!profile.region.isEmpty()) {
+                entry.insert(QStringLiteral("region"), profile.region);
+            }
+            profileArray.append(entry);
+        }
+        fleet.insert(QStringLiteral("profiles"), profileArray);
         root.insert(QStringLiteral("fleet"), fleet);
     }
 

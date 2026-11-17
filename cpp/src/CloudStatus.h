@@ -52,6 +52,23 @@ struct CloudIdentity {
     QString note;
 };
 
+// M165: one AWS account to list, named by the user. `label` is what the page
+// shows (prod, staging, sandbox); `profile` is the `--profile` value the CLI
+// already knows, including a role-chain profile - Crowsnest passes the name and
+// the CLI does the assuming. `region` pins one region for that profile (a
+// staging account whose instances live in one place does not need 18 calls).
+struct CloudProfile {
+    QString label;
+    QString profile;
+    QString region;
+};
+
+// `label:profile` or `label:profile/region`. At most 8; labels and profiles
+// must be unique; a refusal names the entry and the rule.
+QList<CloudProfile> cloudParseProfiles(const QStringList &entries,
+                                       QString *error = nullptr);
+QString cloudProfilesText(const QList<CloudProfile> &profiles);
+
 struct CloudRate {
     QString key;
     double usdPerHour = 0.0;
@@ -124,6 +141,11 @@ struct CloudFleetInstance {
     QString rootDevice;         // /dev/xvda
     QString rootVolumeId;       // vol-...
     QString rootVolume;         // "8 GiB gp3"
+    // M165: which account this row came from. With `[cloud] profiles` the
+    // fleet is several accounts, and a row without its account cannot be
+    // acted on - the same instance id means nothing without one.
+    QString account;
+    QString accountLabel;
 };
 
 struct CloudFleetStatus {
@@ -152,6 +174,13 @@ struct CloudFleetStatus {
     QString regionError;
     QString regionListError;
     bool regionListRefused = false;
+    // M165: one line per profile ("prod (0183…) 12 row(s)"), in the order the
+    // user wrote them, and every account the listing touched.
+    QStringList profileSummaries;
+    QStringList accounts;
+    // One line per account that had something to say (a logged-out profile, a
+    // refused region list): the merged note names the account it belongs to.
+    QStringList notes;
     bool identityResolved = false;
     bool wholeAccount = false;
     QString identitySource;
@@ -164,6 +193,16 @@ struct CloudFleetStatus {
 // network action Crowsnest takes on its own instead of leaving it in docs. The
 // guarantee it renders is the whole point of the cloud path: link-local reads
 // plus the user's own CLI login, nothing stored, nothing changed.
+// M165: fold one finished account into the merged fleet. Rows are tagged with
+// the account and the label, regions merge without duplicates, failures are
+// prefixed with the profile (one account's refusal must not read as the
+// fleet's), and the per-profile summary line is appended.
+void fleetMergeAccount(CloudFleetStatus &merged, const CloudFleetStatus &account,
+                       const QString &label);
+// The merged fleet's one-line-per-profile summary is in
+// CloudFleetStatus::profileSummaries; this is the text a page renders.
+QString cloudProfilesScopeText(const QStringList &accounts, int regions);
+
 struct CloudFootprint {
     bool enabled = true;
     bool inventory = true;

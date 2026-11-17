@@ -5145,18 +5145,19 @@ QWidget *DashboardPanel::buildCloudView() {
 
     m_cloudFleet = new QTreeWidget(view);
     m_cloudFleet->setObjectName(QStringLiteral("ddCloudFleet"));
-    m_cloudFleet->setColumnCount(6);
+    m_cloudFleet->setColumnCount(7);
     m_cloudFleet->setHeaderLabels({QStringLiteral("NAME"),
                                    QStringLiteral("TYPE"),
                                    QStringLiteral("REGION"),
                                    QStringLiteral("STATE"),
                                    QStringLiteral("AGE"),
-                                   QStringLiteral("$/MO")});
+                                   QStringLiteral("$/MO"),
+                                   QStringLiteral("ACCOUNT")});
     m_cloudFleet->setRootIsDecorated(false);
     m_cloudFleet->setSelectionMode(QAbstractItemView::SingleSelection);
     m_cloudFleet->setFocusPolicy(Qt::ClickFocus);
     m_cloudFleet->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    for (int column = 1; column < 6; ++column) {
+    for (int column = 1; column < 7; ++column) {
         m_cloudFleet->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
@@ -9518,6 +9519,13 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             item->setText(
                 5, row.monthlyUsd >= 0.0 ? formatCostMoney(row.monthlyUsd)
                                          : QStringLiteral("--"));
+            // M165: which account the row came from. With one account the
+            // cell repeats what the identity card says; with several it is the
+            // only thing that makes the same name in two accounts readable.
+            const QString account = row.accountLabel.isEmpty()
+                                        ? row.account
+                                        : row.accountLabel;
+            item->setText(6, account.isEmpty() ? QStringLiteral("--") : account);
             item->setTextAlignment(4, Qt::AlignRight | Qt::AlignVCenter);
             item->setTextAlignment(5, Qt::AlignRight | Qt::AlignVCenter);
             if (row.isSelf) {

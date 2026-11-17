@@ -338,6 +338,9 @@ jobs:
           assert fleet["labelsFacetsOk"] is True, fleet
           assert fleet["labelsSelfOk"] is True, fleet
           assert fleet["labelsScrapeOk"] is True, fleet
+          assert fleet["profilesOk"] is True, fleet
+          assert fleet["profileRefusalsOk"] is True, fleet
+          assert fleet["profileArgsOk"] is True, fleet
           print("fleet ok: %d configured peer(s), agentless ssh + label "
                 "parsers ok, sharing %s"
                 % (fleet["peersConfigured"],
@@ -618,6 +621,9 @@ jobs:
           assert fleet["labelsFacetsOk"] is True, fleet
           assert fleet["labelsSelfOk"] is True, fleet
           assert fleet["labelsScrapeOk"] is True, fleet
+          assert fleet["profilesOk"] is True, fleet
+          assert fleet["profileRefusalsOk"] is True, fleet
+          assert fleet["profileArgsOk"] is True, fleet
           print("fleet ok: %d configured peer(s), agentless ssh + label "
                 "parsers ok, sharing %s"
                 % (fleet["peersConfigured"],

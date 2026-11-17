@@ -179,6 +179,39 @@ Three properties are deliberate:
 - **It is polled, never awaited.** The sampler publishes the last completed
   answer; no tick waits on a CLI.
 
+## Several AWS accounts (`[cloud] profiles`)
+
+An account is what `sts get-caller-identity` names, and a laptop is usually
+logged into one of them. A developer with prod/staging/sandbox accounts lists
+them:
+
+```ini
+[cloud]
+profiles = prod:work, staging:work-staging, sandbox:default/eu-west-1
+#           ^label  ^aws --profile    (optional region pin)
+```
+
+Each profile runs the same sequence with `--profile <name>`: `aws sts
+get-caller-identity`, `aws configure get region`, `aws ec2 describe-regions`,
+then one `describe-instances` per region. Profiles run **one after another** -
+three accounts at once is 3 x 18 `aws` spawns on one laptop - and the listing
+budget is per account, so a slow account cannot kill the others.
+
+- The fleet table gains an `ACCOUNT` column (the label you wrote) and the
+  summary carries one `profile <label> (<account id>) - N row(s)` line each.
+- **Self** is matched by instance id first; name and private address are
+  compared only inside the account that owns them, because `web-01` and
+  `10.0.0.5` exist in prod, staging and sandbox at the same time.
+- A logged-out profile (`Unable to locate credentials`, an expired `aws login`
+  or SSO session) reports its own line; the other accounts still list.
+- A pinned region (`sandbox:default/eu-west-1`) lists that account in that
+  region only, and the scope says so.
+- Cross-account access is the CLI's job: a profile with `role_arn` +
+  `source_profile` works because the CLI assumes it. Crowsnest passes the name,
+  never calls `assume-role` itself, and still only lists.
+- `[cloud] identity=` is the single-account fallback; with `profiles` set the
+  profiles win and the summary states that the override was ignored.
+
 ## Cost
 
 - **Rate file.** `~/.config/crowsnest/cloud-rates.txt` (override with

@@ -7840,6 +7840,283 @@ int main(int argc, char *argv[]) {
                   && !fleetNoteText(sshFleet).contains(
                       QStringLiteral("[metrics] token")),
               "fleet ssh: no token is demanded for an ssh-only fleet");
+
+        // M165: the AWS accounts a person lists, parsed and refused with a
+        // reason. A half-listed fleet is worse than a loud config error.
+        {
+            QString error;
+            const QList<CloudProfile> profiles = cloudParseProfiles(
+                {QStringLiteral("prod:work"),
+                 QStringLiteral("staging:work-staging/eu-west-1"),
+                 QStringLiteral(" sandbox : default ")}, &error);
+            check(error.isEmpty() && profiles.size() == 3
+                      && profiles.at(0).label == QStringLiteral("prod")
+                      && profiles.at(0).profile == QStringLiteral("work")
+                      && profiles.at(0).region.isEmpty()
+                      && profiles.at(1).region == QStringLiteral("eu-west-1")
+                      && profiles.at(2).label == QStringLiteral("sandbox")
+                      && profiles.at(2).profile == QStringLiteral("default")
+                      && cloudProfilesText(profiles)
+                             == QStringLiteral("prod (work), staging "
+                                               "(work-staging/eu-west-1), "
+                                               "sandbox (default)"),
+                  "profiles: label:profile[/region] parses");
+            check(cloudParseProfiles({}).isEmpty(),
+                  "profiles: no entries means the single-account path");
+            const auto refused = [](const QStringList &entries,
+                                    const QString &want) {
+                QString reason;
+                const auto parsed = cloudParseProfiles(entries, &reason);
+                return parsed.isEmpty() && reason.contains(want);
+            };
+            check(refused({QStringLiteral("nocolon")},
+                          QStringLiteral("label:profile")),
+                  "profiles: an entry without ':' is refused");
+            check(refused({QStringLiteral(":work")},
+                          QStringLiteral("label:profile")),
+                  "profiles: an empty label is refused");
+            check(refused({QStringLiteral("prod:")},
+                          QStringLiteral("label:profile")),
+                  "profiles: an empty profile is refused");
+            check(refused({QStringLiteral("prod:work"), QStringLiteral("PROD:x")},
+                          QStringLiteral("used twice")),
+                  "profiles: a label twice is refused, whichever case");
+            check(refused({QStringLiteral("a:one"), QStringLiteral("b:one")},
+                          QStringLiteral("listed twice")),
+                  "profiles: the same account under two names is refused");
+            check(refused({QStringLiteral("bad label:x")},
+                          QStringLiteral("not a label")),
+                  "profiles: a label with a space is refused");
+            check(refused({QStringLiteral("a:b/c/d")},
+                          QStringLiteral("not a region")),
+                  "profiles: a region with a slash is refused");
+            check(refused({QStringLiteral("a:1"), QStringLiteral("b:2"),
+                           QStringLiteral("c:3"), QStringLiteral("d:4"),
+                           QStringLiteral("e:5"), QStringLiteral("f:6"),
+                           QStringLiteral("g:7"), QStringLiteral("h:8"),
+                           QStringLiteral("i:9")},
+                          QStringLiteral("at most 8")),
+                  "profiles: the cap is named when it is hit");
+        }
+
+        // M165: every listing call carries the profile, and no call carries one
+        // when the user listed none.
+        {
+            check(cloudAwsIdentityArguments(QStringLiteral("staging"))
+                          .endsWith(QStringLiteral("staging"))
+                      && cloudAwsRegionArguments(QStringLiteral("staging"))
+                             .contains(QStringLiteral("staging"))
+                      && cloudAwsDescribeRegionsArguments(
+                             QStringLiteral("eu-west-1"),
+                             QStringLiteral("staging"))
+                             .contains(QStringLiteral("staging"))
+                      && cloudAwsDescribeInstancesArguments(
+                             QStringLiteral("eu-west-1"),
+                             QStringLiteral("staging"))
+                             .contains(QStringLiteral("staging")),
+                  "profiles: the account calls carry --profile");
+            check(!cloudAwsIdentityArguments().contains(
+                      QStringLiteral("--profile"))
+                      && !cloudAwsDescribeInstancesArguments(
+                              QStringLiteral("eu-west-1"))
+                              .contains(QStringLiteral("--profile")),
+                  "profiles: no profile means the CLI's own login, byte for byte");
+        }
+
+        // M165: folding two accounts keeps every row, tags it, merges regions
+        // without duplicates and prefixes one account's failure.
+        {
+            CloudFleetStatus merged;
+            CloudFleetStatus prod;
+            prod.provider = CloudProvider::Aws;
+            prod.cliName = QStringLiteral("aws");
+            prod.account = QStringLiteral("0183");
+            CloudFleetInstance web;
+            web.instanceId = QStringLiteral("i-0aaa");
+            web.name = QStringLiteral("web-01");
+            web.privateIp = QStringLiteral("10.0.0.5");
+            prod.rows = {web};
+            prod.regions = {QStringLiteral("eu-west-1")};
+            prod.available = true;
+            fleetMergeAccount(merged, prod, QStringLiteral("prod"));
+
+            CloudFleetStatus staging;
+            staging.provider = CloudProvider::Aws;
+            staging.account = QStringLiteral("1111");
+            CloudFleetInstance same;
+            same.instanceId = QStringLiteral("i-0bbb");
+            same.name = QStringLiteral("web-01");
+            same.privateIp = QStringLiteral("10.0.0.5");
+            staging.rows = {same};
+            staging.regions = {QStringLiteral("eu-west-1"),
+                               QStringLiteral("us-east-1")};
+            staging.regionFailures = {QStringLiteral("ap-south-1 - AccessDenied")};
+            staging.available = true;
+            fleetMergeAccount(merged, staging, QStringLiteral("staging"));
+
+            check(merged.rows.size() == 2
+                      && merged.rows.at(0).accountLabel == QStringLiteral("prod")
+                      && merged.rows.at(0).account == QStringLiteral("0183")
+                      && merged.rows.at(1).accountLabel == QStringLiteral("staging")
+                      && merged.rows.at(1).account == QStringLiteral("1111"),
+                  "profiles: merged rows keep their account and label");
+            check(merged.regions == QStringList({QStringLiteral("eu-west-1"),
+                                                 QStringLiteral("us-east-1")}),
+                  "profiles: regions merge without duplicates");
+            check(merged.regionFailures.size() == 1
+                      && merged.regionFailures.first().startsWith(
+                          QStringLiteral("staging: ")),
+                  "profiles: a failure names the account it belongs to");
+            check(merged.profileSummaries.size() == 2
+                      && merged.profileSummaries.at(0)
+                             == QStringLiteral("prod (0183) - 1 row(s)")
+                      && merged.accounts.size() == 2,
+                  "profiles: one summary line per account");
+
+            // Self: the same name and the same private address exist in both
+            // accounts. The account is what decides.
+            CloudFleetStatus both = merged;
+            CloudIdentity self;
+            self.provider = CloudProvider::Aws;
+            self.instanceName = QStringLiteral("web-01");
+            self.privateIp = QStringLiteral("10.0.0.5");
+            self.accountId = QStringLiteral("1111");
+            const int marked = fleetMarkSelf(both, self);
+            check(marked == 0
+                      && both.rows.at(0).account == QStringLiteral("1111")
+                      && both.rows.at(0).accountLabel
+                             == QStringLiteral("staging")
+                      && !both.rows.at(1).isSelf,
+                  "profiles: self is matched inside its own account");
+            // With no account known (a laptop, no IMDS) the first match wins:
+            // the old single-account behaviour, unchanged.
+            self.accountId.clear();
+            const int unaccounted = fleetMarkSelf(both, self);
+            check(unaccounted == 0 && both.rows.at(0).isSelf,
+                  "profiles: without an account the name match still works");
+
+#if !defined(Q_OS_WIN)
+        // M165 end to end: one fake `aws` that answers per `--profile`, driven
+        // through the REAL blocking probe. Two accounts, the same instance
+        // name and address in both, self matched inside the right one.
+        {
+            QTemporaryDir dir;
+            check(dir.isValid(), "profiles: a temp dir for the fake aws");
+            const QString binDir = dir.path();
+            const QString argvLog = binDir + QStringLiteral("/argv.log");
+            const QByteArray script = QByteArrayLiteral(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$CROWSNEST_FAKE_ARGV_LOG\"\n"
+                "case \"$*\" in\n"
+                "  *'sts get-caller-identity'*)\n"
+                "    case \"$*\" in *'--profile staging'*) echo "
+                "'{\"Account\":\"111111111111\"}'; ;; *) echo "
+                "'{\"Account\":\"222222222222\"}'; ;; esac ;;\n"
+                "  *'configure get region'*) echo eu-west-1 ;;\n"
+                "  *'describe-regions'*) echo "
+                "'{\"Regions\":[{\"RegionName\":\"eu-west-1\"}]}' ;;\n"
+                "  *'describe-instances'*)\n"
+                "    case \"$*\" in\n"
+                "      *'--profile staging'*) echo "
+                "'{\"Reservations\":[{\"Instances\":[{\"InstanceId\":"
+                "\"i-0bbb\",\"InstanceType\":\"t3.micro\",\"State\":"
+                "{\"Name\":\"running\"},\"Placement\":{\"AvailabilityZone\":"
+                "\"eu-west-1b\"},\"PrivateIpAddress\":\"10.0.0.5\",\"Tags\":"
+                "[{\"Key\":\"Name\",\"Value\":\"web-01\"}]}]}]}' ;;\n"
+                "      *) echo "
+                "'{\"Reservations\":[{\"Instances\":[{\"InstanceId\":"
+                "\"i-0aaa\",\"InstanceType\":\"c7g.2xlarge\",\"State\":"
+                "{\"Name\":\"running\"},\"Placement\":{\"AvailabilityZone\":"
+                "\"eu-west-1a\"},\"PrivateIpAddress\":\"10.0.0.5\",\"Tags\":"
+                "[{\"Key\":\"Name\",\"Value\":\"web-01\"}]}]}]}' ;;\n"
+                "    esac ;;\n"
+                "  *'describe-images'*) echo '[]' ;;\n"
+                "  *'describe-instance-types'*) echo '[]' ;;\n"
+                "  *'describe-volumes'*) echo '[]' ;;\n"
+                "  *) echo '{}' ;;\n"
+                "esac\n");
+            QFile fake(binDir + QStringLiteral("/aws"));
+            bool wrote = fake.open(QIODevice::WriteOnly | QIODevice::Truncate);
+            if (wrote) {
+                fake.write(script);
+                fake.close();
+                fake.setPermissions(QFile::ReadOwner | QFile::WriteOwner
+                                    | QFile::ExeOwner | QFile::ReadGroup
+                                    | QFile::ExeGroup | QFile::ReadOther
+                                    | QFile::ExeOther);
+            }
+            check(wrote, "profiles: the fake aws is written");
+            const QString oldPath = QString::fromLocal8Bit(qgetenv("PATH"));
+            qputenv("PATH", (binDir + QLatin1Char(':') + oldPath).toUtf8());
+            qputenv("CROWSNEST_FAKE_ARGV_LOG", argvLog.toUtf8());
+            QFile::remove(argvLog);
+
+            CloudIdentity identity;
+            identity.provider = CloudProvider::Aws;
+            identity.region = QStringLiteral("eu-west-1");
+            CloudFleetOptions options;
+            options.timeoutMs = 5000;
+            options.accountTimeoutMs = 20000;
+            options.regionConcurrency = 1;
+            options.profiles = cloudParseProfiles(
+                {QStringLiteral("prod:default"),
+                 QStringLiteral("staging:staging")});
+            const CloudFleetStatus status =
+                probeCloudFleet(identity, options,
+                                QDateTime::currentMSecsSinceEpoch());
+            qputenv("PATH", oldPath.toUtf8());
+            qunsetenv("CROWSNEST_FAKE_ARGV_LOG");
+
+            check(status.rows.size() == 2 && status.accounts.size() == 2
+                      && status.profileSummaries.size() == 2,
+                  "profiles: two accounts are listed in one pass");
+            const QStringList accounts = status.accounts;
+            check(accounts.contains(QStringLiteral("222222222222"))
+                      && accounts.contains(QStringLiteral("111111111111")),
+                  "profiles: each account is named by its own sts answer");
+            bool prodRow = false;
+            bool stagingRow = false;
+            for (const CloudFleetInstance &row : status.rows) {
+                if (row.accountLabel == QStringLiteral("prod")
+                    && row.account == QStringLiteral("222222222222")) {
+                    prodRow = true;
+                }
+                if (row.accountLabel == QStringLiteral("staging")
+                    && row.account == QStringLiteral("111111111111")) {
+                    stagingRow = true;
+                }
+            }
+            check(prodRow && stagingRow,
+                  "profiles: every row carries its account and label");
+
+            QFile log(argvLog);
+            QByteArray argv;
+            if (log.open(QIODevice::ReadOnly)) {
+                argv = log.readAll();
+            }
+            check(argv.contains("--profile default")
+                      && argv.contains("--profile staging")
+                      && argv.contains("describe-instances")
+                      && argv.contains("describe-regions"),
+                  "profiles: the CLI was asked for each account by name");
+
+            // Self inside the right account: the identity names the staging
+            // account, and both accounts have a web-01 at 10.0.0.5.
+            identity.accountId = QStringLiteral("111111111111");
+            // Same name and same private address in both accounts; the account
+            // is the only thing that can tell the twins apart.
+            identity.instanceName = QStringLiteral("web-01");
+            identity.privateIp = QStringLiteral("10.0.0.5");
+            CloudFleetStatus selfFleet = status;
+            const int self = fleetMarkSelf(selfFleet, identity);
+            check(self == 0
+                      && selfFleet.rows.at(0).accountLabel
+                             == QStringLiteral("staging")
+                      && !selfFleet.rows.at(1).isSelf,
+                  "profiles: self is the row in its own account, not a twin");
+        }
+#endif
+        }
         // A peer still waiting for its first answer is not an outage.
         {
             FleetStatus waitingFleet = sshFleet;

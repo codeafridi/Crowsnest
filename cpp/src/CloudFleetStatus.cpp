@@ -661,8 +661,22 @@ int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity) {
             }
         }
     }
+    // M165: with more than one account a name or a private address is not
+    // unique - `10.0.0.5` and `web-01` exist in prod, staging and sandbox at
+    // once. When both sides know their account, they must agree; when they do
+    // not (no IMDS, no profiles), the old behaviour stands for the one account
+    // that is listed.
+    const auto sameAccount = [&identity](const CloudFleetInstance &row) {
+        if (identity.accountId.isEmpty() || row.account.isEmpty()) {
+            return true;
+        }
+        return row.account.compare(identity.accountId, Qt::CaseInsensitive) == 0;
+    };
     if (index < 0 && !identity.instanceName.isEmpty()) {
         for (int i = 0; i < fleet.rows.size(); ++i) {
+            if (!sameAccount(fleet.rows[i])) {
+                continue;
+            }
             if (fleet.rows[i].name.compare(identity.instanceName,
                                            Qt::CaseInsensitive) == 0) {
                 index = i;
@@ -676,6 +690,9 @@ int fleetMarkSelf(CloudFleetStatus &fleet, const CloudIdentity &identity) {
     // reliable key left, so it is used rather than guessing from a hostname.
     if (index < 0 && !identity.privateIp.isEmpty()) {
         for (int i = 0; i < fleet.rows.size(); ++i) {
+            if (!sameAccount(fleet.rows[i])) {
+                continue;
+            }
             if (!fleet.rows[i].privateIp.isEmpty() &&
                 fleet.rows[i].privateIp.compare(identity.privateIp,
                                                 Qt::CaseInsensitive) == 0) {
@@ -970,6 +987,53 @@ QString fleetInstanceDetailText(const CloudFleetInstance &row) {
     return lines.join(QLatin1Char('\n'));
 }
 
+void fleetMergeAccount(CloudFleetStatus &merged, const CloudFleetStatus &account,
+                       const QString &label) {
+    const QString accountId = account.account;
+    for (CloudFleetInstance row : account.rows) {
+        row.account = accountId;
+        row.accountLabel = label;
+        merged.rows.append(row);
+    }
+    merged.dropped += account.dropped;
+    for (const QString &region : account.regions) {
+        if (!merged.regions.contains(region)) {
+            merged.regions.append(region);
+        }
+    }
+    for (const QString &failure : account.regionFailures) {
+        merged.regionFailures << QStringLiteral("%1: %2").arg(label, failure);
+    }
+    merged.profileSummaries
+        << QStringLiteral("%1 (%2) - %3 row(s)")
+               .arg(label,
+                    accountId.isEmpty() ? QStringLiteral("no account")
+                                        : accountId)
+               .arg(account.rows.size());
+    if (!accountId.isEmpty() && !merged.accounts.contains(accountId)) {
+        merged.accounts.append(accountId);
+    }
+    if (!account.note.isEmpty()) {
+        merged.notes << QStringLiteral("%1: %2").arg(label, account.note);
+    }
+    merged.available = merged.available || account.available;
+    merged.attempted = merged.attempted || account.attempted;
+    // The merged fleet is one provider's: every account came from the same
+    // CLI, and fleetMarkSelf/`fleetApplyRates` compare against it.
+    if (merged.provider == CloudProvider::None) {
+        merged.provider = account.provider;
+    }
+    if (merged.cliName.isEmpty()) {
+        merged.cliName = account.cliName;
+    }
+}
+
+QString cloudProfilesScopeText(const QStringList &accounts, int regions) {
+    return QStringLiteral("%1 account(s) over %2 region(s)")
+        .arg(accounts.size())
+        .arg(regions);
+}
+
 QString fleetSummaryText(const CloudFleetStatus &fleet) {
     if (!fleet.attempted && !fleet.note.isEmpty()) {
         return fleet.note;
@@ -1007,6 +1071,11 @@ QString fleetSummaryText(const CloudFleetStatus &fleet) {
         first += QStringLiteral("   %1").arg(fleet.scope);
     }
     QStringList lines{first};
+    // M165: one line per account, in the order the user listed them, so the
+    // summary answers "what did each profile report" without opening a row.
+    for (const QString &summary : fleet.profileSummaries) {
+        lines.append(QStringLiteral("profile   %1").arg(summary));
+    }
     if (!fleet.account.isEmpty()) {
         QString line = QStringLiteral("account   %1").arg(fleet.account);
         if (!fleet.identitySource.isEmpty()) {

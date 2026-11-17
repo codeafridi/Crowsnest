@@ -151,27 +151,47 @@ QStringList cloudFleetArguments(const CloudIdentity &identity) {
     return QStringList();
 }
 
-QStringList cloudAwsIdentityArguments() {
-    return {QStringLiteral("sts"), QStringLiteral("get-caller-identity"),
-            QStringLiteral("--output"), QStringLiteral("json")};
+namespace {
+
+// One place that appends the profile flag, so no caller can forget it and no
+// two callers can spell it differently. Empty means "the CLI's own login".
+void appendProfile(QStringList &args, const QString &profile) {
+    const QString name = profile.trimmed();
+    if (!name.isEmpty()) {
+        args << QStringLiteral("--profile") << name;
+    }
 }
 
-QStringList cloudAwsRegionArguments() {
-    return {QStringLiteral("configure"), QStringLiteral("get"),
-            QStringLiteral("region")};
+} // namespace
+
+QStringList cloudAwsIdentityArguments(const QString &profile) {
+    QStringList args{QStringLiteral("sts"), QStringLiteral("get-caller-identity"),
+                     QStringLiteral("--output"), QStringLiteral("json")};
+    appendProfile(args, profile);
+    return args;
 }
 
-QStringList cloudAwsDescribeRegionsArguments(const QString &homeRegion) {
+QStringList cloudAwsRegionArguments(const QString &profile) {
+    QStringList args{QStringLiteral("configure"), QStringLiteral("get"),
+                     QStringLiteral("region")};
+    appendProfile(args, profile);
+    return args;
+}
+
+QStringList cloudAwsDescribeRegionsArguments(const QString &homeRegion,
+                                             const QString &profile) {
     QStringList args;
     args << QStringLiteral("ec2") << QStringLiteral("describe-regions")
          << QStringLiteral("--output") << QStringLiteral("json");
     if (!homeRegion.isEmpty()) {
         args << QStringLiteral("--region") << homeRegion;
     }
+    appendProfile(args, profile);
     return args;
 }
 
-QStringList cloudAwsDescribeInstancesArguments(const QString &region) {
+QStringList cloudAwsDescribeInstancesArguments(const QString &region,
+                                               const QString &profile) {
     QStringList args;
     args << QStringLiteral("ec2") << QStringLiteral("describe-instances")
          << QStringLiteral("--output") << QStringLiteral("json");
@@ -185,11 +205,13 @@ QStringList cloudAwsDescribeInstancesArguments(const QString &region) {
     // handles this and the full document the same way.
     args << QStringLiteral("--query")
          << QStringLiteral("Reservations[].Instances[]");
+    appendProfile(args, profile);
     return args;
 }
 
 QStringList cloudAwsDescribeImagesArguments(const QString &region,
-                                            const QStringList &imageIds) {
+                                            const QStringList &imageIds,
+                                            const QString &profile) {
     QStringList args;
     args << QStringLiteral("ec2") << QStringLiteral("describe-images")
          << QStringLiteral("--output") << QStringLiteral("json");
@@ -202,11 +224,13 @@ QStringList cloudAwsDescribeImagesArguments(const QString &region,
     }
     args << QStringLiteral("--query")
          << QStringLiteral("Images[].{id:ImageId,name:Name,desc:Description}");
+    appendProfile(args, profile);
     return args;
 }
 
 QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
-                                                   const QStringList &types) {
+                                                   const QStringList &types,
+                                                   const QString &profile) {
     QStringList args;
     args << QStringLiteral("ec2") << QStringLiteral("describe-instance-types")
          << QStringLiteral("--output") << QStringLiteral("json");
@@ -221,11 +245,13 @@ QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
          << QStringLiteral("InstanceTypes[].{type:InstanceType,"
                            "vcpu:VCpuInfo.DefaultVCpus,"
                            "mem:MemoryInfo.SizeInMiB}");
+    appendProfile(args, profile);
     return args;
 }
 
 QStringList cloudAwsDescribeVolumesArguments(const QString &region,
-                                             const QStringList &volumeIds) {
+                                             const QStringList &volumeIds,
+                                             const QString &profile) {
     QStringList args;
     args << QStringLiteral("ec2") << QStringLiteral("describe-volumes")
          << QStringLiteral("--output") << QStringLiteral("json");
@@ -239,6 +265,7 @@ QStringList cloudAwsDescribeVolumesArguments(const QString &region,
     args << QStringLiteral("--query")
          << QStringLiteral("Volumes[].{id:VolumeId,size:Size,"
                            "type:VolumeType,iops:Iops}");
+    appendProfile(args, profile);
     return args;
 }
 
@@ -292,7 +319,9 @@ QString cloudFleetPlanText(const CloudIdentity &identity,
             .arg(options.timeoutMs);
     }
     QStringList steps;
-    if (options.identityAuto) {
+    // M165: a profile is an account, so the identity step runs per profile even
+    // without `identity=auto`, and the whole sequence runs once per account.
+    if (options.identityAuto || !options.profiles.isEmpty()) {
         steps << QStringLiteral("`aws sts get-caller-identity`")
               << QStringLiteral("`aws configure get region`");
     }
@@ -301,10 +330,15 @@ QString cloudFleetPlanText(const CloudIdentity &identity,
                             "a time)")
                  .arg(qBound(1, options.regionConcurrency,
                              kCloudFleetRegionConcurrencyMax));
-    return QStringLiteral(
-               "check now: %1 - read-only, no Cost Explorer, nothing started or "
-               "stopped")
-        .arg(steps.join(QStringLiteral(" + ")));
+    QString text = QStringLiteral(
+                       "check now: %1 - read-only, no Cost Explorer, nothing "
+                       "started or stopped")
+                       .arg(steps.join(QStringLiteral(" + ")));
+    if (!options.profiles.isEmpty()) {
+        text += QStringLiteral(" - the sequence runs once per profile: %1")
+                    .arg(cloudProfilesText(options.profiles));
+    }
+    return text;
 }
 
 QString cloudWindowsCmdLine(const QString &program,
@@ -394,13 +428,60 @@ public:
         return phase != FleetPhase::Idle && phase != FleetPhase::Done;
     }
 
+    // M165: one account at a time. begin() sets up the profile queue and hands
+    // the first account to beginAccount(); finishRun() starts the next one
+    // rather than finishing.
     void begin(const CloudIdentity &id, const CloudFleetOptions &opts,
                qint64 nowMs) {
+        profileQueue.clear();
+        profileIndex = 0;
+        mergedRows.clear();
+        mergedDropped = 0;
+        mergedRegions.clear();
+        mergedFailures.clear();
+        profileSummaries.clear();
+        accounts.clear();
+        mergedNotes.clear();
+        profileName.clear();
+        if (id.provider == CloudProvider::Aws && !opts.profiles.isEmpty()) {
+            profileQueue = opts.profiles;
+        }
+        CloudFleetOptions accountOpts = opts;
+        if (!profileQueue.isEmpty()) {
+            // Re-checking the regions that have rows is a single-account
+            // optimisation: with N accounts it becomes N x R calls per 10 s.
+            accountOpts.knownCadenceMs = 0;
+        }
+        beginAccount(accountIdentity(id, 0), accountOpts, nowMs, true);
+    }
+
+    // The identity for profile i: the provider and any pinned region come from
+    // the entry, the account is resolved by that profile's own `sts`. The
+    // instance identity (id/name/ip) belongs to this host, not to an account,
+    // and is kept so self matching still works.
+    CloudIdentity accountIdentity(const CloudIdentity &base, int index) {
+        CloudIdentity id = base;
+        if (profileQueue.isEmpty() || index < 0
+            || index >= profileQueue.size()) {
+            return id;
+        }
+        const CloudProfile &profile = profileQueue.at(index);
+        profileName = profile.profile;
+        id.accountId.clear();
+        if (!profile.region.isEmpty()) {
+            id.region = profile.region;
+        }
+        return id;
+    }
+
+    void beginAccount(const CloudIdentity &id, const CloudFleetOptions &opts,
+                      qint64 nowMs, bool seedPrevious) {
         abort();
         // Keep the last answer on screen while the new one is being read: a
         // 20 s job that blanks its own result looks like a collapse/reopen
         // losing the data (reported live).
-        const CloudFleetStatus previous = status;
+        const CloudFleetStatus previous = seedPrevious ? status
+                                                       : CloudFleetStatus{};
         identity = id;
         options = opts;
         rows.clear();
@@ -427,7 +508,9 @@ public:
         pendingTypes.clear();
         startedAtMs = nowMs;
         wallStartedAtMs = QDateTime::currentMSecsSinceEpoch();
-        lastAttemptMs = nowMs;
+        if (profileIndex == 0) {
+            lastAttemptMs = nowMs;
+        }
 
         status = CloudFleetStatus{};
         if (previous.provider == id.provider && previous.attempted) {
@@ -459,6 +542,10 @@ public:
         status.provider = id.provider;
         status.cliName = cloudFleetCli(id.provider);
         status.scope = cloudFleetScope(id);
+        if (!profileQueue.isEmpty()) {
+            status.scope = QStringLiteral("%1 - profile %2")
+                               .arg(status.scope, profileName);
+        }
         status.source = cloudFleetCommandText(id);
         status.account = id.accountId.isEmpty() ? status.account : id.accountId;
         status.homeRegion = homeRegion.isEmpty() ? status.homeRegion : homeRegion;
@@ -486,15 +573,20 @@ public:
             return;
         }
         const qint64 wallNow = QDateTime::currentMSecsSinceEpoch();
-        if (wallStartedAtMs > 0 &&
-            wallNow - wallStartedAtMs > qint64(options.accountTimeoutMs)) {
+        // M165: the budget is per account, so N accounts get N budgets - a
+        // three-account sweep that used one account's 90 s would kill the
+        // second account mid-listing.
+        const qint64 budget =
+            qint64(options.accountTimeoutMs) *
+            qMax<qint64>(1, profileQueue.size());
+        if (wallStartedAtMs > 0 && wallNow - wallStartedAtMs > budget) {
             const int queued = pendingRegions.size() + jobs.size();
             abort();
             finishRun(nowMs,
                       QStringLiteral(
                           "fleet: the whole-account listing did not finish "
                           "within %1 s%2 - the next probe tries again")
-                          .arg(qMax(10, options.accountTimeoutMs / 1000))
+                          .arg(qMax(10, budget / 1000))
                           .arg(queued > 0
                                    ? QStringLiteral(" (%1 region(s) still "
                                                     "queued)")
@@ -545,8 +637,14 @@ public:
             case FleetPhase::Done:
                 return;
             case FleetPhase::Identity: {
-                if (!options.identityAuto || !identity.accountId.isEmpty()) {
-                    phase = (!options.identityAuto || !homeRegion.isEmpty())
+                // M165: a profile is an account, so the account must be named
+                // for every profile whether or not `identity=auto` is set -
+                // otherwise the rows carry no account and self matching falls
+                // back to a name that exists in three accounts at once.
+                const bool needAccount =
+                    options.identityAuto || !profileQueue.isEmpty();
+                if (!needAccount || !identity.accountId.isEmpty()) {
+                    phase = (!needAccount || !homeRegion.isEmpty())
                                 ? FleetPhase::Regions
                                 : FleetPhase::HomeRegion;
                     continue;
@@ -555,13 +653,14 @@ public:
                     "fleet: naming the account (aws sts get-caller-identity) "
                     "...");
                 if (startJob(QStringLiteral("sts"), QString(),
-                             cloudAwsIdentityArguments(), nowMs)) {
+                             cloudAwsIdentityArguments(profileName), nowMs)) {
                     return;
                 }
                 continue;
             }
             case FleetPhase::HomeRegion: {
-                if (!options.identityAuto || !homeRegion.isEmpty()) {
+                if ((!options.identityAuto && profileQueue.isEmpty())
+                    || !homeRegion.isEmpty()) {
                     phase = FleetPhase::Regions;
                     continue;
                 }
@@ -569,7 +668,7 @@ public:
                     "fleet: reading the aws home region (aws configure get "
                     "region) ...");
                 if (startJob(QStringLiteral("region"), QString(),
-                             cloudAwsRegionArguments(), nowMs)) {
+                             cloudAwsRegionArguments(profileName), nowMs)) {
                     return;
                 }
                 continue;
@@ -586,7 +685,7 @@ public:
                         "describe-regions) ...");
                     regionsRequested = true;
                     if (startJob(QStringLiteral("regions"), QString(),
-                                 cloudAwsDescribeRegionsArguments(homeRegion),
+                                 cloudAwsDescribeRegionsArguments(homeRegion, profileName),
                                  nowMs)) {
                         return;
                     }
@@ -627,7 +726,7 @@ public:
                     const QString region = pendingRegions.takeFirst();
                     queriedRegions.append(region);
                     startJob(QStringLiteral("instances"), region,
-                             cloudAwsDescribeInstancesArguments(region), nowMs);
+                             cloudAwsDescribeInstancesArguments(region, profileName), nowMs);
                 }
                 if (jobs.isEmpty() && pendingRegions.isEmpty()) {
                     if (knownCheck) {
@@ -924,7 +1023,7 @@ public:
             const QStringList types = pendingTypes;
             pendingTypes.clear();
             startJob(QStringLiteral("types"), region,
-                     cloudAwsDescribeInstanceTypesArguments(region, types),
+                     cloudAwsDescribeInstanceTypesArguments(region, types, profileName),
                      nowMs);
         }
         const int limit = qBound(1, options.regionConcurrency,
@@ -936,7 +1035,7 @@ public:
                 continue;
             }
             startJob(QStringLiteral("images"), region,
-                     cloudAwsDescribeImagesArguments(region, ids), nowMs);
+                     cloudAwsDescribeImagesArguments(region, ids, profileName), nowMs);
         }
         while (jobs.size() < limit && !pendingVolumeRegions.isEmpty()) {
             const QString region = pendingVolumeRegions.takeFirst();
@@ -945,7 +1044,7 @@ public:
                 continue;
             }
             startJob(QStringLiteral("volumes"), region,
-                     cloudAwsDescribeVolumesArguments(region, ids), nowMs);
+                     cloudAwsDescribeVolumesArguments(region, ids, profileName), nowMs);
         }
     }
 
@@ -1099,22 +1198,76 @@ public:
             .arg(queriedRegions.size());
     }
 
-    void finishRun(qint64 nowMs, const QString &overrideNote) {
+    void finishRun(qint64 nowMs, const QString &overrideNote,
+                   bool force = false) {
         abort();
         applyDetails();
-        status.rows = rows;
-        status.dropped = dropped;
-        status.regions = queriedRegions;
-        status.regionFailures = regionFailures;
+        // M165: one account is done. Merge it (the pure helper tags rows with
+        // the account and the label) and start the next profile rather than
+        // finishing - the page shows one fleet, not N pages.
+        if (!profileQueue.isEmpty()) {
+            CloudFleetStatus accountStatus;
+            accountStatus.rows = rows;
+            accountStatus.dropped = dropped;
+            accountStatus.regions = queriedRegions;
+            accountStatus.regionFailures = regionFailures;
+            accountStatus.attempted = true;
+            accountStatus.available = true;
+            accountStatus.account = identity.accountId;
+            if (status.rows.isEmpty() && !regionError.isEmpty()) {
+                accountStatus.note = regionError;
+            }
+            CloudFleetStatus merged;
+            merged.rows = mergedRows;
+            merged.dropped = mergedDropped;
+            merged.regions = mergedRegions;
+            merged.regionFailures = mergedFailures;
+            merged.profileSummaries = profileSummaries;
+            merged.accounts = accounts;
+            merged.notes = mergedNotes;
+            fleetMergeAccount(merged, accountStatus,
+                              profileQueue.at(profileIndex).label);
+            mergedRows = merged.rows;
+            mergedDropped = merged.dropped;
+            mergedRegions = merged.regions;
+            mergedFailures = merged.regionFailures;
+            profileSummaries = merged.profileSummaries;
+            accounts = merged.accounts;
+            mergedNotes = merged.notes;
+            if (!force && profileIndex + 1 < profileQueue.size()) {
+                ++profileIndex;
+                beginAccount(accountIdentity(identity, profileIndex), options,
+                             nowMs, false);
+                return;
+            }
+        }
+
+        // The multi-account listing renders from the merged set; the single
+        // account path is unchanged.
+        const QStringList &allRegions =
+            profileQueue.isEmpty() ? queriedRegions : mergedRegions;
+        const QStringList &allFailures =
+            profileQueue.isEmpty() ? regionFailures : mergedFailures;
+        status.rows = profileQueue.isEmpty() ? rows : mergedRows;
+        status.dropped = profileQueue.isEmpty() ? dropped : mergedDropped;
+        status.regions = allRegions;
+        status.regionFailures = allFailures;
         status.regionError = regionError;
         status.regionListError = regionListError;
         status.homeRegion = homeRegion;
         status.account = identity.accountId;
         status.identityResolved = identityResolved;
-        status.wholeAccount = queriedRegions.size() > 1;
+        status.wholeAccount = allRegions.size() > 1;
         status.fetchedAtMs = nowMs;
-        if (identity.provider == CloudProvider::Aws &&
-            queriedRegions.size() > 1) {
+        if (!profileQueue.isEmpty()) {
+            status.account =
+                accounts.isEmpty() ? QString() : accounts.join(QStringLiteral(", "));
+            status.profileSummaries = profileSummaries;
+            status.accounts = accounts;
+            status.scope = cloudProfilesScopeText(accounts, allRegions.size());
+            status.notes = mergedNotes;
+        } else if (identity.provider == CloudProvider::Aws &&
+                   queriedRegions.size() > 1) {
             status.scope = QStringLiteral("all enabled regions (%1)")
                                .arg(queriedRegions.size());
         } else if (queriedRegions.size() == 1) {
@@ -1129,8 +1282,8 @@ public:
         if (status.rows.isEmpty()) {
             if (!overrideNote.isEmpty()) {
                 status.note = overrideNote;
-            } else if (!queriedRegions.isEmpty() &&
-                       regionFailures.size() == queriedRegions.size() &&
+            } else if (!allRegions.isEmpty() &&
+                       allFailures.size() == allRegions.size() &&
                        !regionError.isEmpty()) {
                 // Every region failed for the same reason (a logged-out CLI, a
                 // denied key): that reason is the answer, not "0 instances".
@@ -1138,7 +1291,7 @@ public:
             } else {
                 status.note = fleetEmptyText(status);
             }
-        } else if (!regionFailures.isEmpty() || status.regionListRefused) {
+        } else if (!allFailures.isEmpty() || status.regionListRefused) {
             status.note = overrideNote;
         }
         if (authFailure && status.rows.isEmpty() && !carryRows.isEmpty()) {
@@ -1151,6 +1304,18 @@ public:
     CloudFleetOptions options;
     CloudIdentity identity;
     CloudFleetStatus status;
+    // M165: the account queue and what has been merged out of the accounts
+    // already finished. One session, one status, N accounts in order.
+    QList<CloudProfile> profileQueue;
+    int profileIndex = 0;
+    QString profileName;
+    QList<CloudFleetInstance> mergedRows;
+    int mergedDropped = 0;
+    QStringList mergedRegions;
+    QStringList mergedFailures;
+    QStringList profileSummaries;
+    QStringList accounts;
+    QStringList mergedNotes;
     QString cliPath;
     QString homeRegion;
     QStringList pendingRegions;
@@ -1214,7 +1379,9 @@ CloudFleetStatus probeCloudFleet(const CloudIdentity &identity,
     }
     CloudFleetSession session;
     session.begin(identity, options, nowMs);
-    const qint64 budget = qBound(10000, options.accountTimeoutMs, 300000);
+    const qint64 budget =
+        qBound(10000, options.accountTimeoutMs, 300000) *
+        qMax<qint64>(1, options.profiles.size());
     const qint64 wallStart = QDateTime::currentMSecsSinceEpoch();
     while (session.active()) {
         if (QDateTime::currentMSecsSinceEpoch() - wallStart > budget) {
@@ -1223,7 +1390,8 @@ CloudFleetStatus probeCloudFleet(const CloudIdentity &identity,
                 nowMs,
                 QStringLiteral("fleet: the whole-account listing did not "
                                "finish within %1 s")
-                    .arg(budget / 1000));
+                    .arg(budget / 1000),
+                true);
             break;
         }
         bool waited = false;

@@ -7,6 +7,7 @@
 #include <QtGlobal>
 
 #include "AlertEngine.h"
+#include "CloudStatus.h"
 #include "AlertSilence.h"
 
 struct HealthConfig {
@@ -290,6 +291,10 @@ struct CloudConfig {
     // instance metadata service answers nothing (IMDS blocked by network
     // policy, or a local emulator). A real IMDS answer always wins.
     QString identityOverride;
+    // M165: the AWS accounts to list, as `label:profile[/region]` entries.
+    // Empty means the single-account path (IMDS or `identity=`). Profiles win
+    // over `identity=`; the page says so rather than dropping it silently.
+    QList<CloudProfile> profiles;
 };
 
 struct ThemeConfig {

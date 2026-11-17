@@ -2044,6 +2044,14 @@ int main(int argc, char *argv[]) {
     fleetOld.rawState = QStringLiteral("stopped");
     fleetOld.region = QStringLiteral("ap-south-1");
     fleetOld.launchedAtMs = fleetNow - 12 * 86400LL * 1000LL;
+    // M165: every row names the account it came from.
+    for (CloudFleetInstance *row : {&fleetSelf, &fleetWeb, &fleetOld}) {
+        row->accountLabel = QStringLiteral("prod");
+        row->account = QStringLiteral("018326344142");
+    }
+    fleetStory.profileSummaries = {
+        QStringLiteral("prod (018326344142) - 3 row(s)")};
+    fleetStory.accounts = {QStringLiteral("018326344142")};
     fleetStory.rows = {fleetSelf, fleetWeb, fleetOld};
     fleetApplyRates(
         fleetStory,
@@ -2175,7 +2183,7 @@ int main(int argc, char *argv[]) {
               && cloudDetail->text().contains(QStringLiteral("launched "))
               && cloudDetail->text().contains(QStringLiteral("UTC")),
           "cloud detail card states the provider launch time");
-    check(cloudFleet != nullptr && cloudFleet->columnCount() == 6
+    check(cloudFleet != nullptr && cloudFleet->columnCount() == 7
               && cloudFleet->topLevelItemCount() == 3
               && cloudFleet->topLevelItem(0)->text(0)
                      == QStringLiteral("* hud-box")
@@ -2188,9 +2196,19 @@ int main(int argc, char *argv[]) {
               && cloudFleet->topLevelItem(0)->text(4)
                      == QStringLiteral("3d 0h")
               && cloudFleet->topLevelItem(0)->text(5)
-                     == QStringLiteral("$213.16"),
+                     == QStringLiteral("$213.16")
+              && cloudFleet->topLevelItem(0)->text(6)
+                     == QStringLiteral("prod"),
           "cloud fleet table leads with this instance, its region, age and "
-          "monthly rate");
+          "monthly rate, and its account");
+    {
+        auto *cloudSummary =
+            hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetSummary"));
+        check(cloudSummary != nullptr
+                  && cloudSummary->text().contains(
+                      QStringLiteral("profile   prod (018326344142) - 3 row(s)")),
+              "cloud fleet summary names each profile and what it answered");
+    }
     check(cloudFleet->topLevelItem(1)->text(0) == QStringLiteral("web-2")
               && cloudFleet->topLevelItem(1)->text(2)
                      == QStringLiteral("us-west-2")

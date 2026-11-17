@@ -473,6 +473,16 @@ Config loadConfig(const QString &path, QString *errorMessage) {
                 .trimmed();
         config.cloud.identityOverride =
             settings.value(QStringLiteral("identity")).toString().trimmed();
+        // M165: the accounts to list. A bad entry refuses the whole list: half
+        // a fleet is worse than a loud config error, and this is read once at
+        // startup where the user can fix it.
+        QString profileError;
+        config.cloud.profiles = cloudParseProfiles(
+            readList(settings, QStringLiteral("profiles")), &profileError);
+        if (!profileError.isEmpty() && errorMessage != nullptr
+            && errorMessage->isEmpty()) {
+            *errorMessage = QStringLiteral("[cloud] profiles: %1").arg(profileError);
+        }
     }
     settings.endGroup();
 

@@ -601,6 +601,23 @@ DisplaySnapshot demoSnapshot(int tick) {
                                           "aws/t4g.small = 0.0208\n"
                                           "aws/m7g.large = 0.0816\n")),
         730.0);
+    // M165: the shot shows two accounts, so the ACCOUNT column and the
+    // per-profile summary lines have something to say.
+    for (CloudFleetInstance &row : fleet.rows) {
+        row.account = QStringLiteral("018326344142");
+        row.accountLabel =
+            row.region.startsWith(QStringLiteral("us-"))
+                ? QStringLiteral("staging")
+                : QStringLiteral("prod");
+        if (row.accountLabel == QStringLiteral("staging")) {
+            row.account = QStringLiteral("222222222222");
+        }
+    }
+    fleet.profileSummaries = {
+        QStringLiteral("prod (018326344142) - 3 row(s)"),
+        QStringLiteral("staging (222222222222) - 2 row(s)")};
+    fleet.accounts = {QStringLiteral("018326344142"),
+                      QStringLiteral("222222222222")};
     fleetResolveAges(fleet, shotNow);
     fleetMarkSelf(fleet, s.cloud.identity);
     s.cloud.fleet = fleet;

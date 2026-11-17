@@ -1084,6 +1084,9 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         // every 10 s: one aws call, so a change made in the AWS console shows
         // up in seconds instead of waiting for the next full sweep.
         fleetOptions.knownCadenceMs = m_cloudPageVisible ? 10000 : 0;
+        // M165: the accounts the user listed. A profile's own region pin is
+        // inside the entry; the targeted re-check disables itself per account.
+        fleetOptions.profiles = m_cloud.profiles;
         m_cloudFleet->setOptions(fleetOptions);
         if (m_cloudRefreshRequested) {
             m_cloudRefreshRequested = false;

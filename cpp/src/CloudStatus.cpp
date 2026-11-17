@@ -361,6 +361,119 @@ int cloudRateStaleDays(const QString &importDate, qint64 nowMs) {
     return int(std::min<qint64>(days, 100000));
 }
 
+namespace {
+
+bool profileTokenOk(const QString &text, bool allowDot) {
+    if (text.isEmpty() || text.size() > 32) {
+        return false;
+    }
+    for (const QChar c : text) {
+        const bool letter = (c >= QLatin1Char('a') && c <= QLatin1Char('z'))
+                            || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'));
+        const bool digit = c >= QLatin1Char('0') && c <= QLatin1Char('9');
+        if (!letter && !digit && c != QLatin1Char('-') && c != QLatin1Char('_')
+            && !(allowDot && c == QLatin1Char('.'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+QList<CloudProfile> cloudParseProfiles(const QStringList &entries,
+                                       QString *error) {
+    if (error != nullptr) {
+        error->clear();
+    }
+    QList<CloudProfile> profiles;
+    for (const QString &raw : entries) {
+        const QString entry = raw.trimmed();
+        if (entry.isEmpty()) {
+            continue;
+        }
+        if (profiles.size() >= 8) {
+            if (error != nullptr) {
+                *error = QStringLiteral("at most 8 profiles");
+            }
+            return {};
+        }
+        CloudProfile profile;
+        const int colon = entry.indexOf(QLatin1Char(':'));
+        if (colon <= 0 || colon == entry.size() - 1) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is label:profile (and an "
+                                        "optional /region)").arg(entry);
+            }
+            return {};
+        }
+        profile.label = entry.left(colon).trimmed();
+        QString rest = entry.mid(colon + 1).trimmed();
+        const int slash = rest.indexOf(QLatin1Char('/'));
+        if (slash >= 0) {
+            profile.region = rest.mid(slash + 1).trimmed();
+            rest = rest.left(slash).trimmed();
+        }
+        profile.profile = rest;
+        // The label is what the page shows, so dots are allowed; the profile
+        // and region are CLI identifiers, which use the tighter set.
+        if (!profileTokenOk(profile.label, true)) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is not a label (letters, "
+                                        "digits, dot, dash, underscore; at "
+                                        "most 32)").arg(profile.label);
+            }
+            return {};
+        }
+        if (!profileTokenOk(profile.profile, true)) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is not an aws profile name")
+                             .arg(profile.profile);
+            }
+            return {};
+        }
+        if (!profile.region.isEmpty() && !profileTokenOk(profile.region, false)) {
+            if (error != nullptr) {
+                *error = QStringLiteral("\"%1\" is not a region")
+                             .arg(profile.region);
+            }
+            return {};
+        }
+        for (const CloudProfile &seen : profiles) {
+            if (seen.label.compare(profile.label, Qt::CaseInsensitive) == 0) {
+                if (error != nullptr) {
+                    *error = QStringLiteral("label \"%1\" is used twice")
+                                 .arg(profile.label);
+                }
+                return {};
+            }
+            if (seen.profile == profile.profile) {
+                // The same account twice is one account with two names: the
+                // page would list every instance twice and count it twice.
+                if (error != nullptr) {
+                    *error = QStringLiteral("profile \"%1\" is listed twice")
+                                 .arg(profile.profile);
+                }
+                return {};
+            }
+        }
+        profiles.append(profile);
+    }
+    return profiles;
+}
+
+QString cloudProfilesText(const QList<CloudProfile> &profiles) {
+    QStringList parts;
+    for (const CloudProfile &profile : profiles) {
+        QString text = profile.label + QStringLiteral(" (") + profile.profile;
+        if (!profile.region.isEmpty()) {
+            text += QStringLiteral("/") + profile.region;
+        }
+        parts << text + QStringLiteral(")");
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
 QString cloudRateFileText(const CloudRateTable &table, qint64 nowMs) {
     QStringList lines;
     lines.append(QStringLiteral("# imported %1")

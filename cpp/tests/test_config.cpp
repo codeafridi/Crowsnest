@@ -733,6 +733,31 @@ int main(int argc, char *argv[]) {
         const Config c = loadConfig(path, &error);
         check(c.cloud.enabled, "cloud: the metadata probe defaults to on");
         check(c.cloud.timeoutMs == 450, "cloud: the default timeout is 450 ms");
+
+        // M165: the accounts to list load from the same group, and a bad entry
+        // is a config error (reported through the loader's error out).
+        const QString profilesPath = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "profiles = prod:work, staging:work-staging/eu-west-1\n"));
+        QString profileError;
+        const Config withProfiles = loadConfig(profilesPath, &profileError);
+        check(profileError.isEmpty() && withProfiles.cloud.profiles.size() == 2
+                  && withProfiles.cloud.profiles.at(0).label
+                         == QStringLiteral("prod")
+                  && withProfiles.cloud.profiles.at(1).region
+                         == QStringLiteral("eu-west-1"),
+              "cloud: profiles load with their region pins");
+
+        const QString badProfiles = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "profiles = nocolon\n"));
+        QString badError;
+        const Config refusedProfiles = loadConfig(badProfiles, &badError);
+        check(refusedProfiles.cloud.profiles.isEmpty()
+                  && badError.contains(QStringLiteral("[cloud] profiles")),
+              "cloud: a malformed profile entry refuses the list");
+        check(loadConfig(path, &error).cloud.profiles.isEmpty(),
+              "cloud: no profiles means the single-account path");
         check(c.cloud.ratesPath.isEmpty(),
               "cloud: no authored path means the default rate file");
         check(c.cloud.inventory,

@@ -64,6 +64,10 @@ struct CloudFleetOptions {
     // AWS: resolve the account and region through the CLI's own login when the
     // metadata service found nothing. Set by `[cloud] identity=auto`.
     bool identityAuto = false;
+    // M165: more than one account to list. Each profile runs the same sequence
+    // with `--profile`, one after the other: three accounts at once would be
+    // 3 x 18 `aws` spawns competing for the same laptop.
+    QList<CloudProfile> profiles;
     // describe-instances calls in flight at once: each `aws` spawn is ~1-2 s
     // of Python startup and a whole account is ~30 regions.
     int regionConcurrency = 4;
@@ -87,21 +91,29 @@ QString cloudFleetScope(const CloudIdentity &identity);
 QString cloudFleetCommandText(const CloudIdentity &identity);
 
 // The three AWS calls the whole-account listing makes, one argument list each.
-QStringList cloudAwsIdentityArguments();
-QStringList cloudAwsRegionArguments();
-QStringList cloudAwsDescribeRegionsArguments(const QString &homeRegion);
-QStringList cloudAwsDescribeInstancesArguments(const QString &region);
+// `profile` empty means "whatever the CLI's default login is" - every existing
+// caller and fixture. A named profile is appended as `--profile <name>`, which
+// the CLI resolves through its own credential chain (including role_arn).
+QStringList cloudAwsIdentityArguments(const QString &profile = QString());
+QStringList cloudAwsRegionArguments(const QString &profile = QString());
+QStringList cloudAwsDescribeRegionsArguments(const QString &homeRegion,
+                                             const QString &profile = QString());
+QStringList cloudAwsDescribeInstancesArguments(const QString &region,
+                                               const QString &profile = QString());
 // One call per region after the listing: the AMI's own description is the only
 // place the distribution is named ("Amazon Linux 2023 AMI ...", "Ubuntu 22.04
 // LTS ..."). Types are global, so that one runs once per listing.
 QStringList cloudAwsDescribeImagesArguments(const QString &region,
-                                            const QStringList &imageIds);
+                                            const QStringList &imageIds,
+                                            const QString &profile = QString());
 QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
-                                                   const QStringList &types);
+                                                   const QStringList &types,
+                                                   const QString &profile = QString());
 // The root disk is the one spec the console shows beside the instance that the
 // describe-instances answer does not carry (it has the id only).
 QStringList cloudAwsDescribeVolumesArguments(const QString &region,
-                                             const QStringList &volumeIds);
+                                             const QStringList &volumeIds,
+                                             const QString &profile = QString());
 
 // What "CHECK NOW" runs, in words: every command, how many times, and the two
 // promises (read only; Cost Explorer is not called).
