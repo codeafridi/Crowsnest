@@ -862,6 +862,9 @@ QString dumpReportJson(int maxProcs) {
         // call only happens where a provider was identified, and the parsers
         // plus the arithmetic carry self-tests every runner can assert.
         CloudSpendOptions spendOptions;
+        // The switch is the user's: a disabled spend path must not issue the
+        // billable Cost Explorer call from --dump either.
+        spendOptions.enabled = dumpConfig.cloud.spend;
         spendOptions.timeoutMs = 12000;
         spendOptions.costGroup = dumpConfig.cloud.costGroup;
         spendOptions.costGroupByAccount = !dumpConfig.cloud.profiles.isEmpty();
