@@ -120,7 +120,7 @@ History, Timeline, Cost, Cloud, Fleet, Team, Settings.
 <tr><td><b>Hardware</b></td><td>GPU utilization, VRAM and per process GPU use; temperatures, fans, power, battery</td><td>yes</td><td>partial</td><td>partial</td></tr>
 <tr><td><b>Security</b></td><td>Sandbox exposure and hardening findings, file integrity, log based threats</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>History and timeline</b></td><td>A bounded ring you can rewind, one stream of every change, CSV and JSON export</td><td>yes</td><td>yes</td><td>yes</td></tr>
-<tr><td><b>Cost and cloud</b></td><td>Cluster cost model and right sizing, cloud identity, the whole account with per instance detail (one or several AWS profiles, each row naming its account, desired vs actual Auto Scaling capacity, a required-tag audit), billed spend</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><b>Cost and cloud</b></td><td>Cluster cost model and right sizing, cloud identity, the whole account with per instance detail (one or several AWS profiles, each row naming its account, desired vs actual Auto Scaling capacity, a required-tag audit), billed spend with the per-team split</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Fleet</b></td><td>Several machines polling each other, or agentless over ssh, with <code>role</code>/<code>env</code>/<code>team</code> labels you author, a filter that scopes the tiles, and the same labels on the scrape</td><td>yes</td><td>yes</td><td>yes</td></tr>
 <tr><td><b>Team</b></td><td>The relay's fleet and incident queue, read with the machine's own token, with acknowledge, close and silence from the HUD</td><td>yes</td><td>yes</td><td>yes</td></tr>
 </table>

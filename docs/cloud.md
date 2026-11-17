@@ -249,6 +249,31 @@ return untagged resources", so an audit built on it could only see the
 instances that already pass. The ground truth is `describe-instances`, which
 lists everything and carries the tags.
 
+## Spend per team (`[cloud] cost_group`)
+
+The month-to-date total answers "how much"; the next question is "on what". One
+more Cost Explorer call splits the same window by a tag:
+
+```ini
+[cloud]
+cost_group = team     ; any tag key the account uses; empty = no grouped call
+```
+
+The `BY TAG` table shows each value with its share of the window and, when
+`[cloud] profiles` lists several accounts, the account it belongs to (the
+second group is `LINKED_ACCOUNT`, so `payments` in prod and `payments` in
+staging stay two numbers). Cost Explorer allows at most two groups per call.
+
+- Untagged spend arrives under **the provider's own label** (for example
+  `No team`) and is rendered verbatim, never renamed. It is the money version
+  of the tag audit: the two agree because both read the same tag.
+- The per-instance `$/MO` stays an **estimate** (rate x uptime); this table is
+  **billed**. The two are never blended.
+- Cost Explorer data lags up to a day, and the grouped query is **billable**
+  like the other two - which is why the split is opt in rather than on by
+  default. A failed grouped call costs the split, never the bill: the card
+  names the reason and the month-to-date above it is unaffected.
+
 ## Cost
 
 - **Rate file.** `~/.config/crowsnest/cloud-rates.txt` (override with

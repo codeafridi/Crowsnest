@@ -150,6 +150,125 @@ CloudSpendStatus parseAwsCostAndUsage(const QByteArray &json, QString *error) {
     return spend;
 }
 
+QList<CloudSpendGroup> parseAwsCostGroups(const QByteArray &json,
+                                          bool byAccount, QString *error) {
+    QList<CloudSpendGroup> groups;
+    if (error != nullptr) {
+        error->clear();
+    }
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        if (error != nullptr) {
+            *error = QStringLiteral("the grouped cost payload is not JSON (%1)")
+                         .arg(parseError.errorString());
+        }
+        return groups;
+    }
+    const QJsonArray results =
+        doc.object().value(QStringLiteral("ResultsByTime")).toArray();
+    if (results.isEmpty()) {
+        if (error != nullptr) {
+            *error = QStringLiteral(
+                "the grouped cost payload carries no ResultsByTime");
+        }
+        return groups;
+    }
+    for (const QJsonValue &entry : results) {
+        const QJsonArray dayGroups =
+            entry.toObject().value(QStringLiteral("Groups")).toArray();
+        for (const QJsonValue &groupValue : dayGroups) {
+            const QJsonObject group = groupValue.toObject();
+            const QJsonArray keys =
+                group.value(QStringLiteral("Keys")).toArray();
+            if (keys.isEmpty()) {
+                continue;
+            }
+            const QString name = keys.at(0).toString();
+            const QString account =
+                byAccount && keys.size() > 1 ? keys.at(1).toString() : QString();
+            const double amount = jsonAmount(
+                group.value(QStringLiteral("Metrics")).toObject(), kUnblended);
+            if (amount < 0.0) {
+                continue;
+            }
+            bool found = false;
+            for (CloudSpendGroup &seen : groups) {
+                if (seen.account == account
+                    && seen.name.compare(name, Qt::CaseSensitive) == 0) {
+                    seen.usd += amount;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                CloudSpendGroup row;
+                row.name = name;
+                row.account = account;
+                row.usd = amount;
+                groups.append(row);
+            }
+        }
+    }
+    cloudSpendGroupTotals(groups);
+    return groups;
+}
+
+void cloudSpendGroupTotals(QList<CloudSpendGroup> &groups, int cap) {
+    double total = 0.0;
+    for (const CloudSpendGroup &group : groups) {
+        if (group.usd > 0.0) {
+            total += group.usd;
+        }
+    }
+    for (CloudSpendGroup &group : groups) {
+        group.share = total > 0.0 ? group.usd / total * 100.0 : -1.0;
+    }
+    std::sort(groups.begin(), groups.end(),
+              [](const CloudSpendGroup &a, const CloudSpendGroup &b) {
+                  return a.usd > b.usd;
+              });
+    if (cap > 0 && groups.size() > cap) {
+        // The tail is folded into one row instead of dropped silently: a split
+        // whose shares do not add up reads as a bug.
+        CloudSpendGroup rest;
+        rest.name = QStringLiteral("(%1 more)").arg(groups.size() - cap);
+        rest.usd = 0.0;
+        rest.share = 0.0;
+        for (int i = cap; i < groups.size(); ++i) {
+            rest.usd += qMax(0.0, groups.at(i).usd);
+            rest.share += qMax(0.0, groups.at(i).share);
+        }
+        groups = groups.mid(0, cap);
+        groups.append(rest);
+    }
+}
+
+QString cloudSpendGroupsText(const QList<CloudSpendGroup> &groups,
+                             const QString &tagKey, bool byAccount) {
+    if (groups.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("%1 value(s) of tag %2%3")
+        .arg(groups.size())
+        .arg(tagKey.isEmpty() ? QStringLiteral("(none)")
+                              : tagKey)
+        .arg(byAccount ? QStringLiteral(", split by account") : QString());
+}
+
+QString cloudSpendGroupsNote(const QString &tagKey) {
+    if (tagKey.isEmpty()) {
+        return QStringLiteral(
+            "spend by tag is off - set [cloud] cost_group = team to split the "
+            "bill by that tag (one more Cost Explorer call, billable)");
+    }
+    return QStringLiteral(
+        "spend by tag %1: untagged usage appears under the provider's own "
+        "label (for example \"No %1\"), Cost Explorer data lags up to 24 h, "
+        "and this query is billable like the other")
+        .arg(tagKey);
+}
+
 CloudSpendStatus parseAwsCostForecast(const QByteArray &json, QString *error) {
     CloudSpendStatus spend;
     spend.provider = CloudProvider::Aws;

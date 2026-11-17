@@ -299,6 +299,8 @@ struct CloudConfig {
     // call per region) and audit which required tags each instance carries.
     bool asg = true;
     QStringList requiredTags;
+    // M167: split the bill by this tag (empty = off, one billable call fewer).
+    QString costGroup;
 };
 
 struct ThemeConfig {

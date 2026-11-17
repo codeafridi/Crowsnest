@@ -685,6 +685,19 @@ DisplaySnapshot demoSnapshot(int tick) {
         CloudSpendService{QStringLiteral("Amazon Simple Storage Service"), 51.70},
         CloudSpendService{QStringLiteral("Amazon CloudWatch"), 20.00},
     };
+    // M167: the split by team (the untagged row keeps the provider's label).
+    s.cloud.spend.costGroup = QStringLiteral("team");
+    s.cloud.spend.costGroupByAccount = true;
+    s.cloud.spend.groups = {
+        CloudSpendGroup{QStringLiteral("payments"),
+                        QStringLiteral("123456789012"), 214.60, 47.5},
+        CloudSpendGroup{QStringLiteral("platform"),
+                        QStringLiteral("123456789012"), 132.20, 29.2},
+        CloudSpendGroup{QStringLiteral("data"),
+                        QStringLiteral("222222222222"), 63.60, 14.1},
+        CloudSpendGroup{QStringLiteral("No team"),
+                        QStringLiteral("123456789012"), 41.70, 9.2},
+    };
     for (int day = 1; day <= 28; ++day) {
         s.cloud.spend.days.append(
             CloudSpendDay{QStringLiteral("2026-10-%1").arg(day, 2, 10,

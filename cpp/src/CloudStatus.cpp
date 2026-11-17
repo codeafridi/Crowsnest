@@ -1019,7 +1019,13 @@ QString cloudFootprintText(const CloudFootprint &footprint) {
                 .arg(footprint.spendCommand.isEmpty()
                          ? QStringLiteral("cost query")
                          : footprint.spendCommand)
-                .arg(footprint.spendTimeoutMs));
+                .arg(footprint.spendTimeoutMs)
+            + (footprint.spendGroup.isEmpty()
+                   ? QString()
+                   : QStringLiteral(" - plus one grouped query for tag %1, "
+                                    "also billable ([cloud] cost_group= clears "
+                                    "it)")
+                         .arg(footprint.spendGroup)));
     } else {
         lines.append(QStringLiteral(
             "spend      off ([cloud] spend=false) - no cost query is issued"));

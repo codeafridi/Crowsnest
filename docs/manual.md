@@ -565,6 +565,7 @@ me?" without touching a control plane:
   profiles             =        ; AWS: prod:work, staging:work-staging
   asg                  = true   ; what the orchestrator wanted, per region
   required_tags        =        ; tag audit: team, env (case-sensitive)
+  cost_group           =        ; split the bill by this tag (one billable call)
   ```
 
   **Several AWS accounts**: `profiles = label:profile[/region]` lists each

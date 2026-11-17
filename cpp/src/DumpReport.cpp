@@ -863,6 +863,8 @@ QString dumpReportJson(int maxProcs) {
         // plus the arithmetic carry self-tests every runner can assert.
         CloudSpendOptions spendOptions;
         spendOptions.timeoutMs = 12000;
+        spendOptions.costGroup = dumpConfig.cloud.costGroup;
+        spendOptions.costGroupByAccount = !dumpConfig.cloud.profiles.isEmpty();
         const CloudSpendStatus spend =
             probeCloudSpend(identity, spendOptions);
         QJsonObject spendJson;
@@ -879,6 +881,8 @@ QString dumpReportJson(int maxProcs) {
         spendJson.insert(QStringLiteral("forecastUsd"), spend.forecastUsd);
         spendJson.insert(QStringLiteral("services"), spend.services.size());
         spendJson.insert(QStringLiteral("days"), spend.days.size());
+        spendJson.insert(QStringLiteral("costGroup"), spend.costGroup);
+        spendJson.insert(QStringLiteral("groups"), spend.groups.size());
 
         const QByteArray spendFixture = QByteArrayLiteral(
             "{\"ResultsByTime\":["
@@ -941,6 +945,35 @@ QString dumpReportJson(int maxProcs) {
                        == QStringLiteral("2023-11-15")
                 && cloudSpendForecastEnd(1'700'000'000'000LL)
                        == QStringLiteral("2023-12-01"));
+        // M167: the grouped answer, folded across days, split by account and
+        // sorted with shares. Untagged spend keeps the provider's own label.
+        const QList<CloudSpendGroup> dumpGroups = parseAwsCostGroups(
+            QByteArrayLiteral(
+                "{\"ResultsByTime\":["
+                "{\"Groups\":["
+                "{\"Keys\":[\"payments\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":{\"Amount\":\"12.0\",\"Unit\":\"USD\"}}},"
+                "{\"Keys\":[\"No team\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}},"
+                "{\"Keys\":[\"payments\",\"2222\"],"
+                "\"Metrics\":{\"UnblendedCost\":{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}}]},"
+                "{\"Groups\":["
+                "{\"Keys\":[\"payments\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}}]}]}"),
+            true, &spendError);
+        spendJson.insert(
+            QStringLiteral("spendGroupOk"),
+            dumpGroups.size() == 3
+                && dumpGroups.at(0).name == QStringLiteral("payments")
+                && dumpGroups.at(0).account == QStringLiteral("1111")
+                && qAbs(dumpGroups.at(0).usd - 16.0) < 1e-9
+                && qAbs(dumpGroups.at(0).share - 66.6666666) < 1e-6
+                && dumpGroups.at(1).name == QStringLiteral("No team")
+                && qAbs(dumpGroups.at(2).usd - 4.0) < 1e-9
+                && cloudSpendGroupsText(dumpGroups, QStringLiteral("team"), true)
+                       .contains(QStringLiteral("split by account"))
+                && cloudSpendGroupsNote(QString())
+                       .contains(QStringLiteral("off")));
         CloudIdentity gcpOnly;
         gcpOnly.provider = CloudProvider::Gcp;
         spendJson.insert(

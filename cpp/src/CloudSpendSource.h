@@ -19,16 +19,27 @@ struct CloudSpendOptions {
     int timeoutMs = 30000;
     // See CloudFleetOptions::cliPath.
     QString cliPath;
+    // M167: split the bill by this tag key (for example `team`). Empty means
+    // no grouped call at all - it is billable like the rest, so it is opt in.
+    QString costGroup;
+    // A second group by LINKED_ACCOUNT, set when several AWS profiles are
+    // listed: "payments in prod" and "payments in staging" are different
+    // numbers and must not fold together.
+    bool costGroupByAccount = false;
 };
 
 // The argv each provider's client gets. AWS runs `ce get-cost-and-usage` then
 // `ce get-cost-forecast`; Azure runs `consumption usage list`; GCP and OCI
 // have no CLI cost API and are gated before anything is spawned.
 QStringList cloudSpendArguments(const CloudIdentity &identity, int step,
-                                qint64 nowMs);
+                                qint64 nowMs,
+                                const QString &costGroup = QString(),
+                                bool byAccount = false);
 QString cloudSpendCommandText(const CloudIdentity &identity);
 QString cloudSpendScope(const CloudIdentity &identity);
-int cloudSpendStepCount(const CloudIdentity &identity);
+// AWS: cost+usage, forecast, and (when a cost group is configured) the
+// grouped query. Azure: one call.
+int cloudSpendStepCount(const CloudIdentity &identity, bool grouped = false);
 
 // Synchronous one-shot used by `--dump` and the tests.
 CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,

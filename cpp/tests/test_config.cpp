@@ -786,6 +786,23 @@ int main(int argc, char *argv[]) {
         check(capped.cloud.requiredTags.size() == 8
                   && tagError.contains(QStringLiteral("at most 8 keys")),
               "cloud: the tag list is capped with the reason named");
+
+        // M167: the per-team split is opt in (the grouped query is billable).
+        const QString groupPath = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "cost_group = team\n"));
+        check(loadConfig(groupPath, nullptr).cloud.costGroup
+                  == QStringLiteral("team"),
+              "cloud: cost_group loads the tag key to split the bill by");
+        const QString badGroup = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "cost_group = team,env\n"));
+        QString groupError;
+        const Config refusedGroup = loadConfig(badGroup, &groupError);
+        check(refusedGroup.cloud.costGroup.isEmpty()
+                  && groupError.contains(QStringLiteral("[cloud] cost_group")),
+              "cloud: a cost_group with a comma is refused, not interpolated "
+              "into the CLI argument");
         check(c.cloud.ratesPath.isEmpty(),
               "cloud: no authored path means the default rate file");
         check(c.cloud.inventory,

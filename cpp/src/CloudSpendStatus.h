@@ -70,6 +70,17 @@ struct CloudSpendDay {
     double usd = -1.0;
 };
 
+// One row of the per-team (per tag value) split (M167): "payments" as Cost
+// Explorer groups it, optionally keyed by account when LINKED_ACCOUNT is the
+// second group. Untagged spend comes back as the provider's own label (for
+// example "No team"), which is rendered verbatim rather than renamed.
+struct CloudSpendGroup {
+    QString name;
+    QString account;
+    double usd = -1.0;
+    double share = -1.0;
+};
+
 struct CloudSpendStatus {
     bool attempted = false;
     bool available = false;
@@ -93,6 +104,13 @@ struct CloudSpendStatus {
     bool truncated = false;
     QList<CloudSpendService> services;
     QList<CloudSpendDay> days;
+    // M167: the per-team split, from a second grouped query. `costGroup` is
+    // the tag key it was asked for; empty means the page states the split is
+    // off (one billable call fewer).
+    QString costGroup;
+    bool costGroupByAccount = false;
+    QList<CloudSpendGroup> groups;
+    QString groupsError;
 };
 
 // Cost burn rate: what the account is spending per hour right now, what it
@@ -122,6 +140,16 @@ QString cloudBurnText(const CloudBurnRate &burn);
 
 // --- parsers (pure) ------------------------------------------------------
 CloudSpendStatus parseAwsCostAndUsage(const QByteArray &json, QString *error);
+// M167: the grouped answer (`--group-by Type=TAG,Key=<key>` and optionally a
+// second `LINKED_ACCOUNT` group). Folded across days, then sorted desc with
+// shares over the folded total.
+QList<CloudSpendGroup> parseAwsCostGroups(const QByteArray &json,
+                                          bool byAccount,
+                                          QString *error = nullptr);
+void cloudSpendGroupTotals(QList<CloudSpendGroup> &groups, int cap = 12);
+QString cloudSpendGroupsText(const QList<CloudSpendGroup> &groups,
+                             const QString &tagKey, bool byAccount);
+QString cloudSpendGroupsNote(const QString &tagKey);
 CloudSpendStatus parseAwsCostForecast(const QByteArray &json, QString *error);
 CloudSpendStatus parseAzureUsageList(const QByteArray &json, QString *error);
 

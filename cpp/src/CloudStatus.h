@@ -263,6 +263,9 @@ struct CloudFootprint {
     // M85: the billed-spend query (provider cost API).
     bool spend = true;
     int spendTimeoutMs = 30000;
+    // M167: the tag the bill is split by, empty when the split is off. The
+    // card counts the extra billable call, which is why the split is opt in.
+    QString spendGroup;
     QString spendCommand;
     QString cliName;
     // Absolute path the resolver chose for the CLI, so "not on PATH" and "ran

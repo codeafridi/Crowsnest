@@ -310,6 +310,7 @@ jobs:
           assert spend["spendForecastOk"] is True, spend
           assert spend["spendPeriodOk"] is True, spend
           assert spend["spendGateOk"] is True, spend
+          assert spend["spendGroupOk"] is True, spend
           print("cloud spend: %s" % spend["note"].splitlines()[0])
           budget = d["budget"]
           assert budget["sortedOk"] is True, budget
@@ -595,6 +596,7 @@ jobs:
           assert spend["spendForecastOk"] is True, spend
           assert spend["spendPeriodOk"] is True, spend
           assert spend["spendGateOk"] is True, spend
+          assert spend["spendGroupOk"] is True, spend
           print("cloud spend: %s" % spend["note"].splitlines()[0])
           budget = d["budget"]
           assert budget["sortedOk"] is True, budget

@@ -383,6 +383,9 @@ private:
     QLabel *m_cloudSpendSummary = nullptr;
     QLabel *m_cloudSpendDetail = nullptr;
     QLabel *m_cloudSpendNote = nullptr;
+    // M167: the bill split by a tag, and the reason when it is off.
+    QTreeWidget *m_cloudTeams = nullptr;
+    QLabel *m_cloudTeamsNote = nullptr;
     QTreeWidget *m_cloudSpendServices = nullptr;
     TimeseriesChart *m_chartCloudSpend = nullptr;
     QTreeWidget *m_cloudConsumers = nullptr;

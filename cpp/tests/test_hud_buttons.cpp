@@ -2097,6 +2097,15 @@ int main(int argc, char *argv[]) {
     cloudSnap.cloud.spend.source = QStringLiteral(
         "aws ce get-cost-and-usage --time-period Start=2026-10-01,"
         "End=2026-10-29");
+    // M167: the split by team, with the provider's own untagged label.
+    cloudSnap.cloud.spend.costGroup = QStringLiteral("team");
+    cloudSnap.cloud.spend.costGroupByAccount = true;
+    cloudSnap.cloud.spend.groups = {
+        {QStringLiteral("payments"), QStringLiteral("123456789012"), 380.4,
+         84.1},
+        {QStringLiteral("No team"), QStringLiteral("123456789012"), 51.7,
+         11.4},
+        {QStringLiteral("data"), QStringLiteral("123456789012"), 20.0, 4.4}};
     cloudSnap.cloud.spend.periodStart = QStringLiteral("2026-10-01");
     cloudSnap.cloud.spend.periodEnd = QStringLiteral("2026-10-29");
     cloudSnap.cloud.spend.monthToDateUsd = 452.10;
@@ -2419,6 +2428,26 @@ int main(int argc, char *argv[]) {
           "cloud spend table lists services with their share");
     check(cloudSpendChart != nullptr && cloudSpendChart->sampleCount() > 1,
           "cloud spend chart carries the daily series");
+    {
+        auto *teams =
+            hud.findChild<QTreeWidget *>(QStringLiteral("ddCloudTeams"));
+        auto *teamsNote =
+            hud.findChild<QLabel *>(QStringLiteral("ddCloudTeamsNote"));
+        check(teams != nullptr && teams->topLevelItemCount() == 3
+                  && teams->topLevelItem(0)->text(0)
+                         == QStringLiteral("payments")
+                  && teams->topLevelItem(0)->text(1)
+                         .contains(QStringLiteral("84.1%"))
+                  && teams->topLevelItem(0)->text(2)
+                         == QStringLiteral("123456789012")
+                  && teams->topLevelItem(1)->text(0)
+                         == QStringLiteral("No team"),
+              "cloud spend by tag lists each team, its share and its account, "
+              "including the provider's untagged label");
+        check(teamsNote != nullptr
+                  && teamsNote->text().contains(QStringLiteral("untagged usage")),
+              "cloud spend by tag states where untagged usage lands");
+    }
     check(cloudApp != nullptr
               && cloudApp->text().contains(QStringLiteral("cursor"))
               && cloudApp->text().contains(QStringLiteral("214.5%")),

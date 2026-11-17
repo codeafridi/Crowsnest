@@ -505,6 +505,34 @@ Config loadConfig(const QString &path, QString *errorMessage) {
             }
             config.cloud.requiredTags.append(key);
         }
+        // QSettings returns a comma separated value as a QStringList (the M54
+        // lesson); a list here means the user wrote two keys where one tag is
+        // expected, which is a config error, not a silent first-wins.
+        const QVariant rawGroup =
+            settings.value(QStringLiteral("cost_group"));
+        const QString costGroup = rawGroup.typeId() == QMetaType::QStringList
+                                      ? QString()
+                                      : rawGroup.toString().trimmed();
+        if (rawGroup.typeId() == QMetaType::QStringList
+            && errorMessage != nullptr && errorMessage->isEmpty()) {
+            *errorMessage = QStringLiteral(
+                "[cloud] cost_group must be one tag key, not a list");
+        }
+        if (!costGroup.isEmpty()) {
+            // The key is interpolated into `Type=TAG,Key=<key>`, so a
+            // character the CLI would re-split is refused rather than passed.
+            if (costGroup.size() > 64 || costGroup.contains(QLatin1Char(' '))
+                || costGroup.contains(QLatin1Char(','))
+                || costGroup.contains(QLatin1Char('='))) {
+                if (errorMessage != nullptr && errorMessage->isEmpty()) {
+                    *errorMessage = QStringLiteral(
+                        "[cloud] cost_group must be one tag key (no space, "
+                        "comma or equals)");
+                }
+            } else {
+                config.cloud.costGroup = costGroup;
+            }
+        }
     }
     settings.endGroup();
 

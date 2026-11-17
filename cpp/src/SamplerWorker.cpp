@@ -1055,6 +1055,7 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
     footprint.ratesPath = m_cloud.ratesPath.isEmpty() ? defaultCloudRatePath()
                                                       : m_cloud.ratesPath;
     footprint.spend = m_cloud.spend;
+    footprint.spendGroup = m_cloud.costGroup;
     footprint.spendTimeoutMs = m_cloud.spendTimeoutMs;
     footprint.identityAuto =
         cloudIdentityAutoRequested(m_cloud.identityOverride);
@@ -1199,6 +1200,11 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         CloudSpendOptions spendOptions;
         spendOptions.enabled = m_cloud.spend;
         spendOptions.timeoutMs = m_cloud.spendTimeoutMs;
+        // M167: the per-team split, and a second group by account only when
+        // several accounts are listed (the same tag value in two accounts is
+        // two bills).
+        spendOptions.costGroup = m_cloud.costGroup;
+        spendOptions.costGroupByAccount = !m_cloud.profiles.isEmpty();
         m_cloudSpend->setOptions(spendOptions);
         m_cloudSpend->update(cloud.identity, now);
         cloud.spend = m_cloudSpend->status();

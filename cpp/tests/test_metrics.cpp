@@ -7267,6 +7267,102 @@ int main(int argc, char *argv[]) {
               "spend: the window is computed in UTC, so the query is stable "
               "across time zones");
 
+        // M167: the bill split by a tag, folded across days, sorted with
+        // shares, and split by account when several accounts are listed.
+        {
+            const QByteArray grouped = QByteArrayLiteral(
+                "{\"ResultsByTime\":["
+                "{\"Groups\":["
+                "{\"Keys\":[\"payments\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":"
+                "{\"Amount\":\"12.0\",\"Unit\":\"USD\"}}},"
+                "{\"Keys\":[\"No team\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":"
+                "{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}},"
+                "{\"Keys\":[\"payments\",\"2222\"],"
+                "\"Metrics\":{\"UnblendedCost\":"
+                "{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}}]},"
+                "{\"Groups\":["
+                "{\"Keys\":[\"payments\",\"1111\"],"
+                "\"Metrics\":{\"UnblendedCost\":"
+                "{\"Amount\":\"4.0\",\"Unit\":\"USD\"}}}]}]}");
+            QString groupError;
+            const QList<CloudSpendGroup> groups =
+                parseAwsCostGroups(grouped, true, &groupError);
+            check(groupError.isEmpty() && groups.size() == 3
+                      && groups.at(0).name == QStringLiteral("payments")
+                      && groups.at(0).account == QStringLiteral("1111")
+                      && qAbs(groups.at(0).usd - 16.0) < 1e-9
+                      && qAbs(groups.at(0).share - 66.6666666) < 1e-6
+                      && groups.at(1).name == QStringLiteral("No team")
+                      && qAbs(groups.at(1).usd - 4.0) < 1e-9,
+                  "spend groups: days fold per (value, account), sorted with "
+                  "shares; untagged spend keeps the provider's own label");
+            const QList<CloudSpendGroup> noAccount =
+                parseAwsCostGroups(grouped, false, &groupError);
+            check(noAccount.size() == 2 && noAccount.at(0).account.isEmpty()
+                      && qAbs(noAccount.at(0).usd - 20.0) < 1e-9,
+                  "spend groups: one group folds the same value across "
+                  "accounts");
+            check(parseAwsCostGroups(QByteArrayLiteral("not json"), false,
+                                     &groupError)
+                          .isEmpty()
+                      && groupError.contains(QStringLiteral("not JSON")),
+                  "spend groups: an unreadable answer is refused, and the bill "
+                  "above survives it");
+            QList<CloudSpendGroup> many;
+            for (int i = 0; i < 15; ++i) {
+                CloudSpendGroup row;
+                row.name = QStringLiteral("team-%1").arg(i);
+                row.usd = 100.0 - i;
+                many.append(row);
+            }
+            cloudSpendGroupTotals(many, 12);
+            check(many.size() == 13
+                      && many.last().name == QStringLiteral("(3 more)"),
+                  "spend groups: the tail folds into one row instead of "
+                  "vanishing");
+            check(cloudSpendGroupsText(groups, QStringLiteral("team"), true)
+                          .contains(QStringLiteral("split by account"))
+                      && cloudSpendGroupsNote(QString())
+                             .contains(QStringLiteral("off"))
+                      && cloudSpendGroupsNote(QStringLiteral("team"))
+                             .contains(QStringLiteral("No team")),
+                  "spend groups: the texts name the tag, the account split and "
+                  "the provider's untagged label");
+        }
+
+        // M167: the grouped call is one more read-only query, and its absence
+        // changes nothing else.
+        {
+            const CloudIdentity aws{[] {
+                CloudIdentity id;
+                id.provider = CloudProvider::Aws;
+                return id;
+            }()};
+            const qint64 at = 1'700'000'000'000LL;
+            const QStringList groupArgs = cloudSpendArguments(
+                aws, 2, at, QStringLiteral("team"), false);
+            check(groupArgs.value(0) == QStringLiteral("ce")
+                      && groupArgs.contains(QStringLiteral("Type=TAG,Key=team"))
+                      && !groupArgs.contains(QStringLiteral("LINKED_ACCOUNT"))
+                      && !groupArgs.contains(QStringLiteral("SERVICE")),
+                  "spend groups: the third call groups by the configured tag");
+            const QStringList byAccount = cloudSpendArguments(
+                aws, 2, at, QStringLiteral("team"), true);
+            check(byAccount.count(QStringLiteral("--group-by")) == 2
+                      && byAccount.last().contains(QStringLiteral("json"))
+                      && byAccount.join(QLatin1Char(' '))
+                             .contains(QStringLiteral(
+                                 "Type=DIMENSION,Key=LINKED_ACCOUNT")),
+                  "spend groups: a second group by account is one more "
+                  "--group-by, never a second call");
+            check(cloudSpendStepCount(aws, true) == 3
+                      && cloudSpendStepCount(aws, false) == 2
+                      && cloudSpendStepCount(CloudIdentity{}) == 1,
+                  "spend groups: the extra step exists only when a tag is set");
+        }
+
         // The same numbers on the Prometheus endpoint, and nothing at all when
         // the query has not answered.
         DisplaySnapshot spendSnap;
@@ -7314,8 +7410,18 @@ int main(int argc, char *argv[]) {
                                 | QFile::ExeOther);
             return true;
         };
+        const QString groupsFile = bin + QStringLiteral("/groups.json");
+        const QByteArray groupsDoc = QByteArrayLiteral(
+            "{\"ResultsByTime\":[{\"Groups\":["
+            "{\"Keys\":[\"payments\",\"123456789012\"],"
+            "\"Metrics\":{\"UnblendedCost\":"
+            "{\"Amount\":\"70.0\",\"Unit\":\"USD\"}}},"
+            "{\"Keys\":[\"No team\",\"123456789012\"],"
+            "\"Metrics\":{\"UnblendedCost\":"
+            "{\"Amount\":\"30.0\",\"Unit\":\"USD\"}}}]}]}");
         write(costFile, costDoc);
         write(forecastFile, forecastDoc);
+        write(groupsFile, groupsDoc);
 #if defined(Q_OS_WIN)
         const QString awsName = bin + QStringLiteral("/aws.cmd");
         const QByteArray script =
@@ -7327,7 +7433,9 @@ int main(int argc, char *argv[]) {
             "$args[1] -eq 'get-cost-forecast') { "
             "[Console]::Error.WriteLine('An error occurred "
             "(UnknownOperationException)'); exit 1 }\r\n"
-            "$out = if ($args.Count -ge 2 -and $args[1] -eq "
+            "$joined = $args -join ' '\r\n"
+            "$out = if ($joined -match 'Type=TAG') { $env:SPEND_GROUPS } "
+            "elseif ($args.Count -ge 2 -and $args[1] -eq "
             "'get-cost-forecast') { $env:SPEND_FORECAST } else { "
             "$env:SPEND_COST }\r\n"
             "Add-Content -Path $env:SPEND_ARGV_LOG -Value ($args -join ' ')\r\n"
@@ -7338,6 +7446,8 @@ int main(int argc, char *argv[]) {
         const QByteArray script =
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" >> \"$SPEND_ARGV_LOG\"\n"
+            "case \"$*\" in *'Type=TAG'*) cat \"$SPEND_GROUPS\"; exit 0;; "
+            "esac\n"
             "case \"$2\" in get-cost-forecast)\n"
             "  if [ -n \"$SPEND_FORECAST_FAIL\" ]; then\n"
             "    echo 'An error occurred (UnknownOperationException) when "
@@ -7372,6 +7482,7 @@ int main(int argc, char *argv[]) {
         qputenv("SPEND_ARGV_LOG", argvLog.toUtf8());
         qputenv("SPEND_COST", costFile.toUtf8());
         qputenv("SPEND_FORECAST", forecastFile.toUtf8());
+        qputenv("SPEND_GROUPS", groupsFile.toUtf8());
 
         CloudIdentity identity;
         identity.provider = CloudProvider::Aws;
@@ -7413,6 +7524,43 @@ int main(int argc, char *argv[]) {
                   && spend.source.startsWith(
                       QStringLiteral("aws ce get-cost-and-usage")),
               "spend: the two answers fold into billed + month-end");
+
+        // M167: with a cost group configured the same runner walks one more
+        // call, and its failure would cost the split only.
+        {
+            QFile::remove(argvLog);
+            CloudSpendOptions grouped = options;
+            grouped.costGroup = QStringLiteral("team");
+            grouped.costGroupByAccount = true;
+            const CloudSpendStatus byTeam =
+                probeCloudSpend(identity, grouped, nowMs);
+            QStringList groupCalls;
+            QFile groupLog(argvLog);
+            if (groupLog.open(QIODevice::ReadOnly)) {
+                groupCalls = QString::fromUtf8(groupLog.readAll())
+                                 .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            }
+            check(groupCalls.size() == 3
+                      && groupCalls.at(0).contains(
+                          QStringLiteral("Key=SERVICE"))
+                      && groupCalls.at(1).startsWith(
+                          QStringLiteral("ce get-cost-forecast"))
+                      && groupCalls.at(2).contains(
+                          QStringLiteral("--group-by Type=TAG,Key=team"))
+                      && groupCalls.at(2).contains(
+                          QStringLiteral(
+                              "--group-by Type=DIMENSION,Key=LINKED_ACCOUNT")),
+                  "spend groups: the tag split is its own call, after the "
+                  "forecast, with the account as the second group");
+            check(byTeam.available
+                      && qAbs(byTeam.monthToDateUsd - 100.0) < 1e-9
+                      && byTeam.groups.size() == 2
+                      && byTeam.groups.at(0).name == QStringLiteral("payments")
+                      && qAbs(byTeam.groups.at(0).usd - 70.0) < 1e-9
+                      && byTeam.costGroup == QStringLiteral("team"),
+                  "spend groups: the split arrives without touching the bill");
+            qunsetenv("SPEND_GROUPS");
+        }
 
         // A provider whose CLI has no cost API never spawns anything.
         QFile::remove(argvLog);

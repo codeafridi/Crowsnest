@@ -69,12 +69,16 @@ CloudSpendStatus failure(const CloudIdentity &identity,
 
 } // namespace
 
-int cloudSpendStepCount(const CloudIdentity &identity) {
-    return identity.provider == CloudProvider::Aws ? 2 : 1;
+int cloudSpendStepCount(const CloudIdentity &identity, bool grouped) {
+    if (identity.provider != CloudProvider::Aws) {
+        return 1;
+    }
+    return grouped ? 3 : 2;
 }
 
 QStringList cloudSpendArguments(const CloudIdentity &identity, int step,
-                                qint64 nowMs) {
+                                qint64 nowMs, const QString &costGroup,
+                                bool byAccount) {
     const QString start = cloudSpendPeriodStart(nowMs);
     const QString end = cloudSpendPeriodEnd(nowMs);
     switch (identity.provider) {
@@ -90,6 +94,28 @@ QStringList cloudSpendArguments(const CloudIdentity &identity, int step,
                  << QStringLiteral("Type=DIMENSION,Key=SERVICE")
                  << QStringLiteral("--output") << QStringLiteral("json");
             return args;
+        }
+        if (step == 2) {
+            // M167: the same window and metric, grouped by the tag the user
+            // asked for; LINKED_ACCOUNT is the only second group allowed and
+            // only when several accounts are listed.
+            QStringList grouped;
+            grouped << QStringLiteral("ce")
+                    << QStringLiteral("get-cost-and-usage")
+                    << QStringLiteral("--time-period")
+                    << QStringLiteral("Start=%1,End=%2").arg(start, end)
+                    << QStringLiteral("--granularity")
+                    << QStringLiteral("DAILY")
+                    << QStringLiteral("--metrics")
+                    << QStringLiteral("UnblendedCost")
+                    << QStringLiteral("--group-by")
+                    << QStringLiteral("Type=TAG,Key=%1").arg(costGroup);
+            if (byAccount) {
+                grouped << QStringLiteral("--group-by")
+                        << QStringLiteral("Type=DIMENSION,Key=LINKED_ACCOUNT");
+            }
+            grouped << QStringLiteral("--output") << QStringLiteral("json");
+            return grouped;
         }
         QStringList args;
         args << QStringLiteral("ce") << QStringLiteral("get-cost-forecast")
@@ -191,11 +217,18 @@ CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,
     double forecastRemaining = -1.0;
     QString forecastError;
 
-    const int steps = cloudSpendStepCount(identity);
+    const int steps = cloudSpendStepCount(identity, !options.costGroup.isEmpty());
+    QList<CloudSpendGroup> groups;
+    QString groupsError;
     for (int step = 0; step < steps; ++step) {
+        if (step == 2 && options.costGroup.isEmpty()) {
+            continue;
+        }
         QProcess process;
         startProcess(&process, cliPath,
-                     cloudSpendArguments(identity, step, nowMs));
+                     cloudSpendArguments(identity, step, nowMs,
+                                         options.costGroup,
+                                         options.costGroupByAccount));
         if (!process.waitForStarted(kCloudSpendStartMs)) {
             return failure(identity,
                            QStringLiteral("billed spend: could not start %1 (%2)")
@@ -247,7 +280,7 @@ CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,
                                nowMs);
             }
             haveCost = true;
-        } else {
+        } else if (step == 1) {
             QString error;
             const CloudSpendStatus forecast = parseAwsCostForecast(out, &error);
             if (forecast.available) {
@@ -255,6 +288,10 @@ CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,
             } else {
                 forecastError = error;
             }
+        } else {
+            // The group step failing costs the split, never the bill.
+            groups = parseAwsCostGroups(out, options.costGroupByAccount,
+                                        &groupsError);
         }
     }
 
@@ -264,6 +301,10 @@ CloudSpendStatus probeCloudSpend(const CloudIdentity &identity,
     cost.scope = cloudSpendScope(identity);
     cost.source = cloudSpendCommandText(identity);
     cost.fetchedAtMs = nowMs;
+    cost.costGroup = options.costGroup;
+    cost.costGroupByAccount = options.costGroupByAccount;
+    cost.groups = groups;
+    cost.groupsError = groupsError;
     if (forecastRemaining >= 0.0) {
         spendApplyForecast(&cost, forecastRemaining);
     } else if (!forecastError.isEmpty()) {
@@ -352,13 +393,18 @@ void CloudSpendRunner::begin(const CloudIdentity &identity, qint64 nowMs) {
 
 void CloudSpendRunner::advance(qint64 nowMs) {
     m_step += 1;
-    if (m_step >= cloudSpendStepCount(m_identity)) {
+    const bool grouped = !m_options.costGroup.isEmpty();
+    if (m_step >= cloudSpendStepCount(m_identity, grouped)
+        || (m_step == 2 && !grouped)) {
         finish(nowMs);
         return;
     }
     const QString cliPath = cloudCliResolve(m_status.cliName, m_options.cliPath);
     auto *process = new QProcess(this);
-    startProcess(process, cliPath, cloudSpendArguments(m_identity, m_step, nowMs));
+    startProcess(process, cliPath,
+                 cloudSpendArguments(m_identity, m_step, nowMs,
+                                     m_options.costGroup,
+                                     m_options.costGroupByAccount));
     m_process = process;
     if (!process->waitForStarted(kCloudSpendStartMs)) {
         const QString error = process->errorString();
@@ -423,13 +469,24 @@ void CloudSpendRunner::collectStep(qint64 nowMs) {
         advance(nowMs);
         return;
     }
-    QString error;
-    const CloudSpendStatus forecast = parseAwsCostForecast(out, &error);
-    if (forecast.available) {
-        spendApplyForecast(&m_status, forecast.forecastRemainingUsd);
-    } else {
-        m_status.note = QStringLiteral("billed spend: %1").arg(error);
+    if (m_step == 1) {
+        QString error;
+        const CloudSpendStatus forecast = parseAwsCostForecast(out, &error);
+        if (forecast.available) {
+            spendApplyForecast(&m_status, forecast.forecastRemainingUsd);
+        } else {
+            m_status.note = QStringLiteral("billed spend: %1").arg(error);
+        }
+        advance(nowMs);
+        return;
     }
+    // Step 2: the per-tag split. Its failure costs the split, not the bill.
+    QString error;
+    m_status.costGroup = m_options.costGroup;
+    m_status.costGroupByAccount = m_options.costGroupByAccount;
+    m_status.groups = parseAwsCostGroups(out, m_options.costGroupByAccount,
+                                       &error);
+    m_status.groupsError = error;
     finish(nowMs);
 }
 

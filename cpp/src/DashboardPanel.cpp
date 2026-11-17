@@ -735,6 +735,7 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddCloudAsgNote, #ddCloudTags,"
         " #ddCloudFootprint,"
         " #ddCloudSpendSummary, #ddCloudSpendDetail, #ddCloudSpendNote,"
+        " #ddCloudTeamsNote,"
         " #ddRemoteReport"
         " { color: %MUTED%; }"
         "#ddCloudShare { color: %DIM%; }"
@@ -5347,6 +5348,28 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudSpendServices->header()->setSectionResizeMode(
         1, QHeaderView::ResizeToContents);
 
+    // M167: what each team (tag value) costs. The account column exists even
+    // when it is empty, so a multi-account split does not reflow the table.
+    m_cloudTeams = new QTreeWidget(view);
+    m_cloudTeams->setObjectName(QStringLiteral("ddCloudTeams"));
+    m_cloudTeams->setColumnCount(3);
+    m_cloudTeams->setHeaderLabels({QStringLiteral("TEAM"),
+                                   QStringLiteral("$ / SHARE"),
+                                   QStringLiteral("ACCOUNT")});
+    m_cloudTeams->setRootIsDecorated(false);
+    m_cloudTeams->setSelectionMode(QAbstractItemView::NoSelection);
+    m_cloudTeams->setFocusPolicy(Qt::NoFocus);
+    m_cloudTeams->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    for (int column = 1; column < 3; ++column) {
+        m_cloudTeams->header()->setSectionResizeMode(
+            column, QHeaderView::ResizeToContents);
+    }
+    m_cloudTeamsNote = new QLabel(cloudSpendGroupsNote(QString()), view);
+    m_cloudTeamsNote->setObjectName(QStringLiteral("ddCloudTeamsNote"));
+    m_cloudTeamsNote->setFont(monoFont(9));
+    m_cloudTeamsNote->setWordWrap(true);
+    m_cloudTeamsNote->setMinimumWidth(1);
+
     m_cloudSpendNote = new QLabel(cloudSpendNote(), view);
     m_cloudSpendNote->setObjectName(QStringLiteral("ddCloudSpendNote"));
     m_cloudSpendNote->setFont(monoFont(9));
@@ -5363,6 +5386,8 @@ QWidget *DashboardPanel::buildCloudView() {
         makeCard(QStringLiteral("detail"), m_cloudSpendDetail, view);
     auto *spendServicesCard =
         makeCard(QStringLiteral("by service"), m_cloudSpendServices, view);
+    auto *spendTeamsCard =
+        makeCard(QStringLiteral("by tag"), m_cloudTeams, view);
 
     // --- M84: the outbound footprint. Every network action Crowsnest takes on
     // its own, its cadence and the measured cost of the last sweep, plus the
@@ -5426,6 +5451,8 @@ QWidget *DashboardPanel::buildCloudView() {
     layout->addLayout(spendTop);
     layout->addWidget(spendDetailCard);
     layout->addWidget(spendServicesCard);
+    layout->addWidget(spendTeamsCard);
+    layout->addWidget(m_cloudTeamsNote);
     layout->addWidget(m_cloudSpendNote);
 
     layout->addWidget(footprintBanner);
@@ -9487,6 +9514,41 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                                            service.usd / spend.monthToDateUsd
                                                * 100.0,
                                            'f', 1)));
+            }
+        }
+        // M167: the per-tag split, its shares, and why it might be absent.
+        if (m_cloudTeams != nullptr) {
+            m_cloudTeams->clear();
+            for (const CloudSpendGroup &group : spend.groups) {
+                auto *item = new QTreeWidgetItem(m_cloudTeams);
+                item->setText(0, group.name);
+                QString amount = group.usd < 0.0
+                                     ? QStringLiteral("--")
+                                     : cloudSpendAmountText(group.usd);
+                if (group.share >= 0.0) {
+                    amount += QStringLiteral("  %1%").arg(
+                        QString::number(group.share, 'f', 1));
+                }
+                item->setText(1, amount);
+                item->setText(2, group.account.isEmpty()
+                                     ? QStringLiteral("--")
+                                     : group.account);
+                item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
+            }
+            if (m_cloudTeamsNote != nullptr) {
+                QString note = cloudSpendGroupsNote(spend.costGroup);
+                if (!spend.groupsError.isEmpty()) {
+                    note = QStringLiteral("spend by tag %1: %2 (the bill above "
+                                          "is unaffected)")
+                               .arg(spend.costGroup, spend.groupsError);
+                } else if (!spend.costGroup.isEmpty()
+                           && spend.groups.isEmpty()) {
+                    note = QStringLiteral("spend by tag %1: no grouped rows in "
+                                          "this window yet (Cost Explorer lags "
+                                          "up to 24 h)")
+                               .arg(spend.costGroup);
+                }
+                m_cloudTeamsNote->setText(note);
             }
         }
         if (spend.days.size() > 1) {
