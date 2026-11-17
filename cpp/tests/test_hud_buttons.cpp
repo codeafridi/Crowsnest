@@ -40,6 +40,7 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QTreeWidget>
+#include <QHeaderView>
 #include <QThread>
 #include <QTreeWidgetItem>
 
@@ -2214,19 +2215,19 @@ int main(int argc, char *argv[]) {
               && cloudFleet->topLevelItem(0)->text(0)
                      == QStringLiteral("* hud-box")
               && cloudFleet->topLevelItem(0)->text(1)
-                     == QStringLiteral("c7g.2xlarge")
+                     == QStringLiteral("prod")
               && cloudFleet->topLevelItem(0)->text(2)
-                     == QStringLiteral("eu-west-1")
+                     == QStringLiteral("c7g.2xlarge")
               && cloudFleet->topLevelItem(0)->text(3)
-                     == QStringLiteral("running")
+                     == QStringLiteral("eu-west-1")
               && cloudFleet->topLevelItem(0)->text(4)
-                     == QStringLiteral("3d 0h")
+                     == QStringLiteral("running")
               && cloudFleet->topLevelItem(0)->text(5)
-                     == QStringLiteral("$213.16")
+                     == QStringLiteral("3d 0h")
               && cloudFleet->topLevelItem(0)->text(6)
-                     == QStringLiteral("prod"),
-          "cloud fleet table leads with this instance, its region, age and "
-          "monthly rate, and its account");
+                     == QStringLiteral("$213.16"),
+          "cloud fleet table leads with this instance, its account, region, "
+          "age and monthly rate");
     {
         auto *cloudSummary =
             hud.findChild<QLabel *>(QStringLiteral("ddCloudFleetSummary"));
@@ -2268,15 +2269,15 @@ int main(int argc, char *argv[]) {
               "the count");
     }
     check(cloudFleet->topLevelItem(1)->text(0) == QStringLiteral("web-2")
-              && cloudFleet->topLevelItem(1)->text(2)
+              && cloudFleet->topLevelItem(1)->text(3)
                      == QStringLiteral("us-west-2")
-              && cloudFleet->topLevelItem(1)->text(5)
+              && cloudFleet->topLevelItem(1)->text(6)
                      == QStringLiteral("$15.18")
               && cloudFleet->topLevelItem(2)->text(0)
                      == QStringLiteral("batch-old")
-              && cloudFleet->topLevelItem(2)->text(2)
+              && cloudFleet->topLevelItem(2)->text(3)
                      == QStringLiteral("ap-south-1")
-              && cloudFleet->topLevelItem(2)->text(5) == QStringLiteral("--"),
+              && cloudFleet->topLevelItem(2)->text(6) == QStringLiteral("--"),
           "cloud fleet table prices running rows only and dashes a stopped one");
     check(cloudFleetSummary != nullptr
               && cloudFleetSummary->text().contains(
@@ -2390,6 +2391,43 @@ int main(int argc, char *argv[]) {
               && cloudFootprint->text().contains(QStringLiteral("/tmp/rates.txt")),
           "cloud footprint card states every outbound action, cadence and "
           "guarantee");
+    {
+        // Design pass: the three cards that used to reserve blank space now
+        // hug their rows, and the reference card folds.
+        auto *cloudScrollPage =
+            hud.findChild<QTreeWidget *>(QStringLiteral("ddCloudFleet"));
+        const int rowHeight = cloudScrollPage != nullptr
+                                  ? cloudScrollPage->sizeHintForRow(0)
+                                  : 0;
+        check(cloudScrollPage != nullptr && rowHeight > 0
+                  && cloudScrollPage->height()
+                         <= cloudScrollPage->header()->sizeHint().height()
+                                + 5 * rowHeight + 16,
+              "cloud instances card is its rows, not a stretched box");
+        auto *asgTable =
+            hud.findChild<QTreeWidget *>(QStringLiteral("ddCloudAsg"));
+        check(asgTable != nullptr && asgTable->height()
+                                         <= asgTable->header()->sizeHint().height()
+                                                + 2 * asgTable->sizeHintForRow(0)
+                                                + 16,
+              "cloud capacity card hugs its two groups");
+        auto *toggle = hud.findChild<QToolButton *>(
+            QStringLiteral("ddDisclosure"));
+        auto *footprint =
+            hud.findChild<QLabel *>(QStringLiteral("ddCloudFootprint"));
+        check(toggle != nullptr && footprint != nullptr
+                  && footprint->isHidden(),
+              "the footprint card starts folded");
+        if (toggle != nullptr && footprint != nullptr) {
+            toggle->click();
+            check(!footprint->isHidden(),
+                  "the disclosure opens the footprint card");
+            toggle->click();
+            check(footprint->isHidden(),
+                  "the disclosure folds it again");
+        }
+    }
+
     // M85: billed spend. The fixture carries a real CE-shaped fold: $452.10
     // billed, +$331.02 forecast for the rest of the month.
     auto *cloudSpendSummary =
@@ -2608,6 +2646,8 @@ int main(int argc, char *argv[]) {
             hot.load1 = 12.5;
             hot.uptimeSec = 86400;
             hot.version = QStringLiteral("0.11.2");
+            hot.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                          {QStringLiteral("team"), QStringLiteral("data")}};
             FleetPeer dead;
             dead.name = QStringLiteral("dead-box");
             dead.address = QStringLiteral("127.0.0.1:9108");
@@ -2643,6 +2683,12 @@ int main(int argc, char *argv[]) {
                       && fleetTable->topLevelItem(2)->text(0)
                              == QStringLiteral("dead-box"),
                   "fleet table leads with this machine and lists each peer");
+            check(fleetTable->topLevelItem(1)->text(6)
+                          == QStringLiteral("env=prod team=data")
+                      && fleetTable->topLevelItem(1)->toolTip(6)
+                             == QStringLiteral("env=prod team=data"),
+                  "a fleet row shows its labels and keeps the full set on "
+                  "hover");
             check(fleetTable->topLevelItem(2)->text(1) == QStringLiteral("--")
                       && fleetTable->topLevelItem(2)->text(2)
                              == QStringLiteral("--")
@@ -2866,13 +2912,13 @@ int main(int argc, char *argv[]) {
                       && teamSilent != nullptr
                       && teamSilent->text() == QStringLiteral("1"),
                   "team tiles count the relay's fleet without this machine");
-            check(teamTable->topLevelItem(1)->text(1)
+            check(teamTable->topLevelItem(1)->text(2)
                           .contains(QStringLiteral("silent"))
-                      && teamTable->topLevelItem(1)->text(2)
-                             == QStringLiteral("--")
                       && teamTable->topLevelItem(1)->text(3)
                              == QStringLiteral("--")
                       && teamTable->topLevelItem(1)->text(4)
+                             == QStringLiteral("--")
+                      && teamTable->topLevelItem(1)->text(5)
                              == QStringLiteral("--"),
                   "a silent machine shows dashes in every value column");
             auto *teamSummary =
@@ -2899,14 +2945,20 @@ int main(int argc, char *argv[]) {
             hud.setTeamStatus(team);
 
             check(teamTable->topLevelItemCount() == 3
-                      && teamTable->topLevelItem(0)->text(7)
+                      && teamTable->topLevelItem(0)->text(1)
                              == QStringLiteral("env=prod owner=ana "
                                                "role=workstation")
-                      && teamTable->topLevelItem(1)->text(7)
+                      && teamTable->topLevelItem(1)->text(1)
                              == QStringLiteral("env=dev role=gateway")
-                      && teamTable->topLevelItem(2)->text(7)
+                      && teamTable->topLevelItem(2)->text(1)
                              == QStringLiteral("no labels"),
                   "an unlabelled relay machine reads 'no labels', not blank");
+            check(teamTable->topLevelItem(0)->toolTip(1).contains(
+                      QStringLiteral("owner ana"))
+                      && teamTable->topLevelItem(1)->toolTip(1)
+                             == QStringLiteral("env=dev role=gateway"),
+                  "the team label cell keeps the whole set and the owner on "
+                  "hover");
             auto *teamLabels =
                 hud.findChild<QLabel *>(QStringLiteral("ddTeamLabels"));
             check(teamLabels != nullptr
@@ -2930,7 +2982,7 @@ int main(int argc, char *argv[]) {
                           QStringLiteral("* "))
                       && teamTable->topLevelItem(1)->text(0)
                              == QStringLiteral("gate-02")
-                      && teamTable->topLevelItem(1)->text(7)
+                      && teamTable->topLevelItem(1)->text(1)
                              == QStringLiteral("env=dev role=gateway"),
                   "the team filter narrows the table and keeps this machine");
             auto *teamNote =

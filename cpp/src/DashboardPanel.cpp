@@ -117,7 +117,8 @@ QLabel *makeTitle(const QString &text, QWidget *parent) {
     return label;
 }
 
-QFrame *makeCard(const QString &title, QWidget *content, QWidget *parent) {
+QFrame *makeCard(const QString &title, QWidget *content, QWidget *parent,
+                  bool stretch = true) {
     auto *card = new QFrame(parent);
     card->setObjectName(QStringLiteral("ddCard"));
     auto *layout = new QVBoxLayout(card);
@@ -127,7 +128,82 @@ QFrame *makeCard(const QString &title, QWidget *content, QWidget *parent) {
     if (auto *label = qobject_cast<QLabel *>(content)) {
         label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     }
-    layout->addWidget(content, 1);
+    // Only a chart grows. A table card that stretches reserves empty rows
+    // below its last one, which reads as missing data (reported on the Cloud
+    // page: three cards with 100+ px of blank space).
+    layout->addWidget(content, stretch ? 1 : 0);
+    return card;
+}
+
+// A small table's height is its rows, not the card's: Qt's own metrics decide
+// it, so it follows the platform font and the row count instead of a guessed
+// pixel number. Past `maxRows` the table scrolls at that height; an empty
+// table still shows its header plus one placeholder row rather than a void.
+void fitTableHeight(QTreeWidget *table, int maxRows = 10) {
+    if (table == nullptr) {
+        return;
+    }
+    const int rows = qMax(1, table->topLevelItemCount());
+    const int shown = qMin(rows, qMax(1, maxRows));
+    const int rowHeight =
+        table->sizeHintForRow(0) > 0 ? table->sizeHintForRow(0) : 22;
+    int header = 24;
+    if (table->header() != nullptr) {
+        header = qMax(header, table->header()->sizeHint().height());
+    }
+    table->setFixedHeight(header + shown * rowHeight
+                          + 2 * table->frameWidth() + 2);
+    table->setVerticalScrollBarPolicy(rows > maxRows
+                                          ? Qt::ScrollBarAsNeeded
+                                          : Qt::ScrollBarAlwaysOff);
+}
+
+// A card whose body can be folded away, with a one-line summary that stays
+// visible. Grafana's row contract is the reference (REA: `RowPanel.collapsed`
+// - "Whether this row should be collapsed or not.", `json:"collapsed,omitempty"`;
+// the docs' own advice is "displays should fit without scrolling (1-2
+// screens); analysis dashboards can be longer with collapsible rows"). Used
+// for reference text read once, never for a value somebody watches.
+QFrame *makeCollapsibleCard(const QString &title, QWidget *content,
+                            const QString &summary, QWidget *parent,
+                            bool expanded = false) {
+    auto *card = new QFrame(parent);
+    card->setObjectName(QStringLiteral("ddCard"));
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(14, 10, 14, 12);
+    layout->setSpacing(8);
+    auto *head = new QHBoxLayout;
+    head->setSpacing(6);
+    auto *toggle = new QToolButton(card);
+    toggle->setObjectName(QStringLiteral("ddDisclosure"));
+    toggle->setCheckable(true);
+    toggle->setChecked(expanded);
+    toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    toggle->setAutoRaise(true);
+    toggle->setFocusPolicy(Qt::NoFocus);
+    head->addWidget(toggle);
+    head->addWidget(makeTitle(title, card), 1);
+    layout->addLayout(head);
+
+    auto *summaryLabel = new QLabel(summary, card);
+    summaryLabel->setObjectName(QStringLiteral("ddDisclosureSummary"));
+    summaryLabel->setFont(monoFont(9));
+    summaryLabel->setWordWrap(true);
+    summaryLabel->setMinimumWidth(1);
+    summaryLabel->setVisible(!expanded);
+    layout->addWidget(summaryLabel);
+    if (auto *label = qobject_cast<QLabel *>(content)) {
+        label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    }
+    content->setVisible(expanded);
+    layout->addWidget(content, 0);
+    QObject::connect(toggle, &QToolButton::toggled, card,
+                     [toggle, content, summaryLabel](bool open) {
+                         content->setVisible(open);
+                         summaryLabel->setVisible(!open);
+                         toggle->setArrowType(open ? Qt::DownArrow
+                                                   : Qt::RightArrow);
+                     });
     return card;
 }
 
@@ -739,6 +815,8 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddRemoteReport"
         " { color: %MUTED%; }"
         "#ddCloudShare { color: %DIM%; }"
+        "#ddDisclosure { border: none; background: transparent; }"
+        "#ddDisclosureSummary { color: %MUTED%; }"
         "#ddFleetSummary, #ddFleetNote, #ddFleetDetail, #ddFleetFilterLabel"
         " { color: %MUTED%; }"
         "#ddFleetFilter { color: %TEXT%; }"
@@ -5089,12 +5167,17 @@ QWidget *DashboardPanel::buildCloudView() {
 
     auto *identityBanner = makeBanner(QStringLiteral("THIS HOST"),
                                       ui_theme::accent(), view);
-    auto *identity = new QHBoxLayout;
-    identity->setSpacing(10);
-    identity->addWidget(
-        makeCard(QStringLiteral("metadata"), m_cloudSummary, view), 1);
-    identity->addWidget(
-        makeCard(QStringLiteral("detail"), m_cloudDetail, view), 1);
+    // Two cards stacked the same two facts behind two headers and two frames;
+    // one card with the summary line above the detail is both shorter and a
+    // truer reading order (what this box is, then its identity).
+    auto *hostBody = new QWidget(view);
+    auto *hostLayout = new QVBoxLayout(hostBody);
+    hostLayout->setContentsMargins(0, 0, 0, 0);
+    hostLayout->setSpacing(8);
+    hostLayout->addWidget(m_cloudSummary);
+    hostLayout->addWidget(m_cloudDetail);
+    auto *hostCard = makeCard(QStringLiteral("this instance"), hostBody, view,
+                              false);
 
     // --- Account inventory from the provider's own CLI. This is the only
     // place the launch time (and therefore the instance age) exists.
@@ -5148,13 +5231,16 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudFleet = new QTreeWidget(view);
     m_cloudFleet->setObjectName(QStringLiteral("ddCloudFleet"));
     m_cloudFleet->setColumnCount(7);
+    // Identity before detail: with several accounts the account is what makes
+    // a row actionable, and a last column is the first one a narrow window
+    // clips.
     m_cloudFleet->setHeaderLabels({QStringLiteral("NAME"),
+                                   QStringLiteral("ACCOUNT"),
                                    QStringLiteral("TYPE"),
                                    QStringLiteral("REGION"),
                                    QStringLiteral("STATE"),
                                    QStringLiteral("AGE"),
-                                   QStringLiteral("$/MO"),
-                                   QStringLiteral("ACCOUNT")});
+                                   QStringLiteral("$/MO")});
     m_cloudFleet->setRootIsDecorated(false);
     m_cloudFleet->setSelectionMode(QAbstractItemView::SingleSelection);
     m_cloudFleet->setFocusPolicy(Qt::ClickFocus);
@@ -5194,8 +5280,21 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudTags->setWordWrap(true);
     m_cloudTags->setMinimumWidth(1);
 
-    auto *instancesCard =
-        makeCard(QStringLiteral("instances"), m_cloudFleet, view);
+    // Hug the rows: the table decides its own height (fitTableHeight is called
+    // on every rebuild), so the card cannot reserve blank space.
+    auto *instancesCard = makeCard(QStringLiteral("instances"), m_cloudFleet,
+                                   view, false);
+
+    // Capacity and tag coverage answer one question each about the same list,
+    // so they sit side by side instead of stacking 550 px of full-width cards.
+    auto *capacityBody = new QWidget(view);
+    auto *capacityLayout = new QVBoxLayout(capacityBody);
+    capacityLayout->setContentsMargins(0, 0, 0, 0);
+    capacityLayout->setSpacing(6);
+    capacityLayout->addWidget(m_cloudAsg);
+    capacityLayout->addWidget(m_cloudAsgNote);
+    auto *capacityCard = makeCard(QStringLiteral("capacity (auto scaling)"),
+                                  capacityBody, view, false);
     // Selecting a row shows everything the provider reported about it: the
     // image is the only place the distribution is named, and the launch
     // settings (key, tenancy, IMDSv2, security groups) are what "how was this
@@ -5380,14 +5479,29 @@ QWidget *DashboardPanel::buildCloudView() {
                                    ui_theme::warn(), view);
     auto *spendChartCard =
         makeChartCard(QStringLiteral("daily spend"), m_chartCloudSpend, view);
-    auto *spendSummaryCard =
-        makeCard(QStringLiteral("month to date"), m_cloudSpendSummary, view);
-    auto *spendDetailCard =
-        makeCard(QStringLiteral("detail"), m_cloudSpendDetail, view);
-    auto *spendServicesCard =
-        makeCard(QStringLiteral("by service"), m_cloudSpendServices, view);
-    auto *spendTeamsCard =
-        makeCard(QStringLiteral("by tag"), m_cloudTeams, view);
+    // The total and its breakdown are one subject: one card, one header, the
+    // summary over the detail. Side by side was shorter but wrapped the
+    // headline at the console's real width, which reads worse than a line.
+    auto *spendFacts = new QWidget(view);
+    auto *spendFactsLayout = new QVBoxLayout(spendFacts);
+    spendFactsLayout->setContentsMargins(0, 0, 0, 0);
+    spendFactsLayout->setSpacing(8);
+    spendFactsLayout->addWidget(m_cloudSpendSummary);
+    spendFactsLayout->addWidget(m_cloudSpendDetail);
+    auto *spendSummaryCard = makeCard(QStringLiteral("month to date"),
+                                      spendFacts, view, false);
+    auto *spendServicesCard = makeCard(QStringLiteral("by service"),
+                                       m_cloudSpendServices, view, false);
+    // The note belongs to the tag table, not the page: keeping it inside the
+    // card is what lets the two tables share a row without a stray line.
+    auto *teamsBody = new QWidget(view);
+    auto *teamsLayout = new QVBoxLayout(teamsBody);
+    teamsLayout->setContentsMargins(0, 0, 0, 0);
+    teamsLayout->setSpacing(6);
+    teamsLayout->addWidget(m_cloudTeams);
+    teamsLayout->addWidget(m_cloudTeamsNote);
+    auto *spendTeamsCard = makeCard(QStringLiteral("by tag"), teamsBody, view,
+                                    false);
 
     // --- M84: the outbound footprint. Every network action Crowsnest takes on
     // its own, its cadence and the measured cost of the last sweep, plus the
@@ -5399,11 +5513,13 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudFootprint->setWordWrap(true);
     m_cloudFootprint->setMinimumWidth(1);
 
-    auto *footprintBanner = makeBanner(QStringLiteral("CLOUD FOOTPRINT"),
-                                       ui_theme::warn(), view);
-    auto *footprintCard =
-        makeCard(QStringLiteral("what leaves this host"), m_cloudFootprint,
-                 view);
+    // Read once, so it folds: Grafana's row-collapse contract (a row keeps its
+    // title and a summary and hides its panels), applied to reference text.
+    auto *footprintCard = makeCollapsibleCard(
+        QStringLiteral("what leaves this host"), m_cloudFootprint,
+        QStringLiteral("read-only - no credential is read or stored - nothing "
+                       "is ever started or stopped"),
+        view);
 
     m_cloudShare = new QLabel(cloudShareNote(), view);
     m_cloudShare->setObjectName(QStringLiteral("ddCloudShare"));
@@ -5422,14 +5538,15 @@ QWidget *DashboardPanel::buildCloudView() {
     layout->addWidget(instancesCard);
     layout->addWidget(detailCard);
     layout->addWidget(m_cloudFleetNote);
-    layout->addWidget(makeCard(QStringLiteral("capacity (auto scaling)"),
-                               m_cloudAsg, view));
-    layout->addWidget(m_cloudAsgNote);
-    layout->addWidget(makeCard(QStringLiteral("tag coverage"), m_cloudTags,
-                               view));
+    auto *hygieneRow = new QHBoxLayout;
+    hygieneRow->setSpacing(10);
+    hygieneRow->addWidget(capacityCard, 3);
+    hygieneRow->addWidget(
+        makeCard(QStringLiteral("tag coverage"), m_cloudTags, view, false), 2);
+    layout->addLayout(hygieneRow);
 
     layout->addWidget(identityBanner);
-    layout->addLayout(identity, 2);
+    layout->addWidget(hostCard);
 
     layout->addWidget(costBanner);
     auto *costRow = new QHBoxLayout;
@@ -5449,13 +5566,13 @@ QWidget *DashboardPanel::buildCloudView() {
     spendTop->addWidget(spendSummaryCard, 2);
     spendTop->addWidget(spendChartCard, 1);
     layout->addLayout(spendTop);
-    layout->addWidget(spendDetailCard);
-    layout->addWidget(spendServicesCard);
-    layout->addWidget(spendTeamsCard);
-    layout->addWidget(m_cloudTeamsNote);
+    auto *spendTables = new QHBoxLayout;
+    spendTables->setSpacing(10);
+    spendTables->addWidget(spendServicesCard, 1);
+    spendTables->addWidget(spendTeamsCard, 1);
+    layout->addLayout(spendTables);
     layout->addWidget(m_cloudSpendNote);
 
-    layout->addWidget(footprintBanner);
     layout->addWidget(footprintCard);
     layout->addWidget(m_cloudShare);
     layout->addWidget(m_cloudIacSection);
@@ -5631,8 +5748,10 @@ QWidget *DashboardPanel::buildFleetView() {
     layout->addLayout(filterRow);
     layout->addWidget(makeChartCard(QStringLiteral("worst peer CPU (%)"),
                                     m_chartFleet, view));
-    layout->addWidget(makeCard(QStringLiteral("machines"), m_fleetTable, view));
-    layout->addWidget(makeCard(QStringLiteral("selected"), m_fleetDetail, view));
+    layout->addWidget(
+        makeCard(QStringLiteral("machines"), m_fleetTable, view, false));
+    layout->addWidget(
+        makeCard(QStringLiteral("selected"), m_fleetDetail, view, false));
 
     // --- What this machine publishes, and the switch that changes it. A
     // token-less LAN bind is refused by the same resolver the /metrics
@@ -5756,14 +5875,16 @@ QWidget *DashboardPanel::buildTeamView() {
     m_teamTable = new QTreeWidget(view);
     m_teamTable->setObjectName(QStringLiteral("ddTeamTable"));
     m_teamTable->setColumnCount(8);
+    // Labels right after the name: who a machine is comes before how it is
+    // doing, and the last column is the first one a narrow window clips.
     m_teamTable->setHeaderLabels({QStringLiteral("NAME"),
+                                  QStringLiteral("LABELS"),
                                   QStringLiteral("STATE"),
                                   QStringLiteral("CPU %"),
                                   QStringLiteral("MEM AVL"),
                                   QStringLiteral("LOAD"),
                                   QStringLiteral("LAST SEEN"),
-                                  QStringLiteral("SOURCE"),
-                                  QStringLiteral("LABELS")});
+                                  QStringLiteral("SOURCE")});
     m_teamTable->setRootIsDecorated(false);
     m_teamTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_teamTable->setFocusPolicy(Qt::NoFocus);
@@ -5791,9 +5912,9 @@ QWidget *DashboardPanel::buildTeamView() {
                                  ui_theme::banner(), view));
     layout->addLayout(teamFilterRow);
     layout->addWidget(makeCard(QStringLiteral("the relay's fleet"),
-                               m_teamTable, view));
-    layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail,
-                               view));
+                               m_teamTable, view, false));
+    layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail, view,
+                               false));
 
     // --- M152: the relay's incident queue, the three verbs, and the sentence
     // that says why a verb is unavailable. The buttons are never disabled with
@@ -8804,26 +8925,27 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
         auto *item = new QTreeWidgetItem(m_teamTable);
         item->setData(0, Qt::UserRole, machine.id);
         item->setText(0, teamRowName(status, machine));
-        item->setText(1, teamStateCell(status, machine));
-        item->setText(2, teamCellCpu(status, machine));
-        item->setText(3, teamCellMem(status, machine));
-        item->setText(4, teamCellLoad(status, machine));
-        item->setText(5, teamCellLastSeen(status, machine));
-        item->setText(6, teamCellSource(status, machine));
-        item->setText(7, teamLabelsText(machine));
+        item->setText(1, teamLabelsText(machine));
+        item->setText(2, teamStateCell(status, machine));
+        item->setText(3, teamCellCpu(status, machine));
+        item->setText(4, teamCellMem(status, machine));
+        item->setText(5, teamCellLoad(status, machine));
+        item->setText(6, teamCellLastSeen(status, machine));
+        item->setText(7, teamCellSource(status, machine));
         if (!machine.labels.isEmpty()) {
             // An owner is the one label with a consequence: it names who is
             // paged, so it reads in the accent colour rather than as trivia.
             const QString owner =
                 teamLabelValue(machine, QStringLiteral("owner"));
-            item->setForeground(7, QColor(owner.isEmpty() ? ui_theme::muted()
+            item->setForeground(1, QColor(owner.isEmpty() ? ui_theme::muted()
                                                           : ui_theme::accent()));
-            if (!owner.isEmpty()) {
-                item->setToolTip(
-                    7, QStringLiteral("owner: %1").arg(owner));
-            }
+            item->setToolTip(
+                1, owner.isEmpty()
+                       ? teamLabelsText(machine)
+                       : QStringLiteral("%1 - owner %2")
+                             .arg(teamLabelsText(machine), owner));
         }
-        for (int column = 2; column <= 5; ++column) {
+        for (int column = 3; column <= 6; ++column) {
             item->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
         }
         QColor nameColor(ui_theme::text());
@@ -8842,7 +8964,7 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
                    || machine.state == QLatin1String("registered")) {
             stateColor = QColor(ui_theme::warn());
         }
-        item->setForeground(1, stateColor);
+        item->setForeground(2, stateColor);
     }
     if (!keep.isEmpty()) {
         for (int i = 0; i < m_teamTable->topLevelItemCount(); ++i) {
@@ -8854,6 +8976,7 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
         }
     }
     m_teamTable->blockSignals(false);
+    fitTableHeight(m_teamTable, 12);
     updateTeamDetail();
 
     // Server truth reconciles the optimistic rows: an ack the relay now shows,
@@ -9311,6 +9434,9 @@ void DashboardPanel::updateFleetPanel() {
                     auto *header = new QTreeWidgetItem(m_fleetTable);
                     header->setText(0, fleetGroupRowText(group));
                     header->setForeground(0, QColor(ui_theme::accent()));
+                    QFont headerFont = m_fleetTable->font();
+                    headerFont.setBold(true);
+                    header->setFont(0, headerFont);
                     header->setFlags(Qt::NoItemFlags);
                     m_fleetTable->setFirstColumnSpanned(
                         m_fleetTable->topLevelItemCount() - 1, QModelIndex(),
@@ -9357,6 +9483,9 @@ void DashboardPanel::updateFleetPanel() {
                                  : fleetLabelsText(peer.labels));
             if (!peer.labels.isEmpty()) {
                 item->setForeground(6, QColor(ui_theme::muted()));
+                // The column elides in a narrow window; the whole set is one
+                // hover away, and the detail card prints it too.
+                item->setToolTip(6, fleetLabelsText(peer.labels));
             }
         }
         for (int column = 1; column < 6; ++column) {
@@ -9393,6 +9522,7 @@ void DashboardPanel::updateFleetPanel() {
         m_fleetTable->setFirstColumnSpanned(0, QModelIndex(), true);
     }
     m_fleetTable->blockSignals(false);
+    fitTableHeight(m_fleetTable, 12);
 
     if (m_chartFleet != nullptr && worst >= 0.0) {
         m_chartFleet->push(worst);
@@ -9550,7 +9680,28 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                 }
                 m_cloudTeamsNote->setText(note);
             }
+            if (m_cloudTeams->topLevelItemCount() == 0) {
+                auto *placeholder = new QTreeWidgetItem(m_cloudTeams);
+                placeholder->setText(
+                    0, spend.costGroup.isEmpty()
+                           ? QStringLiteral("spend by tag is off")
+                           : QStringLiteral("no grouped rows yet"));
+                placeholder->setForeground(0, QColor(ui_theme::dim()));
+                m_cloudTeams->setFirstColumnSpanned(0, QModelIndex(), true);
+            }
+            fitTableHeight(m_cloudTeams, 10);
         }
+        if (m_cloudSpendServices->topLevelItemCount() == 0) {
+            auto *placeholder = new QTreeWidgetItem(m_cloudSpendServices);
+            placeholder->setText(
+                0, spend.available
+                       ? QStringLiteral("no services billed in this window")
+                       : QStringLiteral("waiting for the cost query"));
+            placeholder->setForeground(0, QColor(ui_theme::dim()));
+            m_cloudSpendServices->setFirstColumnSpanned(
+                0, QModelIndex(), true);
+        }
+        fitTableHeight(m_cloudSpendServices, 10);
         if (spend.days.size() > 1) {
             QList<double> values;
             values.reserve(spend.days.size());
@@ -9602,31 +9753,38 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             item->setText(0, row.isSelf
                                  ? QStringLiteral("* %1").arg(row.name)
                                  : row.name);
+            // M165: which account the row came from, right after the name -
+            // the same instance id means nothing without it, and a last column
+            // is the first one a narrow window clips.
+            const QString account = row.accountLabel.isEmpty()
+                                        ? row.account
+                                        : row.accountLabel;
+            item->setText(1, account.isEmpty() ? QStringLiteral("--") : account);
+            if (!row.account.isEmpty()) {
+                item->setToolTip(
+                    1, row.accountLabel.isEmpty()
+                           ? row.account
+                           : QStringLiteral("%1 - account %2")
+                                 .arg(row.accountLabel, row.account));
+            }
             item->setText(
-                1, row.instanceType.isEmpty() ? QStringLiteral("--")
+                2, row.instanceType.isEmpty() ? QStringLiteral("--")
                                               : row.instanceType);
             item->setText(
-                2, row.region.isEmpty() ? QStringLiteral("--") : row.region);
+                3, row.region.isEmpty() ? QStringLiteral("--") : row.region);
             QString state = row.state;
             if (row.spot && state == QLatin1String("running")) {
                 state = QStringLiteral("running (spot)");
             }
-            item->setText(3, state);
+            item->setText(4, state);
             item->setText(
-                4, row.ageSec >= 0 ? cloudUptimeText(row.ageSec)
+                5, row.ageSec >= 0 ? cloudUptimeText(row.ageSec)
                                    : QStringLiteral("--"));
             item->setText(
-                5, row.monthlyUsd >= 0.0 ? formatCostMoney(row.monthlyUsd)
+                6, row.monthlyUsd >= 0.0 ? formatCostMoney(row.monthlyUsd)
                                          : QStringLiteral("--"));
-            // M165: which account the row came from. With one account the
-            // cell repeats what the identity card says; with several it is the
-            // only thing that makes the same name in two accounts readable.
-            const QString account = row.accountLabel.isEmpty()
-                                        ? row.account
-                                        : row.accountLabel;
-            item->setText(6, account.isEmpty() ? QStringLiteral("--") : account);
-            item->setTextAlignment(4, Qt::AlignRight | Qt::AlignVCenter);
             item->setTextAlignment(5, Qt::AlignRight | Qt::AlignVCenter);
+            item->setTextAlignment(6, Qt::AlignRight | Qt::AlignVCenter);
             if (row.isSelf) {
                 item->setForeground(0, QColor(ui_theme::accent()));
             }
@@ -9641,7 +9799,7 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                        row.state == QLatin1String("suspended")) {
                 stateColor = QColor(ui_theme::dim());
             }
-            item->setForeground(3, stateColor);
+            item->setForeground(4, stateColor);
         }
         if (fleet.rows.isEmpty()) {
             auto *item = new QTreeWidgetItem(m_cloudFleet);
@@ -9674,6 +9832,7 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             }
         }
         m_cloudFleet->setUpdatesEnabled(true);
+        fitTableHeight(m_cloudFleet, 10);
     }
 
     // M166: desired vs actual, and the tag audit.
@@ -9700,7 +9859,19 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
                 item->setForeground(4, QColor(ui_theme::warn()));
             }
         }
+        if (fleet.asgs.isEmpty() && m_cloudAsg->topLevelItemCount() == 0) {
+            auto *placeholder = new QTreeWidgetItem(m_cloudAsg);
+            placeholder->setText(0, fleet.asgError.isEmpty()
+                                        ? QStringLiteral("no Auto Scaling "
+                                                         "groups in this "
+                                                         "account")
+                                        : QStringLiteral("the orchestrator "
+                                                         "query was refused"));
+            placeholder->setForeground(0, QColor(ui_theme::dim()));
+            m_cloudAsg->setFirstColumnSpanned(0, QModelIndex(), true);
+        }
         m_cloudAsg->setUpdatesEnabled(true);
+        fitTableHeight(m_cloudAsg, 6);
         if (m_cloudAsgNote != nullptr) {
             if (fleet.asgs.isEmpty() && !fleet.asgError.isEmpty()) {
                 m_cloudAsgNote->setText(

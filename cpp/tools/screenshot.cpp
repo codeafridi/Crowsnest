@@ -1932,8 +1932,24 @@ int main(int argc, char *argv[]) {
         panel.resize(1460, 1240);
         app.processEvents();
         QWidget *content = grabScroll->widget();
+        // The console is shown narrow (a HUD strip) and wide (a monitor):
+        // CROWSNEST_SHOT_FULL_WIDTH lets a design check render the same page at
+        // the real narrow width instead of assuming 1440.
+        int fullWidth = 1440;
+        if (const QByteArray envWidth = qgetenv("CROWSNEST_SHOT_FULL_WIDTH");
+            !envWidth.isEmpty()) {
+            fullWidth = qBound(640, envWidth.toInt(), 2400);
+        }
         content->setMinimumHeight(qMax(1700, content->sizeHint().height()));
-        content->resize(1440, content->minimumHeight());
+        content->setFixedWidth(fullWidth);
+        content->resize(fullWidth, content->minimumHeight());
+        // `grab()` renders the widget on its own palette, not on the window's
+        // stylesheet-painted background: without this the page came out as
+        // light text on white and the capture could not be read.
+        content->setAutoFillBackground(true);
+        QPalette pagePalette = content->palette();
+        pagePalette.setColor(QPalette::Window, QColor(ui_theme::bg()));
+        content->setPalette(pagePalette);
         app.processEvents();
     }
     const QPixmap shot =
