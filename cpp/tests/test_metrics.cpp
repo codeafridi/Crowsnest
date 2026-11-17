@@ -6550,7 +6550,15 @@ int main(int argc, char *argv[]) {
         // NETWORK budget in production (25 s), so a test-sized 2 s would kill
         // the fake's very first run. The hang case below keeps its own tiny
         // budget on purpose.
+        // A cold PowerShell start on a fresh runner has been measured at ~2 s
+        // and once over 15 s on a loaded one, which killed the instance call
+        // and read as "0 rows" - the harness budget is not the product budget
+        // (25 s), so give Windows room instead of calling a slow runner a bug.
+#if defined(Q_OS_WIN)
+        cliOptions.timeoutMs = 30000;
+#else
         cliOptions.timeoutMs = 15000;
+#endif
         // Pin the binary instead of trusting PATH. The runners keep the real
         // aws/az on some images, and which of the two wins is exactly the race
         // that made this test fail on windows while the PATH assertion above
