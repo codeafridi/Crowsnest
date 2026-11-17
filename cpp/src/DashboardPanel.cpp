@@ -180,7 +180,9 @@ QFrame *makeCollapsibleCard(const QString &title, QWidget *content,
     toggle->setChecked(expanded);
     toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
     toggle->setAutoRaise(true);
-    toggle->setFocusPolicy(Qt::NoFocus);
+    // Reachable, not decoration: a disclosure that only answers the mouse
+    // hides reference text from a keyboard user.
+    toggle->setFocusPolicy(Qt::StrongFocus);
     head->addWidget(toggle);
     head->addWidget(makeTitle(title, card), 1);
     layout->addLayout(head);
