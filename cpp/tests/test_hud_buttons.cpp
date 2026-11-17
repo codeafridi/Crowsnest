@@ -2060,6 +2060,23 @@ int main(int argc, char *argv[]) {
         730.0);
     fleetResolveAges(fleetStory, fleetNow);
     fleetMarkSelf(fleetStory, cloudSnap.cloud.identity);
+    // M166: one group short of its desired capacity, and a tag audit over the
+    // same rows.
+    CloudAsg shortGroup;
+    shortGroup.name = QStringLiteral("web-prod");
+    shortGroup.region = QStringLiteral("eu-west-1");
+    shortGroup.desired = 3;
+    shortGroup.minSize = 2;
+    shortGroup.maxSize = 6;
+    shortGroup.instances = 2;
+    shortGroup.running = 2;
+    CloudAsg scaledToZero;
+    scaledToZero.name = QStringLiteral("batch-nightly");
+    scaledToZero.region = QStringLiteral("us-west-2");
+    scaledToZero.desired = 0;
+    fleetStory.asgs = {shortGroup, scaledToZero};
+    fleetStory.tagAudit = cloudTagAudit(
+        fleetStory.rows, {QStringLiteral("team"), QStringLiteral("env")});
     cloudSnap.cloud.fleet = fleetStory;
     // M84: the outbound footprint card. The sampler fills this from the live
     // budget + measured sweep; here it carries a measured sweep.
@@ -2208,6 +2225,38 @@ int main(int argc, char *argv[]) {
                   && cloudSummary->text().contains(
                       QStringLiteral("profile   prod (018326344142) - 3 row(s)")),
               "cloud fleet summary names each profile and what it answered");
+    }
+    {
+        auto *asgTable = hud.findChild<QTreeWidget *>(
+            QStringLiteral("ddCloudAsg"));
+        auto *asgNote =
+            hud.findChild<QLabel *>(QStringLiteral("ddCloudAsgNote"));
+        auto *tags = hud.findChild<QLabel *>(QStringLiteral("ddCloudTags"));
+        check(asgTable != nullptr && asgTable->columnCount() == 5
+                  && asgTable->topLevelItemCount() == 2
+                  && asgTable->topLevelItem(0)->text(0)
+                         == QStringLiteral("web-prod")
+                  && asgTable->topLevelItem(0)->text(2)
+                         == QStringLiteral("3")
+                  && asgTable->topLevelItem(0)->text(3)
+                         == QStringLiteral("2")
+                  && asgTable->topLevelItem(1)->text(0)
+                         == QStringLiteral("batch-nightly"),
+              "cloud capacity table names the group, what it wanted, what was "
+              "seen and what is running");
+        // The short group's SEEN cell is the red one: a group at 2/3 is a
+        // launch problem.
+        const QColor shortColour =
+            asgTable->topLevelItem(0)->foreground(3).color();
+        check(asgNote != nullptr
+                  && asgNote->text().contains(
+                      QStringLiteral("1 short of desired capacity"))
+                  && tags != nullptr
+                  && tags->text().contains(
+                      QStringLiteral("miss a required tag"))
+                  && shortColour.red() > shortColour.green(),
+              "cloud capacity note names the short group, the tag card names "
+              "the count");
     }
     check(cloudFleet->topLevelItem(1)->text(0) == QStringLiteral("web-2")
               && cloudFleet->topLevelItem(1)->text(2)

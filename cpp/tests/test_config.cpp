@@ -758,6 +758,34 @@ int main(int argc, char *argv[]) {
               "cloud: a malformed profile entry refuses the list");
         check(loadConfig(path, &error).cloud.profiles.isEmpty(),
               "cloud: no profiles means the single-account path");
+
+        // M166: the orchestrator query and the tag audit.
+        const QString asgPath = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "asg = false\n"
+            "required_tags = team, env, team, owner\n"));
+        const Config withAsg = loadConfig(asgPath, nullptr);
+        check(!withAsg.cloud.asg
+                  && withAsg.cloud.requiredTags
+                         == QStringList({QStringLiteral("team"),
+                                         QStringLiteral("env"),
+                                         QStringLiteral("owner")}),
+              "cloud: asg and required_tags load, trimmed and deduped");
+        // A config with no `[cloud]` at all: the defaults, not whatever the
+        // last writeConfig call left behind (writeConfig reuses one path).
+        const Config noCloud =
+            loadConfig(dir.path() + QStringLiteral("/absent.ini"), nullptr);
+        check(noCloud.cloud.asg && noCloud.cloud.requiredTags.isEmpty(),
+              "cloud: the orchestrator query is on by default and the audit is "
+              "off until keys are named");
+        const QString manyTags = writeConfig(dir, QByteArrayLiteral(
+            "[cloud]\n"
+            "required_tags = a, b, c, d, e, f, g, h, i\n"));
+        QString tagError;
+        const Config capped = loadConfig(manyTags, &tagError);
+        check(capped.cloud.requiredTags.size() == 8
+                  && tagError.contains(QStringLiteral("at most 8 keys")),
+              "cloud: the tag list is capped with the reason named");
         check(c.cloud.ratesPath.isEmpty(),
               "cloud: no authored path means the default rate file");
         check(c.cloud.inventory,

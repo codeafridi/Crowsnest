@@ -74,6 +74,10 @@ enum class FleetPhase {
     HomeRegion,
     Regions,
     Instances,
+    // M166: what the orchestrator wanted, one call per queried region. Runs
+    // after the instances so the join (desired vs what the listing saw) has
+    // the rows.
+    Asg,
     // One describe-images per region with rows, plus one describe-instance-types
     // for the types seen: the OS name and the vCPU/memory behind the type.
     Details,
@@ -269,6 +273,24 @@ QStringList cloudAwsDescribeVolumesArguments(const QString &region,
     return args;
 }
 
+QStringList cloudAwsAutoScalingArguments(const QString &region,
+                                         const QString &profile) {
+    QStringList args;
+    args << QStringLiteral("autoscaling")
+         << QStringLiteral("describe-auto-scaling-groups")
+         << QStringLiteral("--output") << QStringLiteral("json");
+    if (!region.isEmpty()) {
+        args << QStringLiteral("--region") << region;
+    }
+    args << QStringLiteral("--query")
+         << QStringLiteral("AutoScalingGroups[].{name:AutoScalingGroupName,"
+                           "desired:DesiredCapacity,min:MinSize,max:MaxSize,"
+                           "instances:Instances[].{id:InstanceId,"
+                           "state:LifecycleState}}");
+    appendProfile(args, profile);
+    return args;
+}
+
 QString cloudFleetScope(const CloudIdentity &identity) {
     switch (identity.provider) {
     case CloudProvider::Aws:
@@ -442,7 +464,14 @@ public:
         profileSummaries.clear();
         accounts.clear();
         mergedNotes.clear();
+        mergedAsgs.clear();
+        mergedAsgError.clear();
         profileName.clear();
+        asgs.clear();
+        asgPending.clear();
+        asgRequested.clear();
+        asgStarted = false;
+        asgError.clear();
         if (id.provider == CloudProvider::Aws && !opts.profiles.isEmpty()) {
             profileQueue = opts.profiles;
         }
@@ -506,6 +535,11 @@ public:
         pendingImageRegions.clear();
         pendingVolumeRegions.clear();
         pendingTypes.clear();
+        asgs.clear();
+        asgPending.clear();
+        asgRequested.clear();
+        asgStarted = false;
+        asgError.clear();
         startedAtMs = nowMs;
         wallStartedAtMs = QDateTime::currentMSecsSinceEpoch();
         if (profileIndex == 0) {
@@ -733,6 +767,30 @@ public:
                         finishKnownCheck(nowMs);
                         return;
                     }
+                    phase = options.asg && identity.provider == CloudProvider::Aws
+                                ? FleetPhase::Asg
+                                : FleetPhase::Details;
+                    continue;
+                }
+                return;
+            }
+            case FleetPhase::Asg: {
+                const int limit =
+                    qBound(1, options.regionConcurrency,
+                           kCloudFleetRegionConcurrencyMax);
+                if (asgRequested.isEmpty() && asgPending.isEmpty()
+                    && !asgStarted) {
+                    asgStarted = true;
+                    asgPending = queriedRegions;
+                }
+                while (jobs.size() < limit && !asgPending.isEmpty()) {
+                    const QString region = asgPending.takeFirst();
+                    asgRequested.append(region);
+                    startJob(QStringLiteral("asg"), region,
+                             cloudAwsAutoScalingArguments(region, profileName),
+                             nowMs);
+                }
+                if (jobs.isEmpty() && asgPending.isEmpty()) {
                     phase = FleetPhase::Details;
                     continue;
                 }
@@ -846,6 +904,15 @@ public:
             if (!homeRegion.isEmpty() &&
                 pendingRegions.removeAll(homeRegion) > 0) {
                 pendingRegions.prepend(homeRegion);
+            }
+            return;
+        }
+        if (job.stage == QLatin1String("asg")) {
+            const QList<CloudAsg> groups =
+                parseAwsAutoScalingGroups(out, job.region);
+            for (CloudAsg asg : groups) {
+                asg.account = identity.accountId;
+                asgs.append(asg);
             }
             return;
         }
@@ -1117,6 +1184,14 @@ public:
             noteRegionsFailure(note, nowMs);
             return;
         }
+        if (stage == QLatin1String("asg")) {
+            // Enrichment only: an IAM key often allows DescribeInstances and
+            // denies DescribeAutoScalingGroups. The capacity card says so.
+            if (asgError.isEmpty()) {
+                asgError = note.left(160);
+            }
+            return;
+        }
         if (stage == QLatin1String("images") || stage == QLatin1String("types") ||
             stage == QLatin1String("volumes")) {
             // Enrichment only: the listing itself succeeded, so a refused
@@ -1202,6 +1277,44 @@ public:
                    bool force = false) {
         abort();
         applyDetails();
+        // M166: what the orchestrator asked for, joined to what the listing
+        // actually saw. The group's own Instances[] is the authority on
+        // membership; a member this listing cannot see (another account, a
+        // region that failed) is a gap the page must not round away.
+        for (CloudAsg &asg : asgs) {
+            int present = 0;
+            int running = 0;
+            for (const CloudFleetInstance &row : rows) {
+                if (row.region != asg.region) {
+                    continue;
+                }
+                // The group's members are matched by name of the ASG the row
+                // carries (AWS sets aws:autoscaling:groupName as a tag).
+                bool member = false;
+                for (const QString &tag : row.tags) {
+                    if (tag.compare(
+                            QStringLiteral("aws:autoscaling:groupName=%1")
+                                .arg(asg.name),
+                            Qt::CaseInsensitive)
+                        == 0) {
+                        member = true;
+                        break;
+                    }
+                }
+                if (!member) {
+                    continue;
+                }
+                ++present;
+                if (row.state == QLatin1String("running")) {
+                    ++running;
+                }
+            }
+            // The group's own member list is the floor: a member the listing
+            // could not see still exists (it is what "2/3" reports).
+            asg.instances = qMax(present, asg.instances);
+            asg.running = present > 0 ? running : asg.running;
+        }
+
         // M165: one account is done. Merge it (the pure helper tags rows with
         // the account and the label) and start the next profile rather than
         // finishing - the page shows one fleet, not N pages.
@@ -1225,8 +1338,20 @@ public:
             merged.profileSummaries = profileSummaries;
             merged.accounts = accounts;
             merged.notes = mergedNotes;
+            merged.asgs = mergedAsgs;
             fleetMergeAccount(merged, accountStatus,
                               profileQueue.at(profileIndex).label);
+            for (const CloudAsg &asg : asgs) {
+                CloudAsg tagged = asg;
+                tagged.accountLabel = profileQueue.at(profileIndex).label;
+                merged.asgs.append(tagged);
+            }
+            mergedAsgs = merged.asgs;
+            if (mergedAsgError.isEmpty() && !asgError.isEmpty()) {
+                mergedAsgError = QStringLiteral("%1: %2")
+                                     .arg(profileQueue.at(profileIndex).label,
+                                          asgError);
+            }
             mergedRows = merged.rows;
             mergedDropped = merged.dropped;
             mergedRegions = merged.regions;
@@ -1274,6 +1399,9 @@ public:
             status.scope = queriedRegions.first();
         }
         status.source = sourceText();
+        status.asgs = profileQueue.isEmpty() ? asgs : mergedAsgs;
+        status.asgError = profileQueue.isEmpty() ? asgError : mergedAsgError;
+        status.tagAudit = cloudTagAudit(status.rows, options.requiredTags);
         fleetFinalize(status);
         fleetResolveAges(status, nowMs);
         lastKnownCheckMs = nowMs;
@@ -1316,6 +1444,14 @@ public:
     QStringList profileSummaries;
     QStringList accounts;
     QStringList mergedNotes;
+    // M166: the orchestrator's answer for this account.
+    QList<CloudAsg> asgs;
+    QList<CloudAsg> mergedAsgs;
+    QString asgError;
+    QString mergedAsgError;
+    QStringList asgPending;
+    QStringList asgRequested;
+    bool asgStarted = false;
     QString cliPath;
     QString homeRegion;
     QStringList pendingRegions;

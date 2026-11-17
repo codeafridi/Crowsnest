@@ -6579,6 +6579,7 @@ int main(int argc, char *argv[]) {
         qputenv("CROWSNEST_FAKE_SLEEP", "6");
         CloudFleetOptions hangOptions;
         hangOptions.timeoutMs = 2000;
+        hangOptions.asg = false;
         hangOptions.cliPath = binDir + QStringLiteral("/aws") + suffix;
         QElapsedTimer timeoutClock;
         timeoutClock.start();
@@ -6768,6 +6769,7 @@ int main(int argc, char *argv[]) {
             CloudFleetOptions fanOptions;
             fanOptions.timeoutMs = 15000;
             fanOptions.cliPath = binDir + QStringLiteral("/aws") + suffix;
+            fanOptions.asg = false;
             fanOptions.identityAuto = true;
             // One region at a time: two concurrent .cmd -> powershell fakes
             // race on their shared argv log on windows and make this test
@@ -7995,6 +7997,135 @@ int main(int argc, char *argv[]) {
             check(unaccounted == 0 && both.rows.at(0).isSelf,
                   "profiles: without an account the name match still works");
 
+        // M166: the orchestrator's answer. Desired is what should exist; the
+        // member list is what it says exists; the join to the listing happens
+        // in the session, so this parses the projected document and no more.
+        {
+            const QList<CloudAsg> groups = parseAwsAutoScalingGroups(
+                QByteArrayLiteral(
+                    "{\"AutoScalingGroups\":["
+                    "{\"name\":\"web-prod\",\"desired\":3,\"min\":2,"
+                    "\"max\":6,\"instances\":["
+                    "{\"id\":\"i-1\",\"state\":\"InService\"},"
+                    "{\"id\":\"i-2\",\"state\":\"InService\"},"
+                    "{\"id\":\"i-3\",\"state\":\"Launching\"}]},"
+                    "{\"name\":\"batch-nightly\",\"desired\":0,\"min\":0,"
+                    "\"max\":2,\"instances\":[]}]}"),
+                QStringLiteral("eu-west-1"));
+            check(groups.size() == 2
+                      && groups.at(0).name == QStringLiteral("web-prod")
+                      && groups.at(0).region == QStringLiteral("eu-west-1")
+                      && groups.at(0).desired == 3 && groups.at(0).minSize == 2
+                      && groups.at(0).maxSize == 6
+                      && groups.at(0).instances == 3
+                      && groups.at(0).running == 2,
+                  "asg: desired/min/max and members are parsed");
+            check(groups.at(1).desired == 0 && groups.at(1).instances == 0,
+                  "asg: a group scaled to zero is a reading, not an absence");
+            check(parseAwsAutoScalingGroups(QByteArrayLiteral("[]"),
+                                           QStringLiteral("eu-west-1"))
+                          .isEmpty()
+                      && parseAwsAutoScalingGroups(QByteArrayLiteral("not json"),
+                                                   QString())
+                             .isEmpty()
+                      && parseAwsAutoScalingGroups(
+                             QByteArrayLiteral("{\"AutoScalingGroups\":[{}]}"),
+                             QString())
+                             .isEmpty(),
+                  "asg: an unreadable or nameless answer is refused, not "
+                  "half-parsed");
+            check(cloudAsgText(groups.at(0))
+                          == QStringLiteral("web-prod 3/3 (2 running)")
+                      && cloudAsgText(groups.at(1))
+                             == QStringLiteral("batch-nightly 0/0 (scaled to "
+                                               "zero)"),
+                  "asg: the row text puts what was seen before what was wanted");
+        }
+
+        // M166: the tag audit, over the rows the listing already carries.
+        {
+            CloudFleetInstance good;
+            good.name = QStringLiteral("web-01");
+            good.tags = {QStringLiteral("team=payments"),
+                         QStringLiteral("env=prod"),
+                         QStringLiteral("owner=chen")};
+            CloudFleetInstance oneMissing;
+            oneMissing.name = QStringLiteral("web-02");
+            oneMissing.tags = {QStringLiteral("team=payments"),
+                               QStringLiteral("env=prod")};
+            CloudFleetInstance wrongCase;
+            wrongCase.name = QStringLiteral("web-03");
+            // AWS tag KEYS are case-sensitive: `Team` is not `team`.
+            wrongCase.tags = {QStringLiteral("Team=payments"),
+                              QStringLiteral("env=prod"),
+                              QStringLiteral("owner=chen")};
+            CloudFleetInstance emptyValue;
+            emptyValue.name = QStringLiteral("web-04");
+            emptyValue.tags = {QStringLiteral("team="),
+                               QStringLiteral("env=prod"),
+                               QStringLiteral("owner=chen")};
+            CloudFleetInstance stopped;
+            stopped.name = QStringLiteral("web-05");
+            stopped.state = QStringLiteral("stopped");
+            stopped.tags = {QStringLiteral("env=prod")};
+            const QList<CloudFleetInstance> rows = {
+                good, oneMissing, wrongCase, emptyValue, stopped};
+            const CloudTagAudit audit = cloudTagAudit(
+                rows, {QStringLiteral("team"), QStringLiteral("env"),
+                       QStringLiteral("owner"), QStringLiteral(" team ")});
+            check(audit.required == QStringList({QStringLiteral("team"),
+                                                 QStringLiteral("env"),
+                                                 QStringLiteral("owner")}),
+                  "tags: required keys are trimmed and deduped");
+            fprintf(stderr, "DBG audit considered=%d offenders=%d team=%d owner=%d\\n",
+                    audit.considered, int(audit.offenders.size()),
+                    audit.missing.value(QStringLiteral("team")),
+                    audit.missing.value(QStringLiteral("owner")));
+            check(audit.considered == 5 && audit.offenders.size() == 4
+                      && audit.missing.value(QStringLiteral("team")) == 3
+                      && audit.missing.value(QStringLiteral("owner")) == 2
+                      && !audit.missing.contains(QStringLiteral("env")),
+                  "tags: case, an empty value and a stopped instance all count "
+                  "as missing");
+            check(!audit.offenders.contains(0) && audit.offenders.contains(4),
+                  "tags: only the instances that miss a key are offenders");
+            check(cloudTagAuditText(audit).contains(
+                      QStringLiteral("4 of 5 instance(s) miss a required tag"))
+                      && cloudTagAuditText(audit).contains(
+                          QStringLiteral("team (3)"))
+                      && cloudTagAuditText(audit).contains(
+                          QStringLiteral("owner (2)")),
+                  "tags: the summary names the count per key");
+            check(cloudTagAudit(rows, {}).required.isEmpty()
+                      && cloudTagAuditText(CloudTagAudit{}).contains(
+                          QStringLiteral("no required tags configured")),
+                  "tags: no required keys is stated, not silently audited");
+            CloudTagAudit clean = cloudTagAudit({good},
+                                                {QStringLiteral("team")});
+            check(clean.offenders.isEmpty()
+                      && cloudTagAuditText(clean)
+                             == QStringLiteral("tag coverage: all 1 instance(s) "
+                                               "carry team"),
+                  "tags: a clean fleet says so");
+        }
+
+        // M166: the orchestrator call, with and without a profile.
+        {
+            const QStringList plain =
+                cloudAwsAutoScalingArguments(QStringLiteral("eu-west-1"));
+            check(plain.value(0) == QStringLiteral("autoscaling")
+                      && plain.value(1)
+                             == QStringLiteral("describe-auto-scaling-groups")
+                      && plain.contains(QStringLiteral("eu-west-1"))
+                      && !plain.contains(QStringLiteral("--profile")),
+                  "asg: one describe-auto-scaling-groups per region");
+            const QStringList named = cloudAwsAutoScalingArguments(
+                QStringLiteral("eu-west-1"), QStringLiteral("staging"));
+            check(named.contains(QStringLiteral("--profile"))
+                      && named.last() == QStringLiteral("staging"),
+                  "asg: the call carries the profile it belongs to");
+        }
+
 #if !defined(Q_OS_WIN)
         // M165 end to end: one fake `aws` that answers per `--profile`, driven
         // through the REAL blocking probe. Two accounts, the same instance
@@ -8114,6 +8245,115 @@ int main(int argc, char *argv[]) {
                              == QStringLiteral("staging")
                       && !selfFleet.rows.at(1).isSelf,
                   "profiles: self is the row in its own account, not a twin");
+        }
+
+        // M166 end to end: the orchestrator's answer through a fake `aws`,
+        // joined to the listing by the group tag AWS writes on every member.
+        {
+            QTemporaryDir dir;
+            check(dir.isValid(), "asg: a temp dir for the fake aws");
+            const QString binDir = dir.path();
+            const QByteArray script = QByteArrayLiteral(
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *'sts get-caller-identity'*) echo "
+                "'{\"Account\":\"123456789012\"}'; ;;\n"
+                "  *'configure get region'*) echo eu-west-1 ;;\n"
+                "  *'describe-regions'*) echo "
+                "'{\"Regions\":[{\"RegionName\":\"eu-west-1\"}]}' ;;\n"
+                "  *'autoscaling describe-auto-scaling-groups'*) echo "
+                "'[{\"name\":\"web-prod\",\"desired\":3,\"min\":2,\"max\":6,"
+                "\"instances\":[{\"id\":\"i-1\",\"state\":\"InService\"},"
+                "{\"id\":\"i-2\",\"state\":\"InService\"},"
+                "{\"id\":\"i-3\",\"state\":\"Launching\"}]}]' ;;\n"
+                "  *'describe-instances'*) echo "
+                "'[{\"InstanceId\":\"i-1\",\"InstanceType\":\"t3.micro\","
+                "\"State\":{\"Name\":\"running\"},"
+                "\"Placement\":{\"AvailabilityZone\":\"eu-west-1a\"},"
+                "\"Tags\":[{\"Key\":\"Name\",\"Value\":\"web-1\"},"
+                "{\"Key\":\"aws:autoscaling:groupName\","
+                "\"Value\":\"web-prod\"},"
+                "{\"Key\":\"team\",\"Value\":\"payments\"}]},"
+                "{\"InstanceId\":\"i-2\",\"InstanceType\":\"t3.micro\","
+                "\"State\":{\"Name\":\"running\"},"
+                "\"Placement\":{\"AvailabilityZone\":\"eu-west-1a\"},"
+                "\"Tags\":[{\"Key\":\"Name\",\"Value\":\"web-2\"},"
+                "{\"Key\":\"aws:autoscaling:groupName\","
+                "\"Value\":\"web-prod\"}]}]' ;;\n"
+                "  *'describe-images'*) echo '[]' ;;\n"
+                "  *'describe-instance-types'*) echo '[]' ;;\n"
+                "  *'describe-volumes'*) echo '[]' ;;\n"
+                "  *) echo '{}' ;;\n"
+                "esac\n");
+            QFile fake(binDir + QStringLiteral("/aws"));
+            bool wrote = fake.open(QIODevice::WriteOnly | QIODevice::Truncate);
+            if (wrote) {
+                fake.write(script);
+                fake.close();
+                fake.setPermissions(QFile::ReadOwner | QFile::WriteOwner
+                                    | QFile::ExeOwner | QFile::ReadGroup
+                                    | QFile::ExeGroup | QFile::ReadOther
+                                    | QFile::ExeOther);
+            }
+            check(wrote, "asg: the fake aws is written");
+
+            CloudIdentity identity;
+            identity.provider = CloudProvider::Aws;
+            identity.region = QStringLiteral("eu-west-1");
+            identity.accountId = QStringLiteral("123456789012");
+            CloudFleetOptions options;
+            options.cliPath = binDir + QStringLiteral("/aws");
+            options.timeoutMs = 15000;
+            options.accountTimeoutMs = 20000;
+            options.regionConcurrency = 1;
+            options.requiredTags = {QStringLiteral("team")};
+            const CloudFleetStatus status = probeCloudFleet(
+                identity, options, QDateTime::currentMSecsSinceEpoch());
+
+            check(status.rows.size() == 2 && status.asgs.size() == 1,
+                  "asg: the listing and the orchestrator both answer");
+            const CloudAsg &asg = status.asgs.at(0);
+            check(asg.name == QStringLiteral("web-prod") && asg.desired == 3
+                      && asg.minSize == 2 && asg.maxSize == 6
+                      && asg.instances == 3 && asg.running == 2,
+                  "asg: desired 3, three members named, two in service - the "
+                  "third is a launch gap, not a shrink");
+            check(status.tagAudit.considered == 2
+                      && status.tagAudit.offenders.size() == 1
+                      && status.tagAudit.offenders.first() == 1,
+                  "asg: the tag audit runs over the same rows the table shows");
+
+            // A key that lists instances but not groups is common. The
+            // listing must survive it and the capacity card must say why.
+            const QString denied = binDir + QStringLiteral("/aws-noasg");
+            QFile noAsg(denied);
+            bool wroteDenied = noAsg.open(QIODevice::WriteOnly
+                                          | QIODevice::Truncate);
+            if (wroteDenied) {
+                QByteArray body = script;
+                body.replace("  *'autoscaling describe-auto-scaling-groups'*) echo ",
+                             "  *'autoscaling describe-auto-scaling-groups'*) "
+                             "echo 'An error occurred (AccessDenied) when "
+                             "calling the DescribeAutoScalingGroups operation' "
+                             ">&2; exit 255 ;;\n"
+                             "  *'describe-instances-disabled'*) echo ");
+                noAsg.write(body);
+                noAsg.close();
+                noAsg.setPermissions(QFile::ReadOwner | QFile::WriteOwner
+                                     | QFile::ExeOwner | QFile::ReadGroup
+                                     | QFile::ExeGroup | QFile::ReadOther
+                                     | QFile::ExeOther);
+            }
+            check(wroteDenied, "asg: the refused-group fake is written");
+            CloudFleetOptions deniedOptions = options;
+            deniedOptions.cliPath = denied;
+            const CloudFleetStatus deniedStatus = probeCloudFleet(
+                identity, deniedOptions, QDateTime::currentMSecsSinceEpoch());
+            check(deniedStatus.rows.size() == 2 && deniedStatus.asgs.isEmpty()
+                      && deniedStatus.asgError.contains(
+                          QStringLiteral("AccessDenied"))
+                      && deniedStatus.regionFailures.isEmpty(),
+                  "asg: a refused group query keeps the listing and says why");
         }
 #endif
         }

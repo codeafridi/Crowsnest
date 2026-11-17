@@ -483,6 +483,28 @@ Config loadConfig(const QString &path, QString *errorMessage) {
             && errorMessage->isEmpty()) {
             *errorMessage = QStringLiteral("[cloud] profiles: %1").arg(profileError);
         }
+        if (settings.contains(QStringLiteral("asg"))) {
+            config.cloud.asg = settings.value(QStringLiteral("asg")).toBool();
+        }
+        // `team, env` or a repeated key; trimmed, deduped, at most 8 keys, and
+        // only names a label could legally have (the audit compares tag keys,
+        // which AWS treats case-sensitively).
+        config.cloud.requiredTags.clear();
+        for (const QString &raw :
+             readList(settings, QStringLiteral("required_tags"))) {
+            const QString key = raw.trimmed();
+            if (key.isEmpty() || config.cloud.requiredTags.contains(key)) {
+                continue;
+            }
+            if (config.cloud.requiredTags.size() >= 8) {
+                if (errorMessage != nullptr && errorMessage->isEmpty()) {
+                    *errorMessage = QStringLiteral(
+                        "[cloud] required_tags holds at most 8 keys");
+                }
+                break;
+            }
+            config.cloud.requiredTags.append(key);
+        }
     }
     settings.endGroup();
 

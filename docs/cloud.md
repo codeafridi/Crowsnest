@@ -212,6 +212,43 @@ budget is per account, so a slow account cannot kill the others.
 - `[cloud] identity=` is the single-account fallback; with `profiles` set the
   profiles win and the summary states that the override was ignored.
 
+## Desired capacity and tag hygiene (`[cloud] asg`, `required_tags`)
+
+The listing answers "what exists"; the orchestrator answers "what should". One
+extra read-only call per listed region asks `aws autoscaling
+describe-auto-scaling-groups`, and the `CAPACITY (AUTO SCALING)` table pairs the
+two:
+
+```
+GROUP        REGION      DESIRED  SEEN  RUNNING
+web-prod     eu-west-1         3     2        2
+batch-nightly ap-south-1       0     0        0
+```
+
+`SEEN` is how many of the group's members this listing actually saw, joined by
+the `aws:autoscaling:groupName` tag every member carries. A group at 2/3 is a
+**launch or AZ problem, not an application problem**, and the cell is red so it
+reads that way. `DESIRED 0` is a reading (scaled to zero), never an outage.
+
+```ini
+[cloud]
+asg           = true          ; one describe-auto-scaling-groups per region
+required_tags = team, env     ; at most 8, keys are case-sensitive
+```
+
+`TAG COVERAGE` audits the instances the listing already parsed against those
+keys: a missing key, a **key with a different case** (`Team` is not `team`; AWS
+treats tag keys case-sensitively) and a tag with an **empty value** all count as
+missing. A stopped instance still counts, because its disks are still billed.
+The card names the count per key and the offender instances, capped at eight
+names.
+
+The audit deliberately does **not** use the Resource Groups Tagging API:
+`aws resourcegroupstaggingapi get-resources help` states "GetResources does not
+return untagged resources", so an audit built on it could only see the
+instances that already pass. The ground truth is `describe-instances`, which
+lists everything and carries the tags.
+
 ## Cost
 
 - **Rate file.** `~/.config/crowsnest/cloud-rates.txt` (override with

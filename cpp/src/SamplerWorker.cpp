@@ -1087,6 +1087,8 @@ void SamplerWorker::fillCloud(DisplaySnapshot &snapshot) {
         // M165: the accounts the user listed. A profile's own region pin is
         // inside the entry; the targeted re-check disables itself per account.
         fleetOptions.profiles = m_cloud.profiles;
+        fleetOptions.asg = m_cloud.asg;
+        fleetOptions.requiredTags = m_cloud.requiredTags;
         m_cloudFleet->setOptions(fleetOptions);
         if (m_cloudRefreshRequested) {
             m_cloudRefreshRequested = false;

@@ -371,6 +371,10 @@ private:
     QLabel *m_cloudIac = nullptr;
     QWidget *m_cloudIacSection = nullptr;
     QTreeWidget *m_cloudFleet = nullptr;
+    // M166: desired vs actual, and the tag audit.
+    QTreeWidget *m_cloudAsg = nullptr;
+    QLabel *m_cloudAsgNote = nullptr;
+    QLabel *m_cloudTags = nullptr;
     TimeseriesChart *m_chartCloudFleet = nullptr;
     QLabel *m_cloudCost = nullptr;
     QLabel *m_cloudApp = nullptr;

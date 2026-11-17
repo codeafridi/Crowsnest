@@ -1531,6 +1531,42 @@ QString dumpReportJson(int maxProcs) {
             profileArray.append(entry);
         }
         fleet.insert(QStringLiteral("profiles"), profileArray);
+
+        // M166: the orchestrator's answer, joined to the rows, and the tag
+        // audit. A credential-less runner still proves the maths.
+        const QList<CloudAsg> dumpAsgs = parseAwsAutoScalingGroups(
+            QByteArrayLiteral(
+                "[{\"name\":\"web-prod\",\"desired\":3,\"min\":2,"
+                "\"max\":6,\"instances\":["
+                "{\"id\":\"i-1\",\"state\":\"InService\"},"
+                "{\"id\":\"i-2\",\"state\":\"InService\"},"
+                "{\"id\":\"i-3\",\"state\":\"Launching\"}]}]"),
+            QStringLiteral("eu-west-1"));
+        fleet.insert(
+            QStringLiteral("asgOk"),
+            dumpAsgs.size() == 1 && dumpAsgs.at(0).desired == 3
+                && dumpAsgs.at(0).instances == 3 && dumpAsgs.at(0).running == 2
+                && dumpAsgs.at(0).minSize == 2 && dumpAsgs.at(0).maxSize == 6
+                && cloudAsgText(dumpAsgs.at(0))
+                       == QStringLiteral("web-prod 3/3 (2 running)")
+                && cloudAwsAutoScalingArguments(QStringLiteral("eu-west-1"),
+                                                QStringLiteral("staging"))
+                       .contains(QStringLiteral("--profile")));
+        CloudFleetInstance tagged;
+        tagged.name = QStringLiteral("web-01");
+        tagged.tags = {QStringLiteral("team=payments")};
+        CloudFleetInstance untagged;
+        untagged.name = QStringLiteral("web-02");
+        untagged.tags = {QStringLiteral("Team=payments")};
+        const CloudTagAudit dumpAudit = cloudTagAudit(
+            {tagged, untagged}, {QStringLiteral("team"), QStringLiteral("env")});
+        fleet.insert(
+            QStringLiteral("tagsOk"),
+            dumpAudit.considered == 2 && dumpAudit.offenders.size() == 2
+                && dumpAudit.missing.value(QStringLiteral("env")) == 2
+                && dumpAudit.missing.value(QStringLiteral("team")) == 1
+                && cloudTagAuditText(dumpAudit).contains(
+                    QStringLiteral("2 of 2 instance(s) miss a required tag")));
         root.insert(QStringLiteral("fleet"), fleet);
     }
 

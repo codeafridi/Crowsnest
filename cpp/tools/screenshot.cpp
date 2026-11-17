@@ -613,6 +613,31 @@ DisplaySnapshot demoSnapshot(int tick) {
             row.account = QStringLiteral("222222222222");
         }
     }
+    CloudAsg webProd;
+    webProd.name = QStringLiteral("web-prod");
+    webProd.region = QStringLiteral("eu-west-1");
+    webProd.desired = 3;
+    webProd.minSize = 2;
+    webProd.maxSize = 6;
+    webProd.instances = 2;
+    webProd.running = 2;
+    CloudAsg webCanary;
+    webCanary.name = QStringLiteral("web-canary");
+    webCanary.region = QStringLiteral("us-west-2");
+    webCanary.desired = 2;
+    webCanary.minSize = 1;
+    webCanary.maxSize = 3;
+    webCanary.instances = 2;
+    webCanary.running = 2;
+    CloudAsg nightly;
+    nightly.name = QStringLiteral("batch-nightly");
+    nightly.region = QStringLiteral("ap-south-1");
+    nightly.desired = 0;
+    fleet.asgs = {webProd, webCanary, nightly};
+    fleet.tagAudit = cloudTagAudit(fleet.rows,
+                                   {QStringLiteral("team"),
+                                    QStringLiteral("env"),
+                                    QStringLiteral("owner")});
     fleet.profileSummaries = {
         QStringLiteral("prod (018326344142) - 3 row(s)"),
         QStringLiteral("staging (222222222222) - 2 row(s)")};

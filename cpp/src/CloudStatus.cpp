@@ -462,6 +462,170 @@ QList<CloudProfile> cloudParseProfiles(const QStringList &entries,
     return profiles;
 }
 
+namespace {
+
+// The AWS key names, or the short names the `--query` projection produces:
+// the listing asks for `AutoScalingGroups[].{name:AutoScalingGroupName, ...}`,
+// so one document must parse either way (a fixture and a real answer are the
+// same answer).
+QString fieldName(const QJsonObject &object, const char *shortKey,
+                  const char *longKey) {
+    const QJsonValue shortValue =
+        object.value(QLatin1String(shortKey));
+    if (shortValue.isString()) {
+        return shortValue.toString();
+    }
+    return object.value(QLatin1String(longKey)).toString();
+}
+
+int fieldInt(const QJsonObject &object, const char *shortKey,
+             const char *longKey) {
+    const QJsonValue shortValue = object.value(QLatin1String(shortKey));
+    if (shortValue.isDouble()) {
+        return shortValue.toInt();
+    }
+    return object.value(QLatin1String(longKey)).toInt();
+}
+
+} // namespace
+
+QList<CloudAsg> parseAwsAutoScalingGroups(const QByteArray &document,
+                                         const QString &region) {
+    QList<CloudAsg> out;
+    const QJsonDocument doc = QJsonDocument::fromJson(document);
+    QJsonArray groups;
+    if (doc.isArray()) {
+        groups = doc.array();
+    } else if (doc.isObject()) {
+        groups = doc.object().value(QStringLiteral("AutoScalingGroups")).toArray();
+    } else {
+        return out;
+    }
+    for (const QJsonValue &value : groups) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject object = value.toObject();
+        CloudAsg asg;
+        asg.name = fieldName(object, "name", "AutoScalingGroupName");
+        if (asg.name.isEmpty()) {
+            continue;
+        }
+        asg.region = region;
+        asg.desired = fieldInt(object, "desired", "DesiredCapacity");
+        asg.minSize = fieldInt(object, "min", "MinSize");
+        asg.maxSize = fieldInt(object, "max", "MaxSize");
+        QJsonArray members = object.value(QStringLiteral("Instances")).toArray();
+        if (members.isEmpty()) {
+            members = object.value(QStringLiteral("instances")).toArray();
+        }
+        for (const QJsonValue &member : members) {
+            if (!member.isObject()) {
+                continue;
+            }
+            const QJsonObject instance = member.toObject();
+            const QString id = fieldName(instance, "id", "InstanceId");
+            if (id.isEmpty()) {
+                continue;
+            }
+            ++asg.instances;
+            // LifecycleState is the group's view ("InService", "Launching",
+            // "Terminating"); HealthStatus is separate and is not what "is it
+            // running" means.
+            const QString state = fieldName(instance, "state", "LifecycleState");
+            if (state.compare(QLatin1String("InService"), Qt::CaseInsensitive)
+                == 0) {
+                ++asg.running;
+            }
+        }
+        out.append(asg);
+    }
+    return out;
+}
+
+CloudTagAudit cloudTagAudit(const QList<CloudFleetInstance> &rows,
+                            const QStringList &required) {
+    CloudTagAudit audit;
+    for (const QString &key : required) {
+        const QString trimmed = key.trimmed();
+        if (!trimmed.isEmpty() && !audit.required.contains(trimmed)) {
+            audit.required.append(trimmed);
+        }
+    }
+    if (audit.required.isEmpty()) {
+        return audit;
+    }
+    for (int i = 0; i < rows.size(); ++i) {
+        ++audit.considered;
+        bool missingAny = false;
+        for (const QString &key : audit.required) {
+            bool present = false;
+            for (const QString &tag : rows.at(i).tags) {
+                const int equals = tag.indexOf(QLatin1Char('='));
+                if (equals <= 0) {
+                    continue;
+                }
+                // Case-sensitive, and a tag with an empty value is a tag
+                // nobody filled in: both count as missing.
+                if (tag.left(equals) == key && equals < tag.size() - 1) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                audit.missing[key] = audit.missing.value(key) + 1;
+                missingAny = true;
+            }
+        }
+        if (missingAny) {
+            audit.offenders.append(i);
+        }
+    }
+    return audit;
+}
+
+QString cloudTagAuditText(const CloudTagAudit &audit) {
+    if (audit.required.isEmpty()) {
+        return QStringLiteral(
+            "tag coverage: no required tags configured - set "
+            "[cloud] required_tags = team, env to audit them");
+    }
+    if (audit.considered == 0) {
+        return QStringLiteral("tag coverage: no instances to audit");
+    }
+    if (audit.offenders.isEmpty()) {
+        return QStringLiteral("tag coverage: all %1 instance(s) carry %2")
+            .arg(audit.considered)
+            .arg(audit.required.join(QStringLiteral(", ")));
+    }
+    QStringList parts;
+    for (const QString &key : audit.required) {
+        const int count = audit.missing.value(key);
+        if (count > 0) {
+            parts << QStringLiteral("%1 (%2)").arg(key).arg(count);
+        }
+    }
+    return QStringLiteral("%1 of %2 instance(s) miss a required tag - %3")
+        .arg(audit.offenders.size())
+        .arg(audit.considered)
+        .arg(parts.join(QStringLiteral(", ")));
+}
+
+QString cloudAsgText(const CloudAsg &asg) {
+    // "web-prod 2/3 in this listing (2 running)" - the second number is what
+    // the orchestrator asked for, the first is what the listing saw. A gap is
+    // a launch problem and is never rounded away.
+    QString text = QStringLiteral("%1 %2/%3").arg(asg.name).arg(asg.instances)
+                       .arg(asg.desired);
+    if (asg.running != asg.instances) {
+        text += QStringLiteral(" (%1 running)").arg(asg.running);
+    }
+    if (asg.desired == 0) {
+        text += QStringLiteral(" (scaled to zero)");
+    }
+    return text;
+}
+
 QString cloudProfilesText(const QList<CloudProfile> &profiles) {
     QStringList parts;
     for (const CloudProfile &profile : profiles) {

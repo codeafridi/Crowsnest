@@ -563,6 +563,8 @@ me?" without touching a control plane:
   rates                =        ; empty = ~/.config/crowsnest/cloud-rates.txt
   timeout_ms           = 450    ; the whole four-provider sweep; IMDS answers in ms
   profiles             =        ; AWS: prod:work, staging:work-staging
+  asg                  = true   ; what the orchestrator wanted, per region
+  required_tags        =        ; tag audit: team, env (case-sensitive)
   ```
 
   **Several AWS accounts**: `profiles = label:profile[/region]` lists each

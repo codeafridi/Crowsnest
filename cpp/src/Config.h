@@ -295,6 +295,10 @@ struct CloudConfig {
     // Empty means the single-account path (IMDS or `identity=`). Profiles win
     // over `identity=`; the page says so rather than dropping it silently.
     QList<CloudProfile> profiles;
+    // M166: ask the orchestrator what it wanted (one extra `aws autoscaling`
+    // call per region) and audit which required tags each instance carries.
+    bool asg = true;
+    QStringList requiredTags;
 };
 
 struct ThemeConfig {

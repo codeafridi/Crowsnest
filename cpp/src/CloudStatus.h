@@ -148,6 +148,47 @@ struct CloudFleetInstance {
     QString accountLabel;
 };
 
+// One Auto Scaling group (M166). `desired` is what the orchestrator says
+// should exist; `instances` is how many of its members this listing actually
+// saw, which is the pair the page needs: a group at 2/3 is a launch problem,
+// not an application problem. `running` counts the members whose state is
+// running, so a group that is "desired 3, instances 3, running 1" reads
+// differently from one that has not launched at all.
+struct CloudAsg {
+    QString name;
+    QString region;
+    QString account;
+    QString accountLabel;
+    int desired = 0;
+    int minSize = 0;
+    int maxSize = 0;
+    int instances = 0;
+    int running = 0;
+};
+
+// The tag audit (M166): which instances miss which required keys. An empty
+// value counts as missing, keys are case-sensitive (AWS's own rule), and a
+// stopped instance still counts - its disks are billed.
+struct CloudTagAudit {
+    QStringList required;
+    int considered = 0;
+    QHash<QString, int> missing;   // key -> instances missing it
+    QList<int> offenders;          // indexes into the fleet's rows
+};
+
+// The orchestrator's answer for one region (M166): name, desired/min/max and
+// the members it names. Parsed from the projected document the CLI returns.
+QList<CloudAsg> parseAwsAutoScalingGroups(const QByteArray &document,
+                                         const QString &region);
+// The tag audit over a fleet's rows. `required` keys are case-sensitive and a
+// tag with an empty value counts as missing.
+CloudTagAudit cloudTagAudit(const QList<CloudFleetInstance> &rows,
+                            const QStringList &required);
+QString cloudTagAuditText(const CloudTagAudit &audit);
+// "web-prod 2/3 (1 running)": seen first, desired second, because the gap is
+// the finding.
+QString cloudAsgText(const CloudAsg &asg);
+
 struct CloudFleetStatus {
     bool attempted = false;
     bool available = false;
@@ -181,6 +222,12 @@ struct CloudFleetStatus {
     // One line per account that had something to say (a logged-out profile, a
     // refused region list): the merged note names the account it belongs to.
     QStringList notes;
+    // M166: what the orchestrator wanted, and what the tags cover. A key that
+    // lists instances but not groups is common, so a refused group query is
+    // stated here instead of failing the listing.
+    QList<CloudAsg> asgs;
+    CloudTagAudit tagAudit;
+    QString asgError;
     bool identityResolved = false;
     bool wholeAccount = false;
     QString identitySource;

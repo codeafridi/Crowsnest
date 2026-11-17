@@ -68,6 +68,11 @@ struct CloudFleetOptions {
     // with `--profile`, one after the other: three accounts at once would be
     // 3 x 18 `aws` spawns competing for the same laptop.
     QList<CloudProfile> profiles;
+    // M166: ask the orchestrator what it wanted (one extra call per region),
+    // and which tags every instance must carry. Empty requiredTags means the
+    // audit is off, which `[cloud] required_tags` documents.
+    bool asg = true;
+    QStringList requiredTags;
     // describe-instances calls in flight at once: each `aws` spawn is ~1-2 s
     // of Python startup and a whole account is ~30 regions.
     int regionConcurrency = 4;
@@ -114,6 +119,9 @@ QStringList cloudAwsDescribeInstanceTypesArguments(const QString &region,
 QStringList cloudAwsDescribeVolumesArguments(const QString &region,
                                              const QStringList &volumeIds,
                                              const QString &profile = QString());
+// M166: what the orchestrator wanted, region by region.
+QStringList cloudAwsAutoScalingArguments(const QString &region,
+                                         const QString &profile = QString());
 
 // What "CHECK NOW" runs, in words: every command, how many times, and the two
 // promises (read only; Cost Explorer is not called).

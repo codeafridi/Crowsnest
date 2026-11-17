@@ -732,6 +732,7 @@ QString DashboardPanel::consoleStyleSheet() const {
         " #ddTeamTileRelay { color: %TEXT%; }"
         "#ddCloudSummary, #ddCloudDetail, #ddCloudCost, #ddCloudApp,"
         " #ddCloudFleetSummary, #ddCloudFleetNote, #ddCloudFleetDetail,"
+        " #ddCloudAsgNote, #ddCloudTags,"
         " #ddCloudFootprint,"
         " #ddCloudSpendSummary, #ddCloudSpendDetail, #ddCloudSpendNote,"
         " #ddRemoteReport"
@@ -5161,6 +5162,37 @@ QWidget *DashboardPanel::buildCloudView() {
         m_cloudFleet->header()->setSectionResizeMode(
             column, QHeaderView::ResizeToContents);
     }
+    // M166: what the orchestrator wanted, beside what the listing saw. The
+    // gap is the finding: a group at 2/3 is a launch problem.
+    m_cloudAsg = new QTreeWidget(view);
+    m_cloudAsg->setObjectName(QStringLiteral("ddCloudAsg"));
+    m_cloudAsg->setColumnCount(5);
+    m_cloudAsg->setHeaderLabels({QStringLiteral("GROUP"),
+                                 QStringLiteral("REGION"),
+                                 QStringLiteral("DESIRED"),
+                                 QStringLiteral("SEEN"),
+                                 QStringLiteral("RUNNING")});
+    m_cloudAsg->setRootIsDecorated(false);
+    m_cloudAsg->setSelectionMode(QAbstractItemView::NoSelection);
+    m_cloudAsg->setFocusPolicy(Qt::NoFocus);
+    m_cloudAsg->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    for (int column = 1; column < 5; ++column) {
+        m_cloudAsg->header()->setSectionResizeMode(
+            column, QHeaderView::ResizeToContents);
+    }
+    m_cloudAsgNote = new QLabel(QStringLiteral("--"), view);
+    m_cloudAsgNote->setObjectName(QStringLiteral("ddCloudAsgNote"));
+    m_cloudAsgNote->setFont(monoFont(9));
+    m_cloudAsgNote->setWordWrap(true);
+    m_cloudAsgNote->setMinimumWidth(1);
+
+    // The tag audit: the CMDB-decay question in one line.
+    m_cloudTags = new QLabel(QStringLiteral("--"), view);
+    m_cloudTags->setObjectName(QStringLiteral("ddCloudTags"));
+    m_cloudTags->setFont(monoFont(10));
+    m_cloudTags->setWordWrap(true);
+    m_cloudTags->setMinimumWidth(1);
+
     auto *instancesCard =
         makeCard(QStringLiteral("instances"), m_cloudFleet, view);
     // Selecting a row shows everything the provider reported about it: the
@@ -5365,6 +5397,11 @@ QWidget *DashboardPanel::buildCloudView() {
     layout->addWidget(instancesCard);
     layout->addWidget(detailCard);
     layout->addWidget(m_cloudFleetNote);
+    layout->addWidget(makeCard(QStringLiteral("capacity (auto scaling)"),
+                               m_cloudAsg, view));
+    layout->addWidget(m_cloudAsgNote);
+    layout->addWidget(makeCard(QStringLiteral("tag coverage"), m_cloudTags,
+                               view));
 
     layout->addWidget(identityBanner);
     layout->addLayout(identity, 2);
@@ -9575,6 +9612,82 @@ void DashboardPanel::updateCloudPanel(const DisplaySnapshot &snapshot) {
             }
         }
         m_cloudFleet->setUpdatesEnabled(true);
+    }
+
+    // M166: desired vs actual, and the tag audit.
+    if (m_cloudAsg != nullptr) {
+        m_cloudAsg->setUpdatesEnabled(false);
+        m_cloudAsg->clear();
+        int short_groups = 0;
+        for (const CloudAsg &asg : fleet.asgs) {
+            auto *item = new QTreeWidgetItem(m_cloudAsg);
+            item->setText(0, asg.name);
+            item->setText(1, asg.region.isEmpty() ? QStringLiteral("--")
+                                                  : asg.region);
+            item->setText(2, QString::number(asg.desired));
+            item->setText(3, QString::number(asg.instances));
+            item->setText(4, QString::number(asg.running));
+            for (int column = 2; column < 5; ++column) {
+                item->setTextAlignment(column,
+                                       Qt::AlignRight | Qt::AlignVCenter);
+            }
+            if (asg.desired > 0 && asg.instances < asg.desired) {
+                ++short_groups;
+                item->setForeground(3, QColor(ui_theme::crit()));
+            } else if (asg.instances > 0 && asg.running < asg.instances) {
+                item->setForeground(4, QColor(ui_theme::warn()));
+            }
+        }
+        m_cloudAsg->setUpdatesEnabled(true);
+        if (m_cloudAsgNote != nullptr) {
+            if (fleet.asgs.isEmpty() && !fleet.asgError.isEmpty()) {
+                m_cloudAsgNote->setText(
+                    QStringLiteral("capacity: %1 - the listing itself worked; "
+                                   "grant autoscaling:DescribeAutoScalingGroups "
+                                   "to include it")
+                        .arg(fleet.asgError));
+            } else if (fleet.asgs.isEmpty()) {
+                m_cloudAsgNote->setText(
+                    fleet.attempted && fleet.available
+                        ? QStringLiteral("no Auto Scaling groups in this account")
+                        : QStringLiteral("capacity: waiting for the listing"));
+            } else if (short_groups == 0) {
+                m_cloudAsgNote->setText(
+                    QStringLiteral("%1 group(s), every one at its desired "
+                                   "capacity").arg(fleet.asgs.size()));
+            } else {
+                m_cloudAsgNote->setText(
+                    QStringLiteral("%1 group(s) - %2 short of desired capacity "
+                                   "(a launch or AZ problem, not an app one)")
+                        .arg(fleet.asgs.size())
+                        .arg(short_groups));
+            }
+        }
+    }
+    if (m_cloudTags != nullptr) {
+        QString text = cloudTagAuditText(fleet.tagAudit);
+        // The offenders by name, bounded: a page that lists 300 untagged
+        // instances is a page nobody reads.
+        QStringList names;
+        for (int index : fleet.tagAudit.offenders) {
+            if (index < 0 || index >= fleet.rows.size()
+                || names.size() >= 8) {
+                break;
+            }
+            const CloudFleetInstance &row = fleet.rows.at(index);
+            names << (row.accountLabel.isEmpty()
+                          ? row.name
+                          : QStringLiteral("%1 (%2)").arg(row.name,
+                                                          row.accountLabel));
+        }
+        if (!names.isEmpty()) {
+            text += QStringLiteral(" - %1").arg(names.join(QStringLiteral(", ")));
+            const int rest = fleet.tagAudit.offenders.size() - names.size();
+            if (rest > 0) {
+                text += QStringLiteral(", +%1 more").arg(rest);
+            }
+        }
+        m_cloudTags->setText(text);
     }
     if (m_chartCloudFleet != nullptr && fleet.available) {
         m_chartCloudFleet->push(fleet.running);
