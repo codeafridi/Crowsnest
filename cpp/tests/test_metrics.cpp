@@ -3006,6 +3006,33 @@ int main(int argc, char *argv[]) {
                                      if (!received.contains("\r\n\r\n")) {
                                          return;
                                      }
+                                     // Answer only once the whole body is in:
+                                     // replying on the header block let a slow
+                                     // runner's body arrive after the reply had
+                                     // closed the socket, so the byte assertion
+                                     // could not be made deterministic.
+                                     const int headEnd =
+                                         received.indexOf("\r\n\r\n") + 4;
+                                     int length = 0;
+                                     const QByteArray lower =
+                                         received.left(headEnd).toLower();
+                                     const int at = lower.indexOf(
+                                         QByteArrayLiteral("content-length:"));
+                                     if (at >= 0) {
+                                         const int lineEnd =
+                                             lower.indexOf("\r\n", at);
+                                         length = lower.mid(at + 15,
+                                                            lineEnd - at - 15)
+                                                      .trimmed()
+                                                      .toInt();
+                                     }
+                                     if (received.size() < headEnd + length) {
+                                         return;
+                                     }
+                                     if (socket->property("replied").toBool()) {
+                                         return;
+                                     }
+                                     socket->setProperty("replied", true);
                                      const QByteArray reply =
                                          statusOk
                                              ? QByteArrayLiteral(
@@ -3020,6 +3047,20 @@ int main(int argc, char *argv[]) {
                                      socket->flush();
                                  });
             });
+
+        // waitDelivery returns when our client is done; the *receiver* may not
+        // have read the last TCP segment yet (QNAM writes headers and body as
+        // separate writes, and deliveryFinished fires after the request is
+        // sent, not after the peer read it). Pumping on the byte we are about
+        // to assert is what makes the check deterministic on a slow runner.
+        auto waitForBytes = [&app](const QByteArray &buffer,
+                                   const QByteArray &needle) {
+            for (int i = 0; i < 300 && !buffer.contains(needle); ++i) {
+                QThread::msleep(10);
+                app.processEvents();
+            }
+            return buffer.contains(needle);
+        };
 
         auto waitDelivery = [&app](AlertWebhook &hook, bool &ok,
                                    QString &error) {
@@ -3081,9 +3122,13 @@ int main(int argc, char *argv[]) {
             QString testError;
             const bool testDone = waitDelivery(hook, testOk, testError);
             check(testDone && testOk, "webhook: a test send reaches the receiver");
-            check(received.toLower().contains("content-type: text/plain")
-                      && received.contains("\r\nTitle: Crowsnest: 1 firing")
-                      && received.contains("\r\nPriority: 4")
+            // The body is the message for ntfy, so wait for it rather than for
+            // the client's own completion.
+            waitForBytes(received, QByteArrayLiteral("Test notification"));
+            const QByteArray lower = received.toLower();
+            check(lower.contains("content-type: text/plain")
+                      && lower.contains("\r\ntitle: crowsnest: 1 firing")
+                      && lower.contains("\r\npriority: 4")
                       && received.contains("Test notification"),
                   "webhook: ntfy test carries its headers and a plain body");
             hook.setConfig(config);
