@@ -134,6 +134,9 @@ struct RemoteOptions {
     // [remote] machine_id: derived once by M100 and kept, never regenerated on
     // a restart.
     QString machineId;
+    // M169: the Team page's GROUP BY key, kept because a person who grouped by
+    // `team` wants it grouped by `team` tomorrow too.
+    QString teamGroup;
     // M160: [fleet] labels.self, reported as machine.labels so the relay's
     // fleet and Team page can filter by them. Authored locally only - nothing
     // here is derived from the environment.
@@ -348,6 +351,9 @@ void saveAlertOverrides(const QString &path,
 void saveSilences(const QString &path, const QList<SilenceRule> &rules);
 
 void saveOverlayConfig(const QString &path, const OverlayConfig &overlay);
+// M169: remembers the Team page's grouping key (`[remote] team_group`). An
+// empty key removes the line rather than writing `team_group =`.
+bool saveRemoteTeamGroup(const QString &path, const QString &key);
 void saveThemeAccent(const QString &path, const QString &accent);
 
 QString defaultConfigPath();

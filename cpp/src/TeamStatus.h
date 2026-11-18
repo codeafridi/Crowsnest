@@ -71,7 +71,7 @@ struct TeamCounts {
 // relay says holds it.
 // ---------------------------------------------------------------------------
 
-enum class TeamAction { Ack, Close, Silence };
+enum class TeamAction { Ack, Close, Silence, SilenceLabel };
 
 struct TeamIncident {
     QString id;
@@ -97,6 +97,13 @@ struct TeamIncident {
 // of everything.
 QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,
                            int minutes, qint64 nowMs);
+
+// M169: a silence keyed by a machine label (`scope = label` on the relay).
+// `matcher` is one `key=value` pair, because the relay validates it with the
+// same rules it applies to ingest labels; a malformed pair is refused here so
+// the button cannot post a silence that mutes nothing (or everything).
+QByteArray teamLabelSilenceBody(const QString &matcher, const QString &actor,
+                                int minutes, qint64 nowMs);
 
 struct TeamStatus {
     // The link, read from [remote].
@@ -179,6 +186,22 @@ QString teamLabelsText(const TeamMachine &machine);
 // Every distinct key=value across the relay's fleet, sorted, for the page's
 // filter - the same shape the Fleet page uses.
 QStringList teamLabelFacets(const QList<TeamMachine> &machines);
+
+// M169: grouping the relay's fleet by one authored label. `value` is
+// "(no <key>)" for a machine that does not carry it, so the row counts add up
+// to the filter's own total; `members` are indexes into the list that was
+// grouped, which is what the table renders.
+struct TeamGroup {
+    QString key;
+    QString value;
+    QList<int> members;
+    int online = 0;
+    int silent = 0;
+};
+QStringList teamLabelKeys(const QList<TeamMachine> &machines);
+QList<TeamGroup> teamGroups(const QList<TeamMachine> &machines,
+                            const QString &key);
+QString teamGroupRowText(const TeamGroup &group);
 // "3 of 4 machine(s) labelled - 2 team(s) - 2 env(s)" for the summary line.
 QString teamLabelsSummaryText(const QList<TeamMachine> &machines);
 QString teamLabelValue(const TeamMachine &machine, const QString &key);

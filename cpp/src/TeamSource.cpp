@@ -111,32 +111,85 @@ TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs) {
     return status;
 }
 
-TeamActionOutcome teamPerformAction(const TeamOptions &options,
-                                    TeamAction action,
-                                    const TeamIncident &incident,
-                                    int silenceMinutes, qint64 nowMs) {
-    TeamActionOutcome outcome;
+namespace {
+
+// The gate every write shares: link, actions switch, token, address. A refusal
+// happens before any socket, which is what the tests observe.
+bool teamActionPreflight(const TeamOptions &options, TeamActionOutcome &outcome,
+                         QString *baseOut) {
     if (!options.enabled) {
         outcome.detail = QStringLiteral(
             "[remote] enabled=false - nothing is written while the link is off");
-        return outcome;
+        return false;
     }
     if (!options.actions) {
         outcome.detail = QStringLiteral(
             "actions are off - set [remote] actions=true to acknowledge, close "
             "or silence from the desktop");
-        return outcome;
+        return false;
     }
     if (options.token.isEmpty()) {
         outcome.detail = QStringLiteral("no [remote] token= - the relay would "
                                         "answer 401");
-        return outcome;
+        return false;
     }
     QString error;
     const QString base = remoteNormalizeUrl(options.baseUrl, &error);
     if (base.isEmpty()) {
         outcome.detail = error.isEmpty() ? QStringLiteral("no relay address")
                                          : error;
+        return false;
+    }
+    if (baseOut != nullptr) {
+        *baseOut = base;
+    }
+    return true;
+}
+
+} // namespace
+
+TeamActionOutcome teamPerformLabelSilence(const TeamOptions &options,
+                                          const QString &matcher, int minutes,
+                                          qint64 nowMs) {
+    TeamActionOutcome outcome;
+    QString base;
+    if (!teamActionPreflight(options, outcome, &base)) {
+        return outcome;
+    }
+    const QByteArray body = teamLabelSilenceBody(
+        matcher, options.actor, minutes,
+        nowMs > 0 ? nowMs : QDateTime::currentMSecsSinceEpoch());
+    if (body.isEmpty()) {
+        outcome.detail = QStringLiteral(
+            "the label silence needs one key=value pair - the relay matches "
+            "labels with the same rule");
+        return outcome;
+    }
+    const RemotePostResult post = remoteHttpPost(
+        base + QStringLiteral("/api/v1/silences"), options.token, body,
+        options.timeoutMs, options.caFile);
+    outcome.httpStatus = post.httpStatus;
+    if (post.httpStatus >= 200 && post.httpStatus < 300) {
+        outcome.ok = true;
+        return outcome;
+    }
+    outcome.detail = teamErrorDetail(post.body);
+    if (outcome.detail.isEmpty()) {
+        outcome.detail = post.error;
+    }
+    if (outcome.detail.isEmpty()) {
+        outcome.detail = QStringLiteral("HTTP %1").arg(post.httpStatus);
+    }
+    return outcome;
+}
+
+TeamActionOutcome teamPerformAction(const TeamOptions &options,
+                                    TeamAction action,
+                                    const TeamIncident &incident,
+                                    int silenceMinutes, qint64 nowMs) {
+    TeamActionOutcome outcome;
+    QString base;
+    if (!teamActionPreflight(options, outcome, &base)) {
         return outcome;
     }
 
@@ -173,6 +226,11 @@ TeamActionOutcome teamPerformAction(const TeamOptions &options,
         }
         path = QStringLiteral("/api/v1/silences");
         break;
+    case TeamAction::SilenceLabel:
+        // Handled by teamPerformLabelSilence; this path takes an incident and
+        // a label silence has none.
+        outcome.detail = QStringLiteral("silence a label with its own verb");
+        return outcome;
     }
 
     const RemotePostResult post =
@@ -315,6 +373,13 @@ void TeamRunner::closeIncident(const TeamIncident &incident) {
     const TeamActionOutcome outcome =
         teamPerformAction(options(), TeamAction::Close, incident, 0);
     emit actionFinished(TeamAction::Close, incident.id, outcome.ok,
+                        outcome.httpStatus, outcome.detail);
+}
+
+void TeamRunner::silenceLabel(const QString &matcher, int minutes) {
+    const TeamActionOutcome outcome = teamPerformLabelSilence(
+        options(), matcher, minutes, QDateTime::currentMSecsSinceEpoch());
+    emit actionFinished(TeamAction::SilenceLabel, matcher, outcome.ok,
                         outcome.httpStatus, outcome.detail);
 }
 

@@ -71,6 +71,8 @@ public:
     // before the self row is computed, and carried to the scrape as well.
     void setFleetSshPeers(const QList<FleetPeer> &peers);
     void setTeamStatus(const TeamStatus &status);
+    // M169: the saved Team-page grouping, applied before the first poll.
+    void setTeamGroupPreference(const QString &key);
     void setTeamActionStatus(TeamAction action, const QString &incidentId,
                              bool ok, int httpStatus, const QString &detail);
 
@@ -112,6 +114,8 @@ signals:
     void teamAckRequested(const TeamIncident &incident);
     void teamCloseRequested(const TeamIncident &incident);
     void teamSilenceRequested(const TeamIncident &incident, int minutes);
+    // M169: mute every machine carrying one label.
+    void teamLabelSilenceRequested(const QString &matcher, int minutes);
     // Cloud page visibility and CHECK NOW, forwarded to the sampler thread.
     void cloudPageVisibleChanged(bool visible);
     // The merged peer list (HTTP peers + agentless ssh peers + this machine),

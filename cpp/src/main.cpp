@@ -854,6 +854,8 @@ int main(int argc, char *argv[]) {
                             : config.alertRules);
         hud.setSilences(config.silences.rules);
         hud.setWebhookConfig(config.webhook);
+        // M169: the Team page's saved grouping, applied before the first poll.
+        hud.setTeamGroupPreference(config.remote.teamGroup);
         hud.setActionsEnabled(config.actions.enabled);
         hud.setExportIntervalMs(config.sampleIntervalMs);
         // One long-ring sample every N ticks: N derives from the two cadences
@@ -1121,6 +1123,8 @@ int main(int argc, char *argv[]) {
                          &TeamRunner::closeIncident);
         QObject::connect(&hud, &HudWindow::teamSilenceRequested, teamRunner,
                          &TeamRunner::silenceIncident);
+        QObject::connect(&hud, &HudWindow::teamLabelSilenceRequested,
+                         teamRunner, &TeamRunner::silenceLabel);
         QObject::connect(teamRunner, &TeamRunner::actionFinished, &hud,
                          &HudWindow::setTeamActionStatus);
         teamThread->start();

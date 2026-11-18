@@ -391,6 +391,80 @@ QStringList teamLabelFacets(const QList<TeamMachine> &machines) {
     return facets;
 }
 
+QStringList teamLabelKeys(const QList<TeamMachine> &machines) {
+    QStringList keys;
+    for (const TeamMachine &machine : machines) {
+        for (const QPair<QString, QString> &label : machine.labels) {
+            if (!keys.contains(label.first)) {
+                keys.append(label.first);
+            }
+        }
+    }
+    keys.sort();
+    return keys;
+}
+
+QList<TeamGroup> teamGroups(const QList<TeamMachine> &machines,
+                            const QString &key) {
+    QList<TeamGroup> groups;
+    if (key.isEmpty()) {
+        return groups;
+    }
+    for (int i = 0; i < machines.size(); ++i) {
+        QString value = teamLabelValue(machines.at(i), key);
+        if (value.isEmpty()) {
+            value = QStringLiteral("(no %1)").arg(key);
+        }
+        TeamGroup *group = nullptr;
+        for (TeamGroup &seen : groups) {
+            if (seen.value == value) {
+                group = &seen;
+                break;
+            }
+        }
+        if (group == nullptr) {
+            TeamGroup fresh;
+            fresh.key = key;
+            fresh.value = value;
+            groups.append(fresh);
+            group = &groups.last();
+        }
+        group->members.append(i);
+        if (machines.at(i).state == QLatin1String("reporting")
+            || machines.at(i).state == QLatin1String("suspect")
+            || machines.at(i).state == QLatin1String("registered")) {
+            ++group->online;
+        }
+        if (machines.at(i).state == QLatin1String("silent")
+            || machines.at(i).state == QLatin1String("pruned")) {
+            ++group->silent;
+        }
+    }
+    std::sort(groups.begin(), groups.end(),
+              [](const TeamGroup &a, const TeamGroup &b) {
+                  // "(no key)" last: a group nobody labelled is the tail, not
+                  // the first thing a reader sees.
+                  const bool aNone = a.value.startsWith(QStringLiteral("(no "));
+                  const bool bNone = b.value.startsWith(QStringLiteral("(no "));
+                  if (aNone != bNone) {
+                      return !aNone;
+                  }
+                  return a.value < b.value;
+              });
+    return groups;
+}
+
+QString teamGroupRowText(const TeamGroup &group) {
+    QString text = QStringLiteral("%1 = %2 - %3 machine(s)")
+                       .arg(group.key, group.value)
+                       .arg(group.members.size());
+    text += QStringLiteral(", %1 online").arg(group.online);
+    if (group.silent > 0) {
+        text += QStringLiteral(", %1 silent").arg(group.silent);
+    }
+    return text;
+}
+
 QString teamLabelValue(const TeamMachine &machine, const QString &key) {
     for (const QPair<QString, QString> &label : machine.labels) {
         if (label.first == key) {
@@ -806,6 +880,31 @@ QString teamActionsGateText(const TeamStatus &status) {
     return QStringLiteral(
         "actions on - acknowledge, close and silence post with the [remote] "
         "token; the next read replaces what this page showed");
+}
+
+QByteArray teamLabelSilenceBody(const QString &matcher, const QString &actor,
+                                int minutes, qint64 nowMs) {
+    const QString pair = matcher.trimmed();
+    const int equals = pair.indexOf(QLatin1Char('='));
+    if (equals <= 0 || equals == pair.size() - 1) {
+        return QByteArray();
+    }
+    // One pair, no whitespace: the relay's label matcher is `key=value` and a
+    // second pair here would be silently dropped inside the value.
+    if (pair.contains(QLatin1Char(' ')) || pair.contains(QLatin1Char('\t'))) {
+        return QByteArray();
+    }
+    const qint64 endsAt = nowMs + qint64(qMax(1, minutes)) * 60000;
+    QJsonObject body;
+    body.insert(QStringLiteral("matcher"), pair);
+    body.insert(QStringLiteral("scope"), QStringLiteral("label"));
+    body.insert(QStringLiteral("startsAtMs"), double(nowMs));
+    body.insert(QStringLiteral("endsAtMs"), double(endsAt));
+    body.insert(QStringLiteral("createdBy"), actor);
+    body.insert(QStringLiteral("comment"),
+                QStringLiteral("muted from the HUD: every machine labelled %1")
+                    .arg(pair));
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }
 
 QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,

@@ -778,6 +778,8 @@ Config loadConfig(const QString &path, QString *errorMessage) {
             settings.value(QStringLiteral("name")).toString().trimmed();
         config.remote.machineId =
             settings.value(QStringLiteral("machine_id")).toString().trimmed();
+        config.remote.teamGroup =
+            settings.value(QStringLiteral("team_group")).toString().trimmed();
         config.remote.caFile =
             settings.value(QStringLiteral("ca_file")).toString().trimmed();
         const int interval =
@@ -998,6 +1000,22 @@ void saveOverlayConfig(const QString &path, const OverlayConfig &overlay) {
     settings.setValue(QStringLiteral("wallpaper"), overlay.wallpaper);
     settings.endGroup();
     settings.sync();
+}
+
+bool saveRemoteTeamGroup(const QString &path, const QString &key) {
+    if (path.isEmpty()) {
+        return false;
+    }
+    QSettings settings(path, QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("remote"));
+    if (key.trimmed().isEmpty()) {
+        settings.remove(QStringLiteral("team_group"));
+    } else {
+        settings.setValue(QStringLiteral("team_group"), key.trimmed());
+    }
+    settings.endGroup();
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }
 
 void saveThemeAccent(const QString &path, const QString &accent) {

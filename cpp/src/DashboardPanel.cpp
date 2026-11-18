@@ -5872,7 +5872,100 @@ QWidget *DashboardPanel::buildTeamView() {
     teamFilterLabel->setFont(monoFont(10, true));
     teamFilterRow->addWidget(teamFilterLabel);
     teamFilterRow->addWidget(m_teamFilter, 0);
+
+    // M169: grouping by one authored label, the same row the Fleet page has.
+    auto *teamGroupLabel = new QLabel(QStringLiteral("GROUP BY"), view);
+    teamGroupLabel->setObjectName(QStringLiteral("ddTeamFilterLabel"));
+    teamGroupLabel->setFont(monoFont(10, true));
+    m_teamGroup = new QComboBox(view);
+    m_teamGroup->setObjectName(QStringLiteral("ddTeamGroup"));
+    m_teamGroup->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_teamGroup->setMinimumWidth(140);
+    m_teamGroup->setFocusPolicy(Qt::NoFocus);
+    m_teamGroup->setToolTip(
+        QStringLiteral("put this machine's label groups under their own rows"));
+    connect(m_teamGroup, &QComboBox::currentIndexChanged, this,
+            [this](int index) {
+                if (m_teamGroup == nullptr || index < 0) {
+                    return;
+                }
+                const QString key = m_teamGroup->itemData(index).toString();
+                if (key == m_teamGroupKey) {
+                    return;
+                }
+                m_teamGroupKey = key;
+                emit teamGroupChanged(key);
+                setTeamStatus(m_team);
+            });
+    teamFilterRow->addSpacing(10);
+    teamFilterRow->addWidget(teamGroupLabel);
+    teamFilterRow->addWidget(m_teamGroup, 0);
     teamFilterRow->addStretch(1);
+
+    // M169: silence every machine carrying a label, from the page that shows
+    // them. Two presses, like CLOSE: one label can cover the whole fleet.
+    auto *labelSilenceRow = new QHBoxLayout;
+    labelSilenceRow->setContentsMargins(0, 0, 0, 0);
+    labelSilenceRow->setSpacing(6);
+    auto *labelSilenceCaption = new QLabel(QStringLiteral("SILENCE LABEL"),
+                                           view);
+    labelSilenceCaption->setObjectName(
+        QStringLiteral("ddTeamFilterLabel"));
+    labelSilenceCaption->setFont(monoFont(10, true));
+    m_teamSilenceMatcher = new QComboBox(view);
+    m_teamSilenceMatcher->setObjectName(
+        QStringLiteral("ddTeamSilenceLabelMatcher"));
+    m_teamSilenceMatcher->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_teamSilenceMatcher->setMinimumWidth(180);
+    m_teamSilenceMatcher->setFocusPolicy(Qt::NoFocus);
+    m_teamSilenceMatcher->setToolTip(QStringLiteral(
+        "one key=value pair; the relay mutes every machine carrying it"));
+    m_teamSilenceLabel =
+        new QPushButton(QStringLiteral("SILENCE 30M"), view);
+    m_teamSilenceLabel->setObjectName(QStringLiteral("ddTeamSilenceLabel"));
+    m_teamSilenceLabel->setFocusPolicy(Qt::NoFocus);
+    m_teamLabelSilenceStatus =
+        new QLabel(teamActionsGateText(m_team), view);
+    m_teamLabelSilenceStatus->setObjectName(
+        QStringLiteral("ddTeamLabelSilenceStatus"));
+    m_teamLabelSilenceStatus->setFont(monoFont(9));
+    m_teamLabelSilenceStatus->setWordWrap(true);
+    m_teamLabelSilenceStatus->setMinimumWidth(1);
+    labelSilenceRow->addWidget(labelSilenceCaption);
+    labelSilenceRow->addWidget(m_teamSilenceMatcher, 0);
+    labelSilenceRow->addWidget(m_teamSilenceLabel, 0);
+    labelSilenceRow->addWidget(m_teamLabelSilenceStatus, 1);
+    connect(m_teamSilenceLabel, &QPushButton::clicked, this, [this]() {
+        if (!teamActionsAllowed() || m_teamSilenceMatcher == nullptr) {
+            return;
+        }
+        const QString matcher = m_teamSilenceMatcher->currentData().toString();
+        if (matcher.isEmpty()) {
+            return;
+        }
+        if (!m_teamLabelSilenceArmed) {
+            m_teamLabelSilenceArmed = true;
+            m_teamSilenceLabel->setText(QStringLiteral("PRESS AGAIN: %1")
+                                            .arg(matcher));
+            if (m_teamLabelSilenceStatus != nullptr) {
+                m_teamLabelSilenceStatus->setText(
+                    QStringLiteral("press again to mute every machine labelled "
+                                   "%1 for 30m - the relay can expire it later")
+                        .arg(matcher));
+            }
+            if (m_teamCloseTimer != nullptr) {
+                m_teamCloseTimer->start();
+            }
+            return;
+        }
+        m_teamLabelSilenceArmed = false;
+        m_teamSilenceLabel->setText(QStringLiteral("SILENCE 30M"));
+        if (m_teamLabelSilenceStatus != nullptr) {
+            m_teamLabelSilenceStatus->setText(
+                QStringLiteral("silencing %1 for 30m ...").arg(matcher));
+        }
+        emit teamLabelSilenceRequested(matcher, 30);
+    });
 
     m_teamTable = new QTreeWidget(view);
     m_teamTable->setObjectName(QStringLiteral("ddTeamTable"));
@@ -5917,6 +6010,7 @@ QWidget *DashboardPanel::buildTeamView() {
                                m_teamTable, view, false));
     layout->addWidget(makeCard(QStringLiteral("selected"), m_teamDetail, view,
                                false));
+    layout->addLayout(labelSilenceRow);
 
     // --- M152: the relay's incident queue, the three verbs, and the sentence
     // that says why a verb is unavailable. The buttons are never disabled with
@@ -8869,6 +8963,49 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
         }
     }
 
+    // M169: the grouping picker lists the label KEYS the filtered fleet
+    // carries; the silence picker lists the key=value pairs. Both rebuild only
+    // when their set changes, so a poll cannot close the popup under the
+    // cursor.
+    const QStringList labelKeys = teamLabelKeys(status.machines);
+    const QString groupSignature = labelKeys.join(QLatin1Char('\u0001'));
+    if (m_teamGroup != nullptr) {
+        const bool keyGone = !m_teamGroupKey.isEmpty()
+                             && !labelKeys.contains(m_teamGroupKey);
+        if (groupSignature != m_teamGroupSignature || keyGone) {
+            if (keyGone) {
+                m_teamGroupKey.clear();
+            }
+            m_teamGroupSignature = groupSignature;
+            const QSignalBlocker blocker(m_teamGroup);
+            m_teamGroup->clear();
+            m_teamGroup->addItem(QStringLiteral("(none)"), QString());
+            for (const QString &key : labelKeys) {
+                m_teamGroup->addItem(key, key);
+            }
+            const int restored = m_teamGroup->findData(m_teamGroupKey);
+            m_teamGroup->setCurrentIndex(restored >= 0 ? restored : 0);
+            m_teamGroup->setEnabled(!labelKeys.isEmpty());
+        }
+    }
+    if (m_teamSilenceMatcher != nullptr) {
+        const QString silenceSignature =
+            facets.join(QLatin1Char('\u0001'));
+        if (silenceSignature != m_teamSilenceSignature) {
+            m_teamSilenceSignature = silenceSignature;
+            const QString kept =
+                m_teamSilenceMatcher->currentData().toString();
+            const QSignalBlocker blocker(m_teamSilenceMatcher);
+            m_teamSilenceMatcher->clear();
+            for (const QString &facet : facets) {
+                m_teamSilenceMatcher->addItem(facet, facet);
+            }
+            const int restored = m_teamSilenceMatcher->findData(kept);
+            m_teamSilenceMatcher->setCurrentIndex(restored >= 0 ? restored : 0);
+            m_teamSilenceMatcher->setEnabled(!facets.isEmpty());
+        }
+    }
+
     m_teamSummary->setText(teamSummaryText(status, now));
     if (m_teamLabels != nullptr) {
         const QString labelsSummary = teamLabelsSummaryText(status.machines);
@@ -8923,7 +9060,7 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
     const QString keep = m_teamSelectedId;
     m_teamTable->blockSignals(true);
     m_teamTable->clear();
-    for (const TeamMachine &machine : rows) {
+    const auto addMachineRow = [&](const TeamMachine &machine) {
         auto *item = new QTreeWidgetItem(m_teamTable);
         item->setData(0, Qt::UserRole, machine.id);
         item->setText(0, teamRowName(status, machine));
@@ -8967,6 +9104,34 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
             stateColor = QColor(ui_theme::warn());
         }
         item->setForeground(2, stateColor);
+    };
+    const bool hasSelf = self >= 0 && !rows.isEmpty();
+    if (m_teamGroupKey.isEmpty()) {
+        for (const TeamMachine &machine : rows) {
+            addMachineRow(machine);
+        }
+    } else {
+        // This machine stays first and ungrouped (its own row already says
+        // what it is); the rest are ordered under their group's header.
+        QList<TeamMachine> rest = rows;
+        if (hasSelf) {
+            addMachineRow(rows.first());
+            rest = rows.mid(1);
+        }
+        for (const TeamGroup &group : teamGroups(rest, m_teamGroupKey)) {
+            auto *header = new QTreeWidgetItem(m_teamTable);
+            header->setText(0, teamGroupRowText(group));
+            header->setForeground(0, QColor(ui_theme::accent()));
+            QFont headerFont = m_teamTable->font();
+            headerFont.setBold(true);
+            header->setFont(0, headerFont);
+            header->setFlags(Qt::NoItemFlags);
+            m_teamTable->setFirstColumnSpanned(
+                m_teamTable->topLevelItemCount() - 1, QModelIndex(), true);
+            for (int index : group.members) {
+                addMachineRow(rest.at(index));
+            }
+        }
     }
     if (!keep.isEmpty()) {
         for (int i = 0; i < m_teamTable->topLevelItemCount(); ++i) {
@@ -8999,6 +9164,22 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
     }
     renderTeamIncidents();
     updateTeamActions();
+}
+
+void DashboardPanel::setTeamGroup(const QString &key) {
+    const QString clean = key.trimmed();
+    if (clean == m_teamGroupKey) {
+        return;
+    }
+    m_teamGroupKey = clean;
+    if (m_teamGroup != nullptr) {
+        const QSignalBlocker blocker(m_teamGroup);
+        const int at = m_teamGroup->findData(m_teamGroupKey);
+        m_teamGroup->setCurrentIndex(at >= 0 ? at : 0);
+    }
+    if (m_teamTable != nullptr) {
+        setTeamStatus(m_team);
+    }
 }
 
 void DashboardPanel::updateTeamDetail() {
@@ -9106,6 +9287,34 @@ void DashboardPanel::updateTeamActions() {
     m_teamAck->setEnabled(allowed && has && !pending);
     m_teamClose->setEnabled(allowed && has && !pending);
     m_teamSilence->setEnabled(allowed && has);
+    if (m_teamSilenceLabel != nullptr) {
+        const bool hasMatcher = m_teamSilenceMatcher != nullptr
+                                && m_teamSilenceMatcher->count() > 0;
+        m_teamSilenceLabel->setEnabled(allowed && hasMatcher);
+        m_teamSilenceLabel->setToolTip(
+            allowed
+                ? (hasMatcher
+                       ? QStringLiteral("mute every machine carrying this label "
+                                        "for 30m; two presses")
+                       : QStringLiteral("no labels on this fleet - add "
+                                        "[fleet] labels.self and the same line "
+                                        "on every machine"))
+                : teamActionsGateText(m_team));
+        if (m_teamLabelSilenceStatus != nullptr
+            && !m_teamLabelSilenceStatus->text().startsWith(
+                QStringLiteral("not applied:"))
+            && !m_teamLabelSilenceStatus->text().startsWith(
+                QStringLiteral("silence posted"))) {
+            m_teamLabelSilenceStatus->setText(
+                !allowed ? teamActionsGateText(m_team)
+                         : (hasMatcher
+                                ? QStringLiteral("mute every machine carrying "
+                                                 "one label for 30m")
+                                : QStringLiteral(
+                                      "no labels on this fleet - the relay "
+                                      "cannot match a label nobody sends")));
+        }
+    }
 
     if (!allowed) {
         // A refusal that just arrived names what happened; the gate text would
@@ -9147,11 +9356,42 @@ void DashboardPanel::clearTeamClose() {
     if (m_teamClose != nullptr) {
         m_teamClose->setText(QStringLiteral("CLOSE"));
     }
+    m_teamLabelSilenceArmed = false;
+    if (m_teamSilenceLabel != nullptr) {
+        m_teamSilenceLabel->setText(QStringLiteral("SILENCE 30M"));
+    }
 }
 
 void DashboardPanel::setTeamActionStatus(TeamAction action,
                                          const QString &incidentId, bool ok,
                                          int httpStatus, const QString &detail) {
+    if (action == TeamAction::SilenceLabel) {
+        const QString reason = detail.isEmpty()
+            ? QStringLiteral("the relay refused it")
+            : detail;
+        if (m_teamLabelSilenceStatus != nullptr) {
+            m_teamLabelSilenceStatus->setText(
+                ok ? QStringLiteral("silence posted for %1 - the relay's "
+                                    "silence list is the truth")
+                         .arg(incidentId)
+                   : QStringLiteral("not applied: %1").arg(reason));
+        }
+        if (!ok) {
+            if (httpStatus == 403
+                && detail.contains(QStringLiteral("token is read-only"))) {
+                m_teamBlocked = QStringLiteral("token is read-only");
+                m_team.actionsBlocked = m_teamBlocked;
+            } else if (httpStatus == 401) {
+                m_teamBlocked = QStringLiteral(
+                    "this token cannot act (%1) - ingest tokens only report; "
+                    "create a write API key in the relay's Settings")
+                    .arg(reason);
+                m_team.actionsBlocked = m_teamBlocked;
+            }
+        }
+        updateTeamActions();
+        return;
+    }
     if (ok) {
         if (action == TeamAction::Silence) {
             m_teamActionStatus->setText(QStringLiteral(

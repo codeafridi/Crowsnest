@@ -52,6 +52,12 @@ TeamActionOutcome teamPerformAction(const TeamOptions &options,
                                     const TeamIncident &incident,
                                     int silenceMinutes, qint64 nowMs = 0);
 
+// M169: silence every machine carrying one label. Refused before any socket
+// under the same three switches as the incident verbs.
+TeamActionOutcome teamPerformLabelSilence(const TeamOptions &options,
+                                          const QString &matcher, int minutes,
+                                          qint64 nowMs = 0);
+
 // One synchronous pass, used by --dump and the tests. Never call it from the
 // sampler tick: it blocks for up to timeoutMs.
 TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs = 0);
@@ -78,6 +84,9 @@ public slots:
     void acknowledge(const TeamIncident &incident);
     void closeIncident(const TeamIncident &incident);
     void silenceIncident(const TeamIncident &incident, int minutes);
+    // M169: `matcher` is the label pair; the signal reuses
+    // actionFinished(TeamAction::SilenceLabel, matcher, ...).
+    void silenceLabel(const QString &matcher, int minutes);
 
 signals:
     void teamUpdated(const TeamStatus &status);

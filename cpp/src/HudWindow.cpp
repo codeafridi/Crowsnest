@@ -351,6 +351,14 @@ DashboardPanel *HudWindow::ensureConsole() {
             &HudWindow::teamCloseRequested);
     connect(m_panel, &DashboardPanel::teamSilenceRequested, this,
             &HudWindow::teamSilenceRequested);
+    connect(m_panel, &DashboardPanel::teamLabelSilenceRequested, this,
+            &HudWindow::teamLabelSilenceRequested);
+    connect(m_panel, &DashboardPanel::teamGroupChanged, this,
+            [](const QString &key) {
+                // The page's grouping is a preference, not state: it belongs in
+                // the config file next to the label lines it groups by.
+                saveRemoteTeamGroup(defaultConfigPath(), key);
+            });
     connect(m_panel, &DashboardPanel::timelineFocusRequested, this,
             &HudWindow::focusTimeline);
     connect(m_panel, &DashboardPanel::timelineFocusCleared, this, [this]() {
@@ -444,6 +452,12 @@ void HudWindow::publishFleet() {
 void HudWindow::setTeamStatus(const TeamStatus &status) {
     if (m_panel != nullptr) {
         m_panel->setTeamStatus(status);
+    }
+}
+
+void HudWindow::setTeamGroupPreference(const QString &key) {
+    if (m_panel != nullptr) {
+        m_panel->setTeamGroup(key);
     }
 }
 

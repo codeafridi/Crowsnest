@@ -8634,6 +8634,72 @@ int main(int argc, char *argv[]) {
                                       QStringLiteral("owner=ana"),
                                       QStringLiteral("role=web")}),
                   "team labels: the filter facets are distinct and sorted");
+
+            // M169: grouping by one authored label, and the label silence the
+            // page can post.
+            {
+                const QList<TeamGroup> groups = teamGroups(
+                    status.machines, QStringLiteral("env"));
+                check(groups.size() == 2
+                          && groups.at(0).value == QStringLiteral("prod")
+                          && groups.at(0).members == QList<int>{0}
+                          && groups.at(1).value
+                                 == QStringLiteral("(no env)")
+                          && groups.at(1).members == QList<int>{1},
+                      "team group: a labelled machine and the unlabelled tail "
+                      "are two groups, the tail last");
+                check(teamGroupRowText(groups.at(0))
+                          == QStringLiteral("env = prod - 1 machine(s), 1 "
+                                            "online"),
+                      "team group: the header names the group and its counts");
+                check(teamLabelKeys(status.machines)
+                          == QStringList({QStringLiteral("env"),
+                                          QStringLiteral("owner"),
+                                          QStringLiteral("role")}),
+                      "team group: the picker lists the distinct label keys");
+
+                const qint64 nowMs = 1'700'000'000'000LL;
+                const QByteArray body = teamLabelSilenceBody(
+                    QStringLiteral("env=prod"), QStringLiteral("hud-box"), 30,
+                    nowMs);
+                const QJsonObject sent =
+                    QJsonDocument::fromJson(body).object();
+                check(sent.value(QStringLiteral("scope")).toString()
+                              == QStringLiteral("label")
+                          && sent.value(QStringLiteral("matcher")).toString()
+                                 == QStringLiteral("env=prod")
+                          && qint64(sent.value(QStringLiteral("startsAtMs"))
+                                        .toDouble())
+                                 == nowMs
+                          && qint64(sent.value(QStringLiteral("endsAtMs"))
+                                        .toDouble())
+                                 == nowMs + 30 * 60000
+                          && sent.value(QStringLiteral("createdBy")).toString()
+                                 == QStringLiteral("hud-box")
+                          && sent.value(QStringLiteral("comment"))
+                                 .toString()
+                                 .contains(QStringLiteral("env=prod")),
+                      "team label silence: the body is one key=value pair with "
+                      "scope label and a 30m window");
+                check(teamLabelSilenceBody(QString(), QStringLiteral("a"), 30,
+                                           nowMs)
+                              .isEmpty()
+                          && teamLabelSilenceBody(QStringLiteral("env"),
+                                                  QStringLiteral("a"), 30, nowMs)
+                                 .isEmpty()
+                          && teamLabelSilenceBody(QStringLiteral("env="),
+                                                  QStringLiteral("a"), 30, nowMs)
+                                 .isEmpty()
+                          && teamLabelSilenceBody(QStringLiteral("=prod"),
+                                                  QStringLiteral("a"), 30, nowMs)
+                                 .isEmpty()
+                          && teamLabelSilenceBody(
+                                 QStringLiteral("env=prod team=data"),
+                                 QStringLiteral("a"), 30, nowMs)
+                                 .isEmpty(),
+                      "team label silence: anything but one key=value pair is "
+                      "refused before the socket");
+            }
             check(teamLabelsSummaryText(status.machines)
                       == QStringLiteral("1 of 2 machine(s) labelled - 1 env(s)"),
                   "team labels: the summary counts what is labelled");
@@ -11266,8 +11332,17 @@ int main(int argc, char *argv[]) {
             options.actions = true;
             const TeamActionOutcome sent = teamPerformAction(
                 options, TeamAction::Ack, team.incidents.at(0), 0);
-            gated.detail += QLatin1Char('\n') + noActions.detail;
-            gated.ok = gated.ok || noActions.ok || sent.ok;
+            // M169: the label silence shares the same gate and posts the pair
+            // with `scope=label`.
+            options.actions = false;
+            const TeamActionOutcome labelGated = teamPerformLabelSilence(
+                options, QStringLiteral("env=prod"), 30, 0);
+            options.actions = true;
+            const TeamActionOutcome labelSent = teamPerformLabelSilence(
+                options, QStringLiteral("env=prod"), 30, 1760000000000LL);
+            gated.detail += QLatin1Char('\n') + noActions.detail
+                            + QLatin1Char('\n') + labelGated.detail;
+            gated.ok = gated.ok || noActions.ok || sent.ok || labelSent.ok;
             gated.httpStatus = sent.httpStatus;
             done.store(true);
         });
@@ -11278,7 +11353,7 @@ int main(int argc, char *argv[]) {
             app.processEvents();
         }
         worker.join();
-        check(connections.load() == 1,
+        check(connections.load() == 2,
               "team actions: no write leaves the machine while the link or the "
               "switch is off");
         check(gated.ok && gated.httpStatus == 200
@@ -11289,6 +11364,13 @@ int main(int argc, char *argv[]) {
               "team actions: a permitted ack posts once with the actor");
         check(gated.detail.contains(QStringLiteral("[remote] actions=true")),
               "team actions: the off switch is the refusal's own words");
+        check(seen.contains("/api/v1/silences")
+                  && seen.contains("\"scope\":\"label\"")
+                  && seen.contains("\"matcher\":\"env=prod\"")
+                  && seen.contains("\"startsAtMs\":1760000000000")
+                  && seen.contains("\"createdBy\":\"kay\""),
+              "team label silence: the permitted write posts the pair with "
+              "scope label, the window and the actor");
     }
 
     std::printf("%d failure(s)\n", failures);

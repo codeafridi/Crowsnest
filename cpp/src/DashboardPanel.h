@@ -159,6 +159,8 @@ public:
     void setFleetSnapshot(const FleetStatus &status);
     // M151: the relay's own fleet, read with the [remote] credential.
     void setTeamStatus(const TeamStatus &status);
+    // M169: restore the saved grouping before the first poll arrives.
+    void setTeamGroup(const QString &key);
     // M152: what the relay answered a write with. The panel owns the optimistic
     // row, so this either clears it (ok) or reverts it and says why.
     void setTeamActionStatus(TeamAction action, const QString &incidentId,
@@ -204,6 +206,8 @@ signals:
     void teamAckRequested(const TeamIncident &incident);
     void teamCloseRequested(const TeamIncident &incident);
     void teamSilenceRequested(const TeamIncident &incident, int minutes);
+    void teamLabelSilenceRequested(const QString &matcher, int minutes);
+    void teamGroupChanged(const QString &key);
     void monitorsResetRequested();
     void historyExportRequested(const QString &format);
     void historySeekRequested(int index);
@@ -426,6 +430,18 @@ private:
     QComboBox *m_teamFilter = nullptr;
     QString m_teamFilterValue;
     QString m_teamFilterSignature;
+    // M169: the Team page's own grouping (mirrors the Fleet page) and the
+    // label-silence verb. `m_teamGroup` is persisted through
+    // `[remote] team_group`; the two-press arm is shared with CLOSE so one
+    // stray click cannot mute a whole label.
+    QComboBox *m_teamGroup = nullptr;
+    QString m_teamGroupKey;
+    QString m_teamGroupSignature;
+    QComboBox *m_teamSilenceMatcher = nullptr;
+    QString m_teamSilenceSignature;
+    QPushButton *m_teamSilenceLabel = nullptr;
+    QLabel *m_teamLabelSilenceStatus = nullptr;
+    bool m_teamLabelSilenceArmed = false;
     TeamStatus m_team;
     QString m_teamSelectedId;
     QLabel *m_teamIncidentSummary = nullptr;

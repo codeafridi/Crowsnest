@@ -3147,6 +3147,109 @@ int main(int argc, char *argv[]) {
                   "team actions: the off switch is named and no verb is sent");
         }
 
+        {
+            // M169: grouping on the Team page, and the label silence with its
+            // two-press arm. The matcher is the label pair the relay accepts.
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            TeamStatus labelled;
+            labelled.enabled = true;
+            labelled.configured = true;
+            labelled.actions = true;
+            labelled.tokenConfigured = true;
+            labelled.url = QStringLiteral("https://relay.example.test");
+            labelled.selfId = QStringLiteral("m-self");
+            labelled.actor = QStringLiteral("hud-box");
+            labelled.answered = true;
+            labelled.asOfMs = now;
+            labelled.fetchedAtMs = now - 1000;
+            TeamMachine first;
+            first.id = QStringLiteral("m-self");
+            first.name = QStringLiteral("workstation");
+            first.state = QStringLiteral("reporting");
+            first.lastSeenMs = now - 2000;
+            first.intervalMs = 15000;
+            first.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                            {QStringLiteral("role"), QStringLiteral("builder")}};
+            TeamMachine second;
+            second.id = QStringLiteral("m-2");
+            second.name = QStringLiteral("gate-02");
+            second.state = QStringLiteral("silent");
+            second.lastSeenMs = now - 900000;
+            second.intervalMs = 15000;
+            second.labels = {{QStringLiteral("env"), QStringLiteral("dev")}};
+            TeamMachine third;
+            third.id = QStringLiteral("m-3");
+            third.name = QStringLiteral("edge-03");
+            third.state = QStringLiteral("reporting");
+            third.lastSeenMs = now - 2000;
+            third.intervalMs = 15000;
+            labelled.machines = {first, second, third};
+            labelled.counts.total = 3;
+            labelled.counts.reporting = 2;
+            labelled.counts.silent = 1;
+            hud.setTeamStatus(labelled);
+
+            auto *groupCombo =
+                hud.findChild<QComboBox *>(QStringLiteral("ddTeamGroup"));
+            check(groupCombo != nullptr && groupCombo->count() == 3
+                      && groupCombo->itemText(0)
+                             == QStringLiteral("(none)")
+                      && groupCombo->findData(QStringLiteral("env")) >= 0,
+                  "team group: the picker offers (none) and the label keys");
+
+            auto *silenceMatcher = hud.findChild<QComboBox *>(
+                QStringLiteral("ddTeamSilenceLabelMatcher"));
+            auto *silenceButton = hud.findChild<QPushButton *>(
+                QStringLiteral("ddTeamSilenceLabel"));
+            check(silenceMatcher != nullptr && silenceMatcher->count() == 3
+                      && silenceMatcher->findData(QStringLiteral("env=prod"))
+                             >= 0
+                      && silenceButton != nullptr && silenceButton->isEnabled(),
+                  "team label silence: the page offers the fleet's label pairs");
+
+            groupCombo->setCurrentIndex(
+                groupCombo->findData(QStringLiteral("env")));
+            auto *teamTable =
+                hud.findChild<QTreeWidget *>(QStringLiteral("ddTeamTable"));
+            QString header;
+            for (int i = 0; i < teamTable->topLevelItemCount(); ++i) {
+                if (!teamTable->topLevelItem(i)->data(0, Qt::UserRole)
+                         .toString()
+                         .size()) {
+                    header = teamTable->topLevelItem(i)->text(0);
+                    break;
+                }
+            }
+            check(header.startsWith(QStringLiteral("env = dev - 1 machine(s)"))
+                      || header.startsWith(
+                          QStringLiteral("env = prod - 2 machine(s)")),
+                  "team group: a header names the group and its counts");
+
+            int silenced = 0;
+            QString seenMatcher;
+            const auto conn = QObject::connect(
+                panel, &DashboardPanel::teamLabelSilenceRequested,
+                [&silenced, &seenMatcher, &check](
+                    const QString &matcher, int minutes) {
+                    ++silenced;
+                    seenMatcher = matcher;
+                    check(minutes == 30,
+                          "team label silence: the window is 30 minutes");
+                });
+            silenceMatcher->setCurrentIndex(
+                silenceMatcher->findData(QStringLiteral("env=prod")));
+            silenceButton->click();
+            check(silenced == 0
+                      && silenceButton->text().contains(
+                          QStringLiteral("PRESS AGAIN")),
+                  "team label silence: the first press only arms it");
+            silenceButton->click();
+            check(silenced == 1 && seenMatcher == QStringLiteral("env=prod"),
+                  "team label silence: the second press posts the pair");
+            QObject::disconnect(conn);
+            groupCombo->setCurrentIndex(0);
+        }
+
         SettingsInfo info;
         info.version = QStringLiteral("9.9.9-test");
         info.configPath = QStringLiteral("/tmp/crowsnest.conf");

@@ -1040,7 +1040,8 @@ int main(int argc, char *argv[]) {
                                    "timeout_ms = 5000\n"
                                    "spool_mb = 32\n"
                                    "actions = true\n"
-                                   "ca_file = /etc/ssl/corp-ca.pem\n"));
+                                   "ca_file = /etc/ssl/corp-ca.pem\n"
+                                   "team_group = env\n"));
         QString error;
         const Config c = loadConfig(path, &error);
         check(c.remote.enabled && c.remote.actions
@@ -1051,8 +1052,27 @@ int main(int argc, char *argv[]) {
                   && c.remote.intervalMs == 60000 && c.remote.timeoutMs == 5000
                   && c.remote.spoolMb == 32
                   && c.remote.caFile
-                         == QStringLiteral("/etc/ssl/corp-ca.pem"),
-              "remote: the switch, address, token, name, CA and bounds load");
+                         == QStringLiteral("/etc/ssl/corp-ca.pem")
+                  && c.remote.teamGroup == QStringLiteral("env"),
+              "remote: the switch, address, token, name, CA and bounds load, "
+              "and the Team page grouping is remembered");
+    }
+
+    {
+        // M169: the Team page grouping is a preference with a writer, and an
+        // empty key removes the line instead of writing `team_group =`.
+        QTemporaryDir dir;
+        const QString path = writeConfig(
+            dir, QByteArrayLiteral("[remote]\n"
+                                   "enabled = true\n"
+                                   "token = tok-123\n"));
+        check(saveRemoteTeamGroup(path, QStringLiteral("team"))
+                  && loadConfig(path, nullptr).remote.teamGroup
+                         == QStringLiteral("team"),
+              "remote: saveRemoteTeamGroup writes the grouping key");
+        check(saveRemoteTeamGroup(path, QString())
+                  && loadConfig(path, nullptr).remote.teamGroup.isEmpty(),
+              "remote: an empty grouping key removes the line");
     }
 
     {
