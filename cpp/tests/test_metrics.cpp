@@ -5650,6 +5650,19 @@ int main(int argc, char *argv[]) {
                           QStringLiteral("Type=TERM_MATCH,Field=capacitystatus,"
                                          "Value=Used")),
                   "cloud: the pricing query pins service, type, location");
+            // The AWS CLI does not append repeated list options: six
+            // --filters flags left only the last filter applied, so the API
+            // answered unfiltered and the cheapest product won. One flag must
+            // carry all six values (a real-account bug: $0.1017 vs $0.0112).
+            const int filtersAt = pricingArgs.indexOf(QStringLiteral("--filters"));
+            check(filtersAt >= 0
+                      && pricingArgs.count(QStringLiteral("--filters")) == 1
+                      && filtersAt + 6 < pricingArgs.size()
+                      && pricingArgs.at(filtersAt + 1).contains(
+                             QStringLiteral("Field=instanceType"))
+                      && pricingArgs.at(filtersAt + 6).contains(
+                             QStringLiteral("Field=capacitystatus")),
+                  "cloud: one --filters flag carries all six filters");
             check(awsPriceLocation(QStringLiteral("us-west-2"))
                           == QStringLiteral("US West (Oregon)")
                       && awsPriceLocation(QStringLiteral("xx-new-1"))

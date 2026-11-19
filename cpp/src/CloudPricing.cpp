@@ -122,13 +122,21 @@ QStringList awsPricingArguments(const AwsPriceQuery &query) {
         {QStringLiteral("preInstalledSw"), query.preInstalledSw},
         {QStringLiteral("capacitystatus"), query.capacityStatus},
     };
+    // One --filters flag followed by every filter value. Repeating the flag
+    // is not additive in the AWS CLI: only the last one survives, which left
+    // the Price List API unfiltered and priced whatever was cheapest in the
+    // response (found on a real account: t3.micro quoted at $0.1017 instead of
+    // $0.0112 in ap-south-1). The CLI accepts a list after one flag.
+    QStringList filterArgs;
     for (const auto &filter : filters) {
         if (filter.second.isEmpty()) {
             continue;
         }
-        args << QStringLiteral("--filters")
-             << QStringLiteral("Type=TERM_MATCH,Field=%1,Value=%2")
-                    .arg(filter.first, filter.second);
+        filterArgs << QStringLiteral("Type=TERM_MATCH,Field=%1,Value=%2")
+                          .arg(filter.first, filter.second);
+    }
+    if (!filterArgs.isEmpty()) {
+        args << QStringLiteral("--filters") << filterArgs;
     }
     return args;
 }

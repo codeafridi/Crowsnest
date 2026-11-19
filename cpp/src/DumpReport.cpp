@@ -667,7 +667,9 @@ QString dumpReportJson(int maxProcs) {
         cloud.insert(QStringLiteral("vcpus"), vcpus);
         cloud.insert(QStringLiteral("uptimeSec"), double(uptime));
 
-        const QString ratesPath = defaultCloudRatePath();
+        const QString ratesPath = dumpConfig.cloud.ratesPath.isEmpty()
+                                      ? defaultCloudRatePath()
+                                      : dumpConfig.cloud.ratesPath;
         CloudRateTable table;
         QFile ratesFile(ratesPath);
         if (ratesFile.open(QIODevice::ReadOnly)) {
@@ -743,7 +745,9 @@ QString dumpReportJson(int maxProcs) {
             cloudIdentityAutoRequested(dumpConfig.cloud.identityOverride);
         fleetOptions.regionConcurrency =
             dumpConfig.cloud.regionConcurrency;
-        fleetOptions.accountTimeoutMs = 30000;
+        // The HUD uses [cloud] account_timeout_ms; the dump used to hard-code
+        // 30 s and truncated an 18-region listing on a real account.
+        fleetOptions.accountTimeoutMs = dumpConfig.cloud.accountTimeoutMs;
         const CloudFleetStatus listing =
             probeCloudFleet(identity, fleetOptions);
         QJsonObject fleet;
