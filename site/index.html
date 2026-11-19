@@ -232,9 +232,9 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             <div class="ospanel" data-os="windows" role="tabpanel" hidden>
               <div class="frame terminal-frame">
                 <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> POWERSHELL <button class="frame-copy" type="button" data-copy="#cmd-win">COPY</button></div>
-                <pre class="terminal-body"><code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex</code></pre>
+                <pre class="terminal-body"><code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 -OutFile "$env:TEMP\crowsnest-install.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\crowsnest-install.ps1"</code></pre>
               </div>
-              <p>Open PowerShell, paste the line, done. Installs into your user folder and puts crowsnest on PATH. Nothing is started; add <code>-Autostart</code> for start at login. Needs Windows 10 or newer. No Git Bash required.</p>
+              <p>Open PowerShell, paste the line, done. It downloads the installer to <code>%TEMP%</code> and runs that file with the execution policy bypassed for that process only &mdash; it does not pipe a remote string into your session. Installs into your user folder and puts crowsnest on PATH. Nothing is started; add <code>-Autostart</code> for start at login. Needs Windows 10 or newer. No Git Bash required.</p>
               <p class="alts">Prefer a setup wizard? The MSI is on Releases. SmartScreen may ask once, choose Run anyway.</p>
             </div>
 
