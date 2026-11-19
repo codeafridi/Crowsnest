@@ -1,108 +1,122 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crowsnest. A focused process HUD for Linux, macOS and Windows</title>
     <meta name="description" content="Crowsnest is a small overlay HUD that follows the app you are using, then opens into a 34-view console for the host, disks, GPU, sensors, containers, Kubernetes, databases, traces and cloud cost. Linux, macOS and Windows. C++ and Qt 6, local only, MIT. The app is free; a paid Team tier adds a relay for shared fleet state, $9 a month or $90 a year, 14-day trial, no card." />
-    <meta name="theme-color" content="#f6f7f9" />
+    <meta name="theme-color" content="#0b1730" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
-    <link rel="stylesheet" href="styles.css?v=8" />
-    <script>
-      (function () {
-        var t = 'light';
-        try { t = localStorage.getItem('theme') || 'light'; } catch (e) {}
-        document.documentElement.setAttribute('data-theme', t);
-      })();
-    </script>
+    <link rel="preload" href="fonts/newsreader.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="styles.css?v=9" />
   </head>
   <body>
-    <header class="nav">
-      <div class="wrap nav-inner">
-        <a class="logo" href="#top" aria-label="Crowsnest home">
-          <img class="logo-mark" src="logo.svg" width="22" height="22" alt="" aria-hidden="true" />
-          <span class="logo-name">crowsnest</span>
+    <a class="skip" href="#top">Skip to content</a>
+
+    <header class="site-head">
+      <div class="wrap head-inner">
+        <a class="brand" href="#top" aria-label="Crowsnest home">
+          <img class="brand-mark" src="logo.svg" width="28" height="28" alt="" aria-hidden="true" />
+          <span class="brand-name">crowsnest</span>
         </a>
-        <nav class="nav-mid">
+        <nav class="head-nav" aria-label="Sections">
           <a href="#pricing">Pricing</a>
           <a href="#features">Features</a>
           <a href="#screens">Screenshots</a>
           <a href="#install">Install</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <div class="nav-right">
-          <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.13.0" rel="noopener" title="Release notes for 0.13.0">v0.13.0</a>
-          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle colour theme">
-            <svg class="sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.7 17.7l1.41 1.41M2 12h2M20 12h2M6.34 17.7l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-            <svg class="moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
-          </button>
-          <a class="gh" href="https://github.com/codeafridi/Crowsnest" rel="noopener">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.79-.26.79-.58v-2.23c-3.34.72-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.3-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.19.7.8.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        <div class="head-actions">
+          <a class="ver" href="https://github.com/codeafridi/Crowsnest/releases/tag/v0.13.4" rel="noopener" title="Release notes for 0.13.4">v0.13.4</a>
+          <a class="head-gh" href="https://github.com/codeafridi/Crowsnest" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.79-.26.79-.58v-2.23c-3.34.72-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.3-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.19.7.8.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
             <span>GitHub</span>
           </a>
+          <a class="btn btn-light btn-sm" href="#install">Install</a>
         </div>
       </div>
     </header>
 
     <main id="top">
       <section class="hero">
+        <div class="hero-glow" aria-hidden="true"></div>
         <div class="wrap hero-grid">
-          <div>
-            <p class="eyebrow">Linux, macOS, Windows. C++20 with Qt 6. Version 0.13.0.</p>
-            <h1>The HUD that follows the app you are using.</h1>
-            <p class="lede">
-              Pick any window and Crowsnest puts that app's CPU, memory, threads, file descriptors, disk and network throughput in a small panel that floats over your desktop. Click once and the same binary opens a full console for the whole machine: host, disks, GPU, sensors, containers, Kubernetes, databases, traces and what the cloud is billing you.
-            </p>
-            <div class="actions">
-              <a class="btn primary" href="#install">Install now &mdash; free</a>
-              <a class="btn" href="https://github.com/codeafridi/Crowsnest" rel="noopener">View on GitHub</a>
+          <div class="hero-copy">
+            <p class="kicker kicker-light">Local-first HUD &middot; Linux, macOS, Windows</p>
+            <h1>The HUD that <em>follows</em> the app you are using.</h1>
+            <p class="hero-lede">Pick any window and Crowsnest puts that app's CPU, memory, threads, disk and network in a 430px strip that stays on top. One click opens the full console for the host, containers, cluster and cloud bill.</p>
+            <div class="hero-actions">
+              <a class="btn btn-light" href="#install">Install now &mdash; free</a>
+              <a class="btn btn-ghost" href="https://github.com/codeafridi/Crowsnest" rel="noopener">View on GitHub</a>
             </div>
-            <div class="plan-strip" aria-label="Plans at a glance">
-              <a class="mini-plan" href="#pricing">
-                <span class="mini-name">Free</span>
-                <span class="mini-price">$0 <i>forever</i></span>
-                <span class="mini-note">the whole app, no account</span>
-              </a>
-              <a class="mini-plan billed" href="#pricing">
-                <span class="mini-name">Team</span>
-                <span class="mini-price">$9 <i>a month</i></span>
-                <span class="mini-note">or $90 a year &middot; 14-day trial, no card</span>
-              </a>
-            </div>
-            <figure class="hud-figure">
-              <img src="hud.png" width="430" height="197" alt="The compact Crowsnest overlay: focused app cursor, its PID, CPU and RSS, and one line each for Docker containers and Kubernetes pods." />
-              <figcaption>
-                <b>And this is the overlay.</b>
-                430 pixels wide, always on top, refreshed every second. Focus follows the window you are actually using.
-              </figcaption>
-            </figure>
+            <p class="hero-price"><a href="#pricing">Free forever</a><span>&middot;</span><a href="#pricing">Team $9 a month</a><span>&middot;</span>14-day trial, no card</p>
+            <ul class="hero-trust" aria-label="What the app is">
+              <li>MIT licensed</li>
+              <li>No telemetry</li>
+              <li>34 views</li>
+              <li>One binary</li>
+            </ul>
           </div>
-          <div>
-            <div class="shot-frame">
-              <div class="shot-bar">
+          <figure class="hero-visual">
+            <div class="browser">
+              <div class="browser-bar">
                 <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="shot-title">crowsnest console &mdash; Overview</span>
+                <span class="browser-title">crowsnest console &mdash; Overview</span>
               </div>
               <a href="shots/overview.webp" target="_blank" rel="noopener">
-                <img src="shots/overview.webp" width="1020" height="1040" alt="Crowsnest Overview console: focused app CPU, RSS and process count tiles, CPU, memory and process count charts, host CPU, memory available and load charts, network, disk and utilisation charts, and the watchdog and forecast cards." />
+                <img src="shots/overview.webp" width="1020" height="1040" alt="Crowsnest Overview console: focused app CPU, RSS and process count tiles, CPU, memory and process count charts, host CPU, memory available and load charts, network, disk and utilisation charts, and the watchdog and forecast cards." fetchpriority="high" />
               </a>
             </div>
-            <p class="shot-note">Every panel on this page is a live capture &mdash; the cloud panel's caveat is in the <a href="#screenshot-notes">screenshot notes</a>.</p>
+            <figcaption><span>Overview &middot; a live capture</span><a href="shots/overview.webp" target="_blank" rel="noopener">Open full frame &nearr;</a></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section features" id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <p class="kicker">What it is</p>
+            <h2 class="display">A strip over your app.<br /><em>A console for the machine.</em></h2>
+            <p class="section-lede">Two views, one binary. The overlay follows the window you are in; the console is everything the box can tell you. The relay is optional, for when one laptop is not enough.</p>
+          </div>
+          <div class="trio">
+            <article class="trio-item">
+              <div class="trio-visual visual-sage visual-contain">
+                <img src="hud.png" width="430" height="197" alt="The compact Crowsnest overlay: focused app cursor, its PID, CPU and RSS, and one line each for Docker containers and Kubernetes pods." loading="lazy" />
+              </div>
+              <h3>The strip</h3>
+              <p>430 pixels, always on top, refreshed every second. It follows the app in front of you, not the one you pinned.</p>
+            </article>
+            <article class="trio-item">
+              <div class="trio-visual visual-sky">
+                <img src="shots/processes.webp" width="1020" height="1040" alt="Processes page: grouped process tree with CPU, memory, threads, file descriptors, per-process disk read and write rates, TCP throughput and listening ports." loading="lazy" />
+              </div>
+              <h3>The console</h3>
+              <p>34 views from the process tree to the host, containers, Kubernetes, traces and cloud cost. No account required.</p>
+            </article>
+            <article class="trio-item">
+              <div class="trio-visual visual-sand">
+                <img src="shots/relay-fleet.webp" width="1280" height="760" alt="The relay's Fleet page: seven machines with labels, five reporting, one suspect and one silent with dashes in every value column." loading="lazy" />
+              </div>
+              <h3>The relay</h3>
+              <p>Optional Team half: shared fleet state, incident queue and delivery that outlive a closed laptop.</p>
+            </article>
           </div>
         </div>
       </section>
 
-      <section class="section band" id="pricing">
+      <section class="section pricing" id="pricing">
         <div class="wrap">
-          <p class="section-kicker">Free and paid, side by side</p>
-          <h2>The app is free. Team adds shared state.</h2>
-          <p class="section-lede">
-            The desktop app ships whole under MIT &mdash; every view, no account, no telemetry, no licence check, never gated. The paid tier is the relay half: one place where your fleet's state outlives a closed laptop. Both prices are right here; nothing is hidden behind a click.
-          </p>
+          <div class="section-head">
+            <p class="kicker">Free and paid</p>
+            <h2 class="display">Free app.<br /><em>Team is $9.</em></h2>
+            <p class="section-lede">The desktop app is the whole app: every view, no account, no telemetry, no licence check. Team adds a relay you run, so fleet state survives the laptop closing. One price per workspace.</p>
+          </div>
 
           <div class="plans">
-            <div class="plan">
+            <article class="plan plan-free">
               <span class="plan-tag">Free</span>
               <div class="price"><span class="amount">$0</span> <span class="per">forever</span></div>
               <p class="price-sub">The complete desktop app, MIT licensed.</p>
@@ -112,9 +126,9 @@
                 <li>A fleet view over your own LAN, free of licence</li>
                 <li>Local telemetry is never metered</li>
               </ul>
-              <a class="btn" href="#install">Install the app</a>
-            </div>
-            <div class="plan team">
+              <a class="btn btn-outline" href="#install">Install the app</a>
+            </article>
+            <article class="plan plan-team">
               <span class="plan-tag">Team <span class="chip">14-day trial &middot; no card</span></span>
               <div class="price"><span class="amount">$9</span> <span class="per">a month</span></div>
               <p class="price-sub">or $90 a year &mdash; $7.50 a month, two months free. One price per workspace.</p>
@@ -124,238 +138,147 @@
                 <li>100 machines &middot; 10 seats &middot; 15 s cadence floor &middot; 25 share links</li>
                 <li>Cancel any time: data kept 30 days, then a counted delete with a receipt</li>
               </ul>
-              <a class="btn primary" href="#start">Start the free trial</a>
-            </div>
-          </div>
-
-          <div class="compare">
-            <div class="compare-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>What you get</th>
-                    <th class="v">Free</th>
-                    <th class="v team-col">Team</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>All 34 console views, Linux, macOS and Windows</td><td class="v yes">Yes</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Desktop alerts, incidents, silences, SLO burn, webhooks</td><td class="v yes">Yes</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Fleet view over your own LAN</td><td class="v yes">Yes</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Fleet state that survives a closed laptop</td><td class="v no">&mdash;</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Browser dashboard with share links</td><td class="v no">&mdash;</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Delivery: email, webhook, Slack, PagerDuty, Opsgenie, Discord, Teams</td><td class="v no">&mdash;</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Routing tree, escalation steps, on-call rota</td><td class="v no">&mdash;</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Members with roles, invites, audit trail</td><td class="v no">&mdash;</td><td class="v yes">Yes</td></tr>
-                  <tr><td>Price</td><td class="v yes">$0</td><td class="v yes">$9/mo</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="compare-note">One price per workspace: $9 a month or $90 a year ($7.50 a month). Nothing in the Free column is ever reduced to sell the Team column &mdash; turning <code>[remote]</code> on is the entire upgrade.</p>
-          </div>
-
-          <p class="small" style="margin-top:16px">Managed hosting is not open yet: today the relay is one static binary you run beside Postgres on your own server. The 14-day trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
-
-          <h3 class="sub">What the relay holds</h3>
-          <div class="grid">
-            <article class="card">
-              <h3>The fleet</h3>
-              <p>Every machine that reports, with silence detection, duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does &mdash; and a silent machine is a dash, never a stale reading.</p>
-            </article>
-            <article class="card">
-              <h3>Incidents that wait</h3>
-              <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. The server is the truth both the browser and the desktop read.</p>
-            </article>
-            <article class="card">
-              <h3>Delivery</h3>
-              <p>Email, webhook (the Alertmanager v4 body with an HMAC), Slack, PagerDuty, Opsgenie, Discord and Teams, driven by a routing tree with escalation steps and an on-call rota. A retry ladder and a dead letter queue; every send is one ledger row.</p>
-            </article>
-            <article class="card">
-              <h3>Your data, on your terms</h3>
-              <p>Retention is stated and enforced by one function. Export is streamed as the desktop client's own CSV dialect or JSON. Delete is a real delete with a counts receipt.</p>
+              <a class="btn btn-light" href="#relay">See how the relay works</a>
             </article>
           </div>
 
-          <div class="pr-split">
-            <figure class="shot-frame">
-              <div class="shot-bar">
-                <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="shot-title">relay console &mdash; Fleet</span>
-              </div>
-              <a href="shots/relay-fleet.webp" target="_blank" rel="noopener">
-                <img src="shots/relay-fleet.webp" width="1280" height="760" loading="lazy" alt="The relay's Fleet page: seven machines carrying env, role and team labels. Five report live CPU, memory and load, one is suspect, and one has been silent for eight minutes with a dash in every value column instead of a stale reading." />
-              </a>
-              <figcaption class="shot-cap">A live capture: a machine that stopped reporting shows a dash in every value column rather than a stale reading, and the on-call owner comes from the rota.</figcaption>
-            </figure>
-            <div class="limits">
-              <div class="tcard">
-                <h3>Plan limits</h3>
-                <table>
-                  <thead><tr><th>What</th><th>Limit</th></tr></thead>
-                  <tbody>
-                    <tr><td class="k">Machines per workspace</td><td class="v">100</td></tr>
-                    <tr><td class="k">Seats (members)</td><td class="v">10</td></tr>
-                    <tr><td class="k">Report cadence floor</td><td class="v">15 s</td></tr>
-                    <tr><td class="k">Share links</td><td class="v">25 live, 7&ndash;90 days</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="tcard">
-                <h3>Retention</h3>
-                <table>
-                  <thead><tr><th>Data</th><th>Kept</th></tr></thead>
-                  <tbody>
-                    <tr><td class="k">Raw samples</td><td class="v">24 h</td></tr>
-                    <tr><td class="k">60 s buckets</td><td class="v">30 d</td></tr>
-                    <tr><td class="k">5 m buckets</td><td class="v">90 d</td></tr>
-                    <tr><td class="k">Events and audit</td><td class="v">1 y</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <div class="facts">
+            <div><span class="fact-num">100</span><span>machines, 10 seats, 15 s cadence</span></div>
+            <div><span class="fact-num">14</span><span>day trial, no card, full Team limits</span></div>
+            <div><span class="fact-num">1</span><span>static relay binary beside your own Postgres</span></div>
           </div>
 
-          <ul class="truth">
-            <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
-            <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
-            <li><strong>What you are not buying:</strong> gating of the desktop app. <code>[remote]</code> ships in the free build off by default, there is no licence check anywhere, and the report payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</li>
-          </ul>
-
-          <div id="start">
-            <h3 class="sub">Four steps. The relay is yours.</h3>
-            <ol class="steps">
-              <li><strong>Install the client</strong> on each machine you want in the fleet. It is the same free app; <code>[remote]</code> is off until you switch it on.</li>
-              <li><strong>Run the relay</strong> on a server you control &mdash; one static binary and a Postgres database. No link yet; managed hosting is not open.</li>
-              <li><strong>Mint an ingest token</strong> in the relay's dashboard. It is shown once; each machine gets its own.</li>
-              <li><strong>Point the client at it</strong> with three config lines. The report leaves the box only after the relay answers, and an offline spool buffers what the machine gathered while the laptop was closed.</li>
-            </ol>
-            <div class="terminal">
-              <div class="terminal-bar">
-                <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="terminal-title">crowsnest config</span>
+          <details class="relay" id="relay">
+            <summary>Relay details: what it holds, limits and setup <span aria-hidden="true">+</span></summary>
+            <div class="relay-body">
+              <div class="relay-grid">
+                <article>
+                  <span class="relay-num">01</span>
+                  <h4>The fleet</h4>
+                  <p>Every machine that reports, with silence detection, duplicate detection and pre-registration. The desktop Team page shows the same rows the browser does &mdash; and a silent machine is a dash, never a stale reading.</p>
+                </article>
+                <article>
+                  <span class="relay-num">02</span>
+                  <h4>Incidents that wait</h4>
+                  <p>Threshold and composite rules over stored rollups, dependency and flap suppression, folding, and acknowledge, close and silence with an audit trail. The server is the truth both the browser and the desktop read.</p>
+                </article>
+                <article>
+                  <span class="relay-num">03</span>
+                  <h4>Delivery</h4>
+                  <p>Email, webhook (the Alertmanager v4 body with an HMAC), Slack, PagerDuty, Opsgenie, Discord and Teams, driven by a routing tree with escalation steps and an on-call rota. A retry ladder and a dead letter queue; every send is one ledger row.</p>
+                </article>
+                <article>
+                  <span class="relay-num">04</span>
+                  <h4>Your data, on your terms</h4>
+                  <p>Retention is stated and enforced by one function. Export is streamed as the desktop client's own CSV dialect or JSON. Delete is a real delete with a counts receipt.</p>
+                </article>
               </div>
-              <div class="terminal-body">[remote]
+
+              <div class="relay-split">
+                <figure class="relay-figure">
+                  <div class="browser">
+                    <div class="browser-bar">
+                      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                      <span class="browser-title">relay console &mdash; Fleet</span>
+                    </div>
+                    <a href="shots/relay-fleet.webp" target="_blank" rel="noopener">
+                      <img src="shots/relay-fleet.webp" width="1280" height="760" alt="The relay's Fleet page: seven machines with labels, five reporting, one suspect and one silent with dashes in every value column." loading="lazy" />
+                    </a>
+                  </div>
+                  <figcaption>A machine that stopped reporting shows a dash, never a stale reading.</figcaption>
+                </figure>
+                <div class="limits">
+                  <div class="tcard">
+                    <h4>Plan limits</h4>
+                    <dl>
+                      <div><dt>Machines per workspace</dt><dd>100</dd></div>
+                      <div><dt>Seats (members)</dt><dd>10</dd></div>
+                      <div><dt>Report cadence floor</dt><dd>15 s</dd></div>
+                      <div><dt>Share links</dt><dd>25 live, 7&ndash;90 days</dd></div>
+                    </dl>
+                  </div>
+                  <div class="tcard">
+                    <h4>Retention</h4>
+                    <dl>
+                      <div><dt>Raw samples</dt><dd>24 h</dd></div>
+                      <div><dt>60 s buckets</dt><dd>30 d</dd></div>
+                      <div><dt>5 m buckets</dt><dd>90 d</dd></div>
+                      <div><dt>Events and audit</dt><dd>1 y</dd></div>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setup">
+                <div class="setup-copy">
+                  <h4>Four steps. The relay is yours.</h4>
+                  <ol class="steps">
+                    <li><strong>Install the client</strong> on each machine you want in the fleet. It is the same free app; <code>[remote]</code> is off until you switch it on.</li>
+                    <li><strong>Run the relay</strong> on a server you control &mdash; one static binary and a Postgres database.</li>
+                    <li><strong>Mint an ingest token</strong> in the relay's dashboard. It is shown once; each machine gets its own.</li>
+                    <li><strong>Point the client at it</strong> with three config lines. An offline spool buffers what the machine gathered while the laptop was closed.</li>
+                  </ol>
+                </div>
+                <div class="setup-code">
+                  <div class="browser browser-dark">
+                    <div class="browser-bar">
+                      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                      <span class="browser-title">crowsnest config</span>
+                    </div>
+                    <pre class="terminal-body">[remote]
 enabled = true
 url     = https://relay.example.com
-token   = the-machine-token</div>
+token   = the-machine-token</pre>
+                  </div>
+                  <p><code>[remote] actions</code> turns on the desktop verbs &mdash; acknowledge, close and a 30-minute silence from the Team page. Reading is on with the link alone.</p>
+                </div>
+              </div>
+
+              <ul class="truth">
+                <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
+                <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
+                <li><strong>What you are not buying:</strong> gating of the desktop app. <code>[remote]</code> ships in the free build off by default, there is no licence check anywhere, and the report payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</li>
+              </ul>
             </div>
-            <p class="small" style="margin-top:14px"><code>[remote] actions</code> turns on the desktop verbs &mdash; acknowledge, close and a 30-minute silence from the Team page. Reading is on with the link alone, and a read-only token disables the verbs with the reason on the page.</p>
-          </div>
+          </details>
+
+          <p class="managed-note">Managed hosting is not open yet: the relay is one static binary you run beside Postgres on your own server. The 14-day trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
         </div>
       </section>
 
-      <section class="section" id="features">
+      <section class="section screens" id="screens">
         <div class="wrap">
-          <p class="section-kicker">What it shows</p>
-          <h2>One panel over your app. Thirty-four views behind it.</h2>
-          <div class="grid">
-            <article class="card">
-              <h3>The app you are using</h3>
-              <p>PID, CPU, RSS, threads, open files and context switches, added up over the app's whole process tree, not one PID. Disk read and write rates, TCP throughput and listening ports per process, sampled from the kernel once a second.</p>
-            </article>
-            <article class="card">
-              <h3>The machine under it</h3>
-              <p>Host CPU and steal, memory, load, per-device disk throughput and utilisation, network interfaces, hwmon temperatures, fans and power, battery health, and GPU utilisation with the process holding it. Anything an OS cannot report is labelled as such, never left blank.</p>
-            </article>
-            <article class="card">
-              <h3>Containers and Kubernetes</h3>
-              <p>Docker containers with live CPU, memory, network and PIDs through the Engine API. Kubernetes pods, deployments, nodes and metrics-server usage. systemd units, launchd jobs and Windows services. A local PostgreSQL client for cache hit rate, commits, deadlocks and the slowest statements.</p>
-            </article>
-            <article class="card">
-              <h3>Logs, traces and metrics</h3>
-              <p>journald, the macOS unified log or the Windows event log, parsed into fields, scanned for secrets, grouped by error, watched for threats. An OTLP receiver on 4318 and a DogStatsD receiver on 8125 for your own telemetry, and a Prometheus endpoint the rest of your stack can scrape.</p>
-            </article>
-            <article class="card">
-              <h3>Cloud and cost</h3>
-              <p>Instance identity from the metadata service, accrued cost this boot, the provider's own billed spend and a burn rate against your trailing baseline. Fleet inventory, per-pod right-sizing priced at your cluster's rates, and Terraform state diffed against the account listing.</p>
-            </article>
-            <article class="card">
-              <h3>Alerts and incidents</h3>
-              <p>Editable thresholds you tune live, silences for maintenance windows, alerts correlated into one incident per subject with an owner, flap suppression, SLO burn tracking, and webhooks to the receiver you already own.</p>
-            </article>
+          <div class="section-head">
+            <p class="kicker">Screenshots</p>
+            <h2 class="display">The console,<br /><em>uncropped.</em></h2>
+            <p class="section-lede">A 12-core HP laptop running Linux, with three Docker containers, a local PostgreSQL, a single-node Kubernetes cluster, and local OTLP and DogStatsD clients feeding the console. Click any panel for the full frame.</p>
           </div>
-
-          <ul class="truth">
-            <li><strong>Local only.</strong> No account, no telemetry, no phone home. The only outbound calls are ones you switch on: cloud metadata, your own webhook, your own Prometheus scraper.</li>
-            <li><strong>Honest about the gaps.</strong> A surface the OS will not give up says so on the panel. macOS TCP counters need root, Windows has no load average, and the console prints those sentences instead of a zero. Where the cloud metadata service is blocked by network policy, <code>[cloud] identity=</code> is a fallback &mdash; and the page says which source it used.</li>
-            <li><strong>One static binary.</strong> C++20 and Qt 6. Started from a .deb, a DMG, an MSI, an AppImage, Homebrew, Scoop or a single shell line.</li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="section" id="screens">
-        <div class="wrap">
-          <p class="section-kicker">Screenshots</p>
-          <h2>Everything below is Crowsnest on one laptop.</h2>
-          <p class="section-lede">
-            A 12-core HP laptop running Linux, with three Docker containers, a local PostgreSQL, a single-node Kubernetes cluster, and local OTLP and DogStatsD clients feeding the console. Click any panel for the full frame.
-          </p>
-
           <div class="gallery">
-            <figure class="tile">
-              <a href="shots/team.webp" target="_blank" rel="noopener"><img src="shots/team.webp" width="1020" height="1040" loading="lazy" alt="Team page: the relay's fleet with this machine first and marked, a silent machine shown with dashes, and the relay's incident queue with ACK, CLOSE and SILENCE verbs." /></a>
-              <figcaption><b>Team</b> The relay's fleet and incident queue on the desktop. A silent machine is a dash, never a stale reading.</figcaption>
+            <figure class="shot shot-sky">
+              <a class="shot-visual" href="shots/processes.webp" target="_blank" rel="noopener"><img src="shots/processes.webp" width="1020" height="1040" alt="Processes page: grouped process tree with CPU, memory, threads, file descriptors, per-process disk read and write rates, TCP throughput and listening ports." loading="lazy" /></a>
+              <figcaption><b>Processes</b>CPU, RSS, threads, fds, block I/O and TCP throughput, plus the ports each process listens on.</figcaption>
             </figure>
-            <figure class="tile">
-              <a href="shots/processes.webp" target="_blank" rel="noopener"><img src="shots/processes.webp" width="1020" height="1040" loading="lazy" alt="Processes page: grouped process tree with CPU, memory, threads, file descriptors, per-process disk read and write rates, TCP throughput and listening ports." /></a>
-              <figcaption><b>Processes</b> Each row carries CPU, RSS, threads, fds, block I/O and TCP throughput, plus the ports it listens on.</figcaption>
+            <figure class="shot shot-sand">
+              <a class="shot-visual" href="shots/cloud.webp" target="_blank" rel="noopener"><img src="shots/cloud.webp" width="1020" height="1040" alt="Cloud page: provider, age, accrued and monthly cost tiles, the instance identity card, a running-instances chart, the fleet inventory table and the Terraform drift card." loading="lazy" /></a>
+              <figcaption><b>Cloud</b>Instance identity, the account's fleet from your own CLI, and the Terraform state diffed against that listing.</figcaption>
             </figure>
-            <figure class="tile">
-              <a href="shots/sensors.webp" target="_blank" rel="noopener"><img src="shots/sensors.webp" width="1020" height="1040" loading="lazy" alt="Sensors page: hottest temperature, fan RPM, power draw and battery charge tiles, hwmon readings per chip, hottest sensor and power charts, and a battery detail card." /></a>
-              <figcaption><b>Sensors</b> Every hwmon chip, the battery's health and cycles, and the AC adapter state, sampled from sysfs.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/containers.webp" target="_blank" rel="noopener"><img src="shots/containers.webp" width="1020" height="1040" loading="lazy" alt="Containers page: running, issues, container count and cgroup memory tiles, a container table with CPU, memory, network and PIDs, and lifecycle buttons." /></a>
-              <figcaption><b>Containers</b> Engine API stats per container &mdash; CPU, memory against the limit, I/O, PIDs &mdash; and start, stop, restart.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/kubernetes.webp" target="_blank" rel="noopener"><img src="shots/kubernetes.webp" width="1020" height="1040" loading="lazy" alt="Kubernetes page: pod, issue, deployment and monthly cost tiles, the cluster summary, pod and deployment tables, a pods-over-time chart and the cluster health, node and event cards." /></a>
-              <figcaption><b>Kubernetes</b> Pods and deployments with metrics-server usage, node capacity, warning events and cost.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/network.webp" target="_blank" rel="noopener"><img src="shots/network.webp" width="1020" height="1040" loading="lazy" alt="Network page: connection counts, established sockets, retransmit percentage and transmit throughput tiles, a throughput chart, and the connection and interface tables." /></a>
-              <figcaption><b>Network</b> Sockets by state, retransmits, per-interface throughput and top talkers.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/fleet.webp" target="_blank" rel="noopener"><img src="shots/fleet.webp" width="1020" height="1040" loading="lazy" alt="Fleet page: peer tiles, a worst-CPU chart and a six-column peer table where this machine is row zero and a down peer shows dashes." /></a>
-              <figcaption><b>Fleet</b> The other machines on your network, polled over your own LAN, with worst CPU and lowest memory named.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/incidents.webp" target="_blank" rel="noopener"><img src="shots/incidents.webp" width="1020" height="1040" loading="lazy" alt="Incidents page: open, critical, warning and resolved tiles, the grouped incident card with owners and re-fire counts, an open-over-time chart and the tracker history." /></a>
-              <figcaption><b>Incidents</b> Alerts correlated into one incident per subject, with an owner, a re-fire count and a timeline.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/traces.webp" target="_blank" rel="noopener"><img src="shots/traces.webp" width="1020" height="1040" loading="lazy" alt="Traces page: trace, span, error and service tiles, a latency chart, the service map and recent traces." /></a>
-              <figcaption><b>Traces</b> An OTLP/HTTP receiver on 4318, with per-service latency, p95 and the cross-service map.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/cloud.webp" target="_blank" rel="noopener"><img src="shots/cloud.webp" width="1020" height="1040" loading="lazy" alt="Cloud page: provider, age, accrued and monthly cost tiles, the instance identity card, a running-instances chart, the fleet inventory table with per-instance monthly rates, and the Terraform drift card." /></a>
-              <figcaption><b>Cloud</b> Instance identity, the account's fleet from your own CLI with each row's age and monthly rate, and the Terraform state diffed against that listing.</figcaption>
-            </figure>
-            <figure class="tile">
-              <a href="shots/settings.webp" target="_blank" rel="noopener"><img src="shots/settings.webp" width="1020" height="1040" loading="lazy" alt="Settings page: version, refresh, monitors and silenced tiles, software and runtime paths, the collection scope matrix, monitor editors and the diagnostics card." /></a>
-              <figcaption><b>Settings</b> Every path, every switch, which collection surfaces are live on this OS, and the monitor editors.</figcaption>
+            <figure class="shot shot-sage">
+              <a class="shot-visual" href="shots/sensors.webp" target="_blank" rel="noopener"><img src="shots/sensors.webp" width="1020" height="1040" alt="Sensors page: hottest temperature, fan RPM, power draw and battery charge tiles, hwmon readings per chip, and the hottest sensor chart." loading="lazy" /></a>
+              <figcaption><b>Sensors</b>Every hwmon chip, the battery's health and cycles, and the AC adapter state, sampled from sysfs.</figcaption>
             </figure>
           </div>
-
-          <figure class="views-fig">
-            <a href="shots/views.webp" target="_blank" rel="noopener"><img src="shots/views.webp" width="2324" height="704" loading="lazy" alt="A strip of all 34 console views rendered side by side, from Overview to Settings." /></a>
-            <figcaption>All 34 views of the console, one strip.</figcaption>
-          </figure>
-
-          <div class="notes">
-            <h3 id="screenshot-notes">Notes on these captures</h3>
-            <p>
-              These are live captures of the Crowsnest console on one machine &mdash; not mock-ups and not a designer's render. The OTLP traces and DogStatsD metrics are real receiver traffic from small local test clients pointed at the HUD, and the cluster panels are a real single-node Kubernetes cluster with metrics-server. There is no cloud account behind this laptop, so the <b>Cloud</b> panel is a live capture against a <em>local AWS emulator</em>: the identity comes from <code>[cloud] identity=</code> (no instance metadata service exists there, and the card says so), and the instances, the rates and the Terraform diff are the emulator's real API responses decoded by the shipping code.
-            </p>
-          </div>
+          <p class="screens-note">These are live captures, not mock-ups. The Cloud panel is a live capture against a local AWS emulator; the notes are in the <a href="#faq">FAQ</a> and the <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">repository</a>.</p>
         </div>
       </section>
 
-      <section class="section" id="install">
-        <div class="wrap">
-          <p class="section-kicker">Get started</p>
-          <h2>Click your OS. Copy one line.</h2>
+      <section class="section install" id="install">
+        <div class="wrap install-inner">
+          <div class="section-head install-head">
+            <p class="kicker">Get started</p>
+            <h2 class="display">One line.<br /><em>No account.</em></h2>
+            <p class="section-lede">Nothing starts until you do. Pick your OS, copy the line, and the installer puts <code>crowsnest</code> on your PATH.</p>
+          </div>
+
           <div class="ostabs" role="tablist" aria-label="Choose your operating system">
             <button type="button" role="tab" data-os="linux" aria-selected="true">Linux</button>
             <button type="button" role="tab" data-os="macos" aria-selected="false">macOS</button>
@@ -363,112 +286,123 @@ token   = the-machine-token</div>
           </div>
 
           <div class="ospanel" data-os="linux" role="tabpanel">
-            <div class="terminal">
-              <div class="terminal-bar">
+            <div class="browser browser-dark">
+              <div class="browser-bar">
                 <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="terminal-title">bash</span>
+                <span class="browser-title">bash</span>
               </div>
-              <div class="terminal-body">
-                <code id="cmd-linux"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code>
-              </div>
+              <pre class="terminal-body"><code id="cmd-linux"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code></pre>
             </div>
-            <p>Installs for your user only and puts crowsnest on PATH. Nothing is started; run crowsnest to launch it, or re-run the installer with <code>--autostart</code> to also start it at login. Runs on Ubuntu, Debian, Fedora, Arch, openSUSE, Alpine and other 64 bit distros with glibc 2.34 or newer. No curl? The installer falls back to wget, busybox, or your package manager.</p>
+            <p>Installs for your user only and puts crowsnest on PATH. Nothing is started; run <code>crowsnest</code> to launch it, or re-run the installer with <code>--autostart</code> to also start it at login. Runs on Ubuntu, Debian, Fedora, Arch, openSUSE, Alpine and other 64 bit distros with glibc 2.34 or newer. No curl? The installer falls back to wget, busybox, or your package manager.</p>
             <p class="alts">Prefer a package file? Download the .deb or the AppImage from Releases. The AppImage updates itself over zsync.</p>
           </div>
 
           <div class="ospanel" data-os="macos" role="tabpanel" hidden>
-            <div class="terminal">
-              <div class="terminal-bar">
+            <div class="browser browser-dark">
+              <div class="browser-bar">
                 <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="terminal-title">terminal</span>
+                <span class="browser-title">terminal</span>
               </div>
-              <div class="terminal-body">
-                <code id="cmd-mac"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code>
-              </div>
+              <pre class="terminal-body"><code id="cmd-mac"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code></pre>
             </div>
             <p>Downloads the latest DMG, copies the app into Applications and adds the crowsnest command. Nothing is started; re-run with <code>--autostart</code> for login autostart. Needs macOS 12 Monterey or newer. No permissions asked, and the installer clears Gatekeeper for you.</p>
             <p class="alts">Prefer a package file? Download the DMG from Releases. TCP health is gated on macOS: the kernel will not hand those counters to an unprivileged reader, and the panel says so.</p>
           </div>
 
           <div class="ospanel" data-os="windows" role="tabpanel" hidden>
-            <div class="terminal">
-              <div class="terminal-bar">
+            <div class="browser browser-dark">
+              <div class="browser-bar">
                 <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="terminal-title">powershell</span>
+                <span class="browser-title">powershell</span>
               </div>
-              <div class="terminal-body">
-                <code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex</code>
-              </div>
+              <pre class="terminal-body"><code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex</code></pre>
             </div>
             <p>Open PowerShell, paste the line, done. Installs into your user folder and puts crowsnest on PATH. Nothing is started; add <code>-Autostart</code> if you want start at login. Needs Windows 10 or newer. No Git Bash required.</p>
             <p class="alts">Prefer a setup wizard? Download the MSI from Releases. SmartScreen may ask once, choose Run anyway.</p>
           </div>
 
-          <p class="muted small">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade, and <code>crowsnest serve</code> to run the headless collector on a display-less fleet member.</p>
+          <p class="install-after">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade, and <code>crowsnest serve</code> to run the headless collector on a display-less fleet member.</p>
         </div>
       </section>
 
-      <section class="section" id="faq">
-        <div class="wrap">
-          <p class="section-kicker">FAQ</p>
-          <h2>The questions people actually ask.</h2>
-          <details class="faq-item">
-            <summary>Is it really free?</summary>
-            <p>Yes. The desktop app is MIT with no account, no telemetry, no licence check and no feature gate. Every one of the 34 views ships in the free build. Local telemetry is never metered, and there is nothing to buy to use it.</p>
-          </details>
-          <details class="faq-item">
-            <summary>What does the paid tier add?</summary>
-            <p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="#pricing">Pricing and limits</a>.</p>
-          </details>
-          <details class="faq-item">
-            <summary>When does the trial start?</summary>
-            <p>The day a relay you run begins serving your workspace &mdash; not when you sign up. It runs 14 days, needs no card, and carries the full Team limits.</p>
-          </details>
-          <details class="faq-item">
-            <summary>What happens if I cancel, or a payment lapses?</summary>
-            <p>Cancellation keeps the plan to the end of the period, then data is kept 30 days before a counted delete with a receipt. A lapsed payment gives 7 days of grace: read-only by day 7, cancelled by the pass on day 8. Restore inside the window and nothing is lost.</p>
-          </details>
-          <details class="faq-item">
-            <summary>Which platforms, and what is gated?</summary>
-            <p>Linux, macOS and Windows from the same codebase. Collection depth differs by what each OS will hand an unprivileged process, and the console names every gap instead of showing a blank: macOS redacts TCP counters without root, Windows has no load average, cgroups and PSI pressure are Linux surfaces, per-process socket rates need Linux. What works on your OS is listed in Settings, per surface.</p>
-          </details>
-          <details class="faq-item">
-            <summary>What data leaves my machine?</summary>
-            <p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a Team relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p>
-          </details>
-          <details class="faq-item">
-            <summary>Why does a panel say "not supported on this OS"?</summary>
-            <p>Because the operating system will not give that surface to an unprivileged process, and a blank panel would read as broken. The sentence names the cause, what still works, and the switch that turns the surface on where one exists &mdash; for example <code>sudo crowsnest</code> on macOS for TCP counters.</p>
-          </details>
-          <details class="faq-item">
-            <summary>How do updates work?</summary>
-            <p><code>crowsnest update</code> stops the running HUD, fetches the latest release bundle and swaps it in. The AppImage updates itself over zsync, and the .deb, DMG, MSI and portable zip are on the <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases page</a> if you prefer to install by hand.</p>
-          </details>
+      <section class="section faq" id="faq">
+        <div class="wrap faq-wrap">
+          <div class="faq-head">
+            <p class="kicker">FAQ</p>
+            <h2 class="display">The questions<br /><em>people actually ask.</em></h2>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>Is it really free?</summary>
+              <p>Yes. The desktop app is MIT with no account, no telemetry, no licence check and no feature gate. Every one of the 34 views ships in the free build. Local telemetry is never metered, and there is nothing to buy to use it.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What does Team add?</summary>
+              <p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="#pricing">Pricing and limits</a>.</p>
+            </details>
+            <details class="faq-item">
+              <summary>When does the trial start?</summary>
+              <p>The day a relay you run begins serving your workspace &mdash; not when you sign up. It runs 14 days, needs no card, and carries the full Team limits.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What happens if I cancel, or a payment lapses?</summary>
+              <p>Cancellation keeps the plan to the end of the period, then data is kept 30 days before a counted delete with a receipt. A lapsed payment gives 7 days of grace: read-only by day 7, cancelled by the pass on day 8. Restore inside the window and nothing is lost.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Which platforms, and what is gated?</summary>
+              <p>Linux, macOS and Windows from the same codebase. Collection depth differs by what each OS will hand an unprivileged process, and the console names every gap instead of showing a blank: macOS redacts TCP counters without root, Windows has no load average, cgroups and PSI pressure are Linux surfaces, per-process socket rates need Linux. What works on your OS is listed in Settings, per surface.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What data leaves my machine?</summary>
+              <p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a Team relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p>
+            </details>
+            <details class="faq-item">
+              <summary>How do updates work?</summary>
+              <p><code>crowsnest update</code> stops the running HUD, fetches the latest release bundle and swaps it in. The AppImage updates itself over zsync, and the .deb, DMG, MSI and portable zip are on the <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases page</a> if you prefer to install by hand.</p>
+            </details>
+          </div>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="wrap footer-inner">
-        <span>Desktop app MIT and free. Team adds a relay you run.</span>
-        <span class="footer-links">
+      <div class="wrap footer-grid">
+        <div class="footer-brand">
+          <a class="brand brand-footer" href="#top">
+            <img class="brand-mark" src="logo.svg" width="30" height="30" alt="" aria-hidden="true" />
+            <span class="brand-name">crowsnest</span>
+          </a>
+          <p>A focused process HUD and a 34-view console for Linux, macOS and Windows.</p>
+          <p class="footer-small">Desktop app MIT and free. Team adds a relay you run.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#screens">Screenshots</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#install">Install</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
           <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">GitHub</a>
           <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases</a>
+          <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">Relay docs</a>
           <a href="https://github.com/codeafridi/Crowsnest/blob/main/LICENSE" rel="noopener">License</a>
-        </span>
+        </div>
+        <div class="footer-col">
+          <h4>Elsewhere</h4>
+          <a href="https://github.com/codeafridi/Crowsnest/issues" rel="noopener">Issues</a>
+          <a href="https://github.com/codeafridi/Crowsnest/discussions" rel="noopener">Discussions</a>
+        </div>
+      </div>
+      <div class="wrap footer-bottom">
+        <span>&copy; 2026 Crowsnest. All rights reserved.</span>
+        <span>No trackers on this page. No external assets.</span>
       </div>
     </footer>
 
     <script>
-      document.getElementById('theme-toggle')?.addEventListener('click', function () {
-        var el = document.documentElement;
-        var next = el.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-        el.setAttribute('data-theme', next);
-        var m = document.querySelector('meta[name="theme-color"]');
-        if (m) m.setAttribute('content', next === 'dark' ? '#0b0d11' : '#f6f7f9');
-        try { localStorage.setItem('theme', next); } catch (e) {}
-      });
-
       document.querySelectorAll('.ostabs button').forEach(function (b) {
         b.addEventListener('click', function () {
           document.querySelectorAll('.ostabs button').forEach(function (x) {
@@ -477,6 +411,13 @@ token   = the-machine-token</div>
           document.querySelectorAll('.ospanel').forEach(function (p) {
             p.hidden = p.dataset.os !== b.dataset.os;
           });
+        });
+      });
+
+      document.querySelectorAll('a[href="#relay"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+          var d = document.getElementById('relay');
+          if (d) d.open = true;
         });
       });
     </script>
