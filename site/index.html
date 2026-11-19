@@ -240,6 +240,14 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             </div>
 
             <p class="install-after">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade, and <code>crowsnest serve</code> to run the headless collector on a display-less fleet member.</p>
+
+            <div class="verify">
+              <p class="plate-no">VERIFY / UNSIGNED BUILDS</p>
+              <p>Every release carries a <code>SHA256SUMS</code> file. To download and check the exact artifact without installing it:</p>
+              <pre class="verify-cmd">curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh -s -- --verify</pre>
+              <p>On Windows the downloaded installer takes <code>-Verify</code>. A checksum proves the bytes, not the publisher: the builds are unsigned, and the source is public.</p>
+              <p class="verify-link"><a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">SHA256SUMS and signatures on Releases &nearr;</a></p>
+            </div>
           </div>
         </div>
       </section>

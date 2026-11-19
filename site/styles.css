@@ -397,3 +397,13 @@ em { font-style: normal; color: var(--green); }
   .relay-spec-col { padding: 18px; }
   .relay-page .plate { padding: 64px 0; }
 }
+
+/* --- Verify / signing note -------------------------------------------- */
+.verify { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
+.verify .plate-no { margin-bottom: 14px; }
+.verify p { max-width: 780px; margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.65; }
+.verify-cmd { margin: 12px 0 14px; padding: 14px 16px; border: 1px solid var(--line); background: var(--code); color: #c3ced6; font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.verify code { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.verify-link a { color: var(--green); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.verify-link a:hover { color: var(--green-2); }
+@media (max-width: 720px) { .verify-cmd { font-size: 10.5px; } }
