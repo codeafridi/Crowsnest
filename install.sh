@@ -852,6 +852,7 @@ cmd="\${1:-run}"
 [ "\$#" -gt 0 ] && shift
 case "\$cmd" in
   run|gui)   exec "\$APP/run.sh" "\$@" ;;
+  serve)     exec "\$APP/run.sh" serve "\$@" ;;
   start)     if have_sd && systemctl --user start "\$UNIT" 2>/dev/null; then :; else launch_now; fi ;;
   stop)      if have_sd; then systemctl --user stop "\$UNIT" 2>/dev/null || true; fi; stop_app ;;
   restart)   if have_sd && systemctl --user restart "\$UNIT" 2>/dev/null; then :; else stop_app; sleep 1; launch_now; fi ;;
@@ -884,7 +885,7 @@ case "\$cmd" in
   path)      echo "\$APP" ;;
   -*)        exec "\$APP/run.sh" "\$cmd" "\$@" ;;
   *)         echo "crowsnest: unknown command: \$cmd" >&2
-             echo "  run start stop restart status vers logs enable disable update uninstall path" >&2
+             echo "  run|serve start stop restart status vers logs enable disable update uninstall path" >&2
              exit 2 ;;
 esac
 EOF
