@@ -190,60 +190,10 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
 
           <div class="spec-actions">
             <a class="btn btn-green" href="#install">Install the app &mdash; free</a>
-            <a class="btn" href="#relay-manual">Read the relay manual</a>
           </div>
           <p class="managed-note">Managed hosting is not open yet: the relay is one static binary you run beside Postgres on your own server. The 14-day trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
 
-          <details class="relay-manual" id="relay-manual">
-            <summary>RELAY MANUAL / LIMITS, RETENTION, SETUP <span aria-hidden="true">+</span></summary>
-            <div class="manual-body">
-              <div class="manual-cols">
-                <div class="tcard">
-                  <h4>Plan limits</h4>
-                  <dl>
-                    <div><dt>Machines per workspace</dt><dd>100</dd></div>
-                    <div><dt>Seats (members)</dt><dd>10</dd></div>
-                    <div><dt>Report cadence floor</dt><dd>15 s</dd></div>
-                    <div><dt>Share links</dt><dd>25 live, 7&ndash;90 days</dd></div>
-                  </dl>
-                </div>
-                <div class="tcard">
-                  <h4>Retention</h4>
-                  <dl>
-                    <div><dt>Raw samples</dt><dd>24 h</dd></div>
-                    <div><dt>60 s buckets</dt><dd>30 d</dd></div>
-                    <div><dt>5 m buckets</dt><dd>90 d</dd></div>
-                    <div><dt>Events and audit</dt><dd>1 y</dd></div>
-                  </dl>
-                </div>
-              </div>
-
-              <div class="manual-setup">
-                <div>
-                  <h4>Four steps. The relay is yours.</h4>
-                  <ol class="steps">
-                    <li><strong>Install the client</strong> on each machine you want in the fleet. It is the same free app; <code>[remote]</code> is off until you switch it on.</li>
-                    <li><strong>Run the relay</strong> on a server you control &mdash; one static binary and a Postgres database.</li>
-                    <li><strong>Mint an ingest token</strong> in the relay's dashboard. It is shown once; each machine gets its own.</li>
-                    <li><strong>Point the client at it</strong> with three config lines. An offline spool buffers what the machine gathered while the laptop was closed.</li>
-                  </ol>
-                </div>
-                <div class="frame terminal-frame">
-                  <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> CROWSNEST CONFIG</div>
-                  <pre class="terminal-body">[remote]
-enabled = true
-url     = https://relay.example.com
-token   = the-machine-token</pre>
-                </div>
-              </div>
-
-              <ul class="truth">
-                <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
-                <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
-                <li><strong>What you are not buying:</strong> gating of the desktop app. <code>[remote]</code> ships in the free build off by default, there is no licence check anywhere, and the report payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</li>
-              </ul>
-            </div>
-          </details>
+          
         </div>
       </section>
 
@@ -263,7 +213,7 @@ token   = the-machine-token</pre>
 
             <div class="ospanel" data-os="linux" role="tabpanel">
               <div class="frame terminal-frame">
-                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> BASH</div>
+                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> BASH <button class="frame-copy" type="button" data-copy="#cmd-linux">COPY</button></div>
                 <pre class="terminal-body"><code id="cmd-linux"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code></pre>
               </div>
               <p>Installs for your user only and puts crowsnest on PATH. Nothing is started; run <code>crowsnest</code> to launch it, or re-run with <code>--autostart</code> to start it at login. Ubuntu, Debian, Fedora, Arch, openSUSE, Alpine and other 64 bit distros with glibc 2.34 or newer. No curl? The installer falls back to wget, busybox, or your package manager.</p>
@@ -272,7 +222,7 @@ token   = the-machine-token</pre>
 
             <div class="ospanel" data-os="macos" role="tabpanel" hidden>
               <div class="frame terminal-frame">
-                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> TERMINAL</div>
+                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> TERMINAL <button class="frame-copy" type="button" data-copy="#cmd-mac">COPY</button></div>
                 <pre class="terminal-body"><code id="cmd-mac"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh</code></pre>
               </div>
               <p>Downloads the latest DMG, copies the app into Applications and adds the crowsnest command. Nothing is started; re-run with <code>--autostart</code> for login autostart. Needs macOS 12 Monterey or newer. No permissions asked, and the installer clears Gatekeeper for you.</p>
@@ -281,7 +231,7 @@ token   = the-machine-token</pre>
 
             <div class="ospanel" data-os="windows" role="tabpanel" hidden>
               <div class="frame terminal-frame">
-                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> POWERSHELL</div>
+                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> POWERSHELL <button class="frame-copy" type="button" data-copy="#cmd-win">COPY</button></div>
                 <pre class="terminal-body"><code id="cmd-win"><span class="prompt">PS&gt;</span> irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex</code></pre>
               </div>
               <p>Open PowerShell, paste the line, done. Installs into your user folder and puts crowsnest on PATH. Nothing is started; add <code>-Autostart</code> for start at login. Needs Windows 10 or newer. No Git Bash required.</p>
@@ -345,7 +295,7 @@ token   = the-machine-token</pre>
           var src = document.querySelector(b.getAttribute('data-copy'));
           if (!src) return;
           var text = src.textContent.trim()
-            .replace(/^\$\s*/, '')
+            .replace(/^(?:\$|PS>)\s*/, '')
             .replace(/\\\n\s*/g, '');
           if (navigator.clipboard) navigator.clipboard.writeText(text);
           var label = b.textContent;
