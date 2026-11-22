@@ -1032,12 +1032,7 @@ int main(int argc, char *argv[]) {
     // M160: [fleet] labels.self is what this machine reports as its labels.
     // One definition, three readers: the Fleet page's self row, the scrape, and
     // the relay's fleet/Team page.
-    for (const QPair<QString, QString> &line : config.fleet.labels) {
-        if (line.first == QStringLiteral("self")) {
-            config.remote.labels =
-                fleetParseLabels(line.second, nullptr);
-        }
-    }
+    remoteApplySelfLabels(config.remote, config.fleet.labels);
     hud.setRemoteConfig(config.remote, fleetSelf.version, fleetSelf.platform);
     if (config.remote.enabled) {
         qRegisterMetaType<RemoteEnvelope>("RemoteEnvelope");

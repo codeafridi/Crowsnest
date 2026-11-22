@@ -197,6 +197,9 @@ int serveRun(int argc, char **argv) {
                 int(config.fleet.peers.size()), config.fleet.pollMs);
     // M100: the same durable id the console uses, so a headless member and a
     // console on the same box are one machine to the relay, not two.
+    // M160: the headless member reports [fleet] labels.self exactly like the
+    // console. This was missing here: `serve` sent no machine.labels.
+    remoteApplySelfLabels(config.remote, config.fleet.labels);
     const RemoteIdentity remoteIdentity = remoteLoadIdentity(config.remote);
     if (!remoteIdentity.id.isEmpty()) {
         config.remote.machineId = remoteIdentity.id;

@@ -8857,6 +8857,45 @@ int main(int argc, char *argv[]) {
                   "labels: a UTF-8 value is kept as written");
         }
 
+        // M160/serve: the console and the headless `serve` path take this
+        // machine's labels from ONE helper. `serve` used to send none at all,
+        // so the relay stored no labels and every label filter answered 0.
+        {
+            RemoteOptions options;
+            options.labels = {{QStringLiteral("stale"), QStringLiteral("x")}};
+            remoteApplySelfLabels(
+                options,
+                {{QStringLiteral("db"), QStringLiteral("role=db")},
+                 {QStringLiteral("self"), QStringLiteral("env=prod team=deep")}});
+            const auto valueFor = [](const decltype(options.labels) &labels,
+                                     const QString &key) {
+                for (const QPair<QString, QString> &pair : labels) {
+                    if (pair.first == key) {
+                        return pair.second;
+                    }
+                }
+                return QString();
+            };
+            check(options.labels.size() == 2
+                      && valueFor(options.labels, QStringLiteral("env"))
+                             == QStringLiteral("prod")
+                      && valueFor(options.labels, QStringLiteral("team"))
+                             == QStringLiteral("deep"),
+                  "remote labels: [fleet] labels.self is what this machine reports");
+            check(valueFor(options.labels, QStringLiteral("role")).isEmpty(),
+                  "remote labels: another peer's line is not this machine's");
+            remoteApplySelfLabels(options,
+                                  {{QStringLiteral("db"),
+                                    QStringLiteral("role=db")}});
+            check(options.labels.isEmpty(),
+                  "remote labels: no self line clears them, never keeps a stale set");
+            remoteApplySelfLabels(options,
+                                  {{QStringLiteral("self"),
+                                    QStringLiteral("role")}});
+            check(options.labels.isEmpty(),
+                  "remote labels: a refused self line reports nothing, never a half set");
+        }
+
         // Labels attach by peer name, an unused line is reported, and a
         // refused line keeps the peer (a loud typo beats a silent one).
         {

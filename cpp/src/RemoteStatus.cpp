@@ -1,5 +1,6 @@
 #include "RemoteStatus.h"
 
+#include "FleetStatus.h"
 #include "HostInfoStatus.h"
 
 #include <QCryptographicHash>
@@ -335,6 +336,16 @@ QString remoteSampleId(const QString &machineId, qint64 sentAtMs) {
     const QString prefix =
         machineId.isEmpty() ? QStringLiteral("machine") : machineId;
     return prefix + QLatin1Char('-') + QString::number(sentAtMs);
+}
+
+void remoteApplySelfLabels(RemoteOptions &options,
+                           const QList<QPair<QString, QString>> &fleetLabels) {
+    options.labels.clear();
+    for (const QPair<QString, QString> &line : fleetLabels) {
+        if (line.first == QStringLiteral("self")) {
+            options.labels = fleetParseLabels(line.second, nullptr);
+        }
+    }
 }
 
 RemoteMachine remoteMachine(const RemoteOptions &options, const QString &version,

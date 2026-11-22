@@ -29,6 +29,12 @@ constexpr int kRemoteMaxEvents = 50;
 
 void remoteValidate(RemoteOptions &options);
 
+// M160: [fleet] labels.self is what this machine reports as its labels. One
+// definition for the console and the headless `serve` path; an entry for any
+// other peer is ignored here (it belongs to that peer).
+void remoteApplySelfLabels(RemoteOptions &options,
+                           const QList<QPair<QString, QString>> &fleetLabels);
+
 // Bare host -> https. Deliberately the opposite of fleetNormalizePeerUrl(), which
 // assumes http because a fleet peer is a laptop on your own LAN. The relay is a
 // hosted endpoint, so an entry with no scheme must not fall back to cleartext;
