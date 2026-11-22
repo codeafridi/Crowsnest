@@ -1702,7 +1702,7 @@ QString dumpReportJson(int maxProcs) {
             remoteClassify(200) == RemoteClass::Ok
             && remoteClassify(204) == RemoteClass::Ok
             && remoteClassify(401) == RemoteClass::Auth
-            && remoteClassify(403) == RemoteClass::Auth
+            && remoteClassify(403) == RemoteClass::Forbidden
             && remoteClassify(404) == RemoteClass::NotFound
             && remoteClassify(413) == RemoteClass::Rejected
             && remoteClassify(422) == RemoteClass::Rejected
@@ -1713,6 +1713,8 @@ QString dumpReportJson(int maxProcs) {
             && remoteClassIsTerminal(RemoteClass::Auth)
             && remoteClassIsTerminal(RemoteClass::NotFound)
             && remoteClassIsTerminal(RemoteClass::Rejected)
+            && !remoteClassIsTerminal(RemoteClass::Forbidden)
+            && remoteRetryDelayMs(RemoteClass::Forbidden, 15000) == 300000
             && !remoteClassIsTerminal(RemoteClass::Server)
             && !remoteClassIsTerminal(RemoteClass::Throttled)
             && !remoteClassIsTerminal(RemoteClass::Transport)
