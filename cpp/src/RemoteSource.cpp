@@ -594,6 +594,19 @@ void RemoteRunner::poll() {
         publish(text);
         return;
     }
-    publish(QString());
-    schedule(retryMs > 0 ? retryMs : nextDelay);
+    const int delay = remoteRetryDelayMs(
+        result.classification, retryMs > 0 ? retryMs : nextDelay);
+    QString note;
+    if (result.classification == RemoteClass::Forbidden) {
+        // A 403 is retried slowly, but the reason still has to be on screen:
+        // "the workspace is cancelled until <date>" is the whole answer.
+        note = remoteClassText(result.classification, result.httpStatus);
+        if (!result.body.trimmed().isEmpty()) {
+            note += QStringLiteral(" - relay says: ")
+                + remoteAnswerReason(result.body);
+        }
+        note += QStringLiteral(", next attempt in %1s").arg(delay / 1000.0);
+    }
+    publish(note);
+    schedule(delay);
 }

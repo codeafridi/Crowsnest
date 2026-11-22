@@ -9932,7 +9932,7 @@ int main(int argc, char *argv[]) {
         check(remoteClassify(200) == RemoteClass::Ok
                   && remoteClassify(204) == RemoteClass::Ok
                   && remoteClassify(401) == RemoteClass::Auth
-                  && remoteClassify(403) == RemoteClass::Auth
+                  && remoteClassify(403) == RemoteClass::Forbidden
                   && remoteClassify(404) == RemoteClass::NotFound
                   && remoteClassify(413) == RemoteClass::Rejected
                   && remoteClassify(422) == RemoteClass::Rejected
@@ -9958,11 +9958,19 @@ int main(int argc, char *argv[]) {
               "remote transport: the class names are the wire vocabulary");
         check(remoteClassText(RemoteClass::Auth, 401).contains(
                   QStringLiteral("[remote] token="))
+                  && remoteClassText(RemoteClass::Forbidden, 403).contains(
+                      QStringLiteral("read-only"))
+                  && !remoteClassIsTerminal(RemoteClass::Forbidden)
                   && remoteClassText(RemoteClass::NotFound, 404).contains(
                       QStringLiteral("[remote] url="))
                   && remoteClassText(RemoteClass::Rejected, 413).contains(
                       QStringLiteral("too large")),
               "remote transport: a refusal names the switch that fixes it");
+        check(remoteRetryDelayMs(RemoteClass::Forbidden, 15000) == 300000
+                  && remoteRetryDelayMs(RemoteClass::Forbidden, 900000)
+                         == 900000
+                  && remoteRetryDelayMs(RemoteClass::Server, 15000) == 15000,
+              "remote transport: a 403 retries on a five-minute floor");
         check(remoteClassText(RemoteClass::Transport, 0)
                   == QStringLiteral("no answer from the relay"),
               "remote transport: a silent relay is not rendered as HTTP 0");
@@ -10596,8 +10604,8 @@ int main(int argc, char *argv[]) {
         RelayStub forbidden;
         forbidden.statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
         forbidden.begin();
-        check(postTo(forbidden, 3000).classification == RemoteClass::Auth,
-              "remote transport: a 403 is an auth refusal");
+        check(postTo(forbidden, 3000).classification == RemoteClass::Forbidden,
+              "remote transport: a 403 is a write refusal, not a bad token");
 
         RelayStub missing;
         missing.statusLine = QByteArrayLiteral("HTTP/1.1 404 Not Found");
@@ -11238,7 +11246,7 @@ int main(int argc, char *argv[]) {
         options.token = QStringLiteral("tok-123");
         RemoteReportState state;
         state.stopped = true;
-        state.lastClass = RemoteClass::Auth;
+        state.lastClass = RemoteClass::Forbidden;
         state.lastStatus = 403;
         state.note = QStringLiteral(
             "remote: stopped - 403 - the relay refused this token - relay says: "

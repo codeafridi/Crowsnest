@@ -798,8 +798,11 @@ RemoteClass remoteClassify(int httpStatus) {
     if (httpStatus >= 200 && httpStatus < 300) {
         return RemoteClass::Ok;
     }
-    if (httpStatus == 401 || httpStatus == 403) {
+    if (httpStatus == 401) {
         return RemoteClass::Auth;
+    }
+    if (httpStatus == 403) {
+        return RemoteClass::Forbidden;
     }
     if (httpStatus == 404) {
         return RemoteClass::NotFound;
@@ -823,6 +826,8 @@ QString remoteClassName(RemoteClass value) {
         return QStringLiteral("ok");
     case RemoteClass::Auth:
         return QStringLiteral("auth");
+    case RemoteClass::Forbidden:
+        return QStringLiteral("forbidden");
     case RemoteClass::NotFound:
         return QStringLiteral("not-found");
     case RemoteClass::Rejected:
@@ -846,6 +851,11 @@ QString remoteClassText(RemoteClass value, int httpStatus) {
     case RemoteClass::Auth:
         return QStringLiteral("%1 - the relay refused this token (check "
                               "[remote] token= and that it was not revoked)")
+            .arg(httpStatus);
+    case RemoteClass::Forbidden:
+        return QStringLiteral("%1 - the relay refused this write (a read-only "
+                              "workspace answers 403; this retries slowly, and "
+                              "[remote] token= if it was revoked)")
             .arg(httpStatus);
     case RemoteClass::NotFound:
         return QStringLiteral("%1 - no ingest endpoint at that address (check "
@@ -881,6 +891,13 @@ QString remoteClassText(RemoteClass value, int httpStatus) {
 bool remoteClassIsTerminal(RemoteClass value) {
     return value == RemoteClass::Auth || value == RemoteClass::NotFound
         || value == RemoteClass::Rejected;
+}
+
+int remoteRetryDelayMs(RemoteClass value, int scheduledMs) {
+    if (value == RemoteClass::Forbidden) {
+        return std::max(scheduledMs, 300000);
+    }
+    return scheduledMs;
 }
 
 int remoteBackoffMs(int consecutiveFailures, int intervalMs) {

@@ -169,7 +169,10 @@ QString remotePrivacyOffenders(const QJsonObject &root);
 enum class RemoteClass {
     None,      // no attempt yet
     Ok,        // 2xx
-    Auth,      // 401/403 - the token is wrong; retrying cannot fix it
+    Auth,      // 401 - the token is wrong; retrying cannot fix it
+    Forbidden, // 403 - the write was refused (revoked token or a read-only
+               // workspace). The plan can change, so this retries slowly
+               // instead of stopping until a restart.
     NotFound,  // 404 - no ingest endpoint at that address
     Rejected,  // 413/422/other 4xx - the body itself was refused
     Throttled, // 429
@@ -183,6 +186,10 @@ QString remoteClassName(RemoteClass value);
 
 // One line a person can read, including the status code when there was one.
 QString remoteClassText(RemoteClass value, int httpStatus);
+
+// M97/M148: a 403 is retried on a long fixed floor: a read-only workspace is
+// restored by a plan change, not by the same request coming back sooner.
+int remoteRetryDelayMs(RemoteClass value, int scheduledMs);
 
 // Auth, NotFound and Rejected are answers about the *configuration* or the
 // *body*, so resending the same request is waste. Server, Throttled and
