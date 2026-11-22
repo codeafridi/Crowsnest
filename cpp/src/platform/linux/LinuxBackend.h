@@ -51,6 +51,7 @@ public:
     bool sumRssKb(const QList<int> &pids, unsigned long long &out) override;
 
     QList<linuxproc::SocketInfo> readNetSockets() override;
+    bool readTcpCounters(TcpCounters &out) override;
 #if defined(Q_OS_LINUX)
     QList<linuxproc::TcpDiagInfo> queryTcpDiag() override;
 #endif

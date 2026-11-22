@@ -1,6 +1,7 @@
 #include "LinuxBackend.h"
 
 #include "LinuxGpu.h"
+#include "TcpStatus.h"
 
 #include <QFile>
 
@@ -291,6 +292,22 @@ bool LinuxBackend::applyProcessAction(const ProcessAction &action,
 
 QList<linuxproc::SocketInfo> LinuxBackend::readNetSockets() {
     return linuxproc::readNetSockets();
+}
+
+// M19 through the seam: the live sampler reads this backend, so without an
+// override the kernel's own TCP counters were never read on Linux and the
+// TCP HEALTH card (and --dump) said "unavailable" on the one OS where they
+// are always readable. /proc/net/snmp + /proc/net/netstat are the same two
+// files TcpSource::system() reads; parsing lives in TcpStatus.
+bool LinuxBackend::readTcpCounters(TcpCounters &out) {
+    QFile snmpFile(QStringLiteral("/proc/net/snmp"));
+    QFile netstatFile(QStringLiteral("/proc/net/netstat"));
+    if (!snmpFile.open(QIODevice::ReadOnly)
+        || !netstatFile.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    out = parseTcpCounters(snmpFile.readAll(), netstatFile.readAll());
+    return !out.tcp.isEmpty();
 }
 
 #if defined(Q_OS_LINUX)

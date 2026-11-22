@@ -170,6 +170,14 @@ int main(int argc, char *argv[]) {
     QList<DiskCounters> diskCounters;
     check(linux.readDiskCounters(diskCounters) && !diskCounters.isEmpty(),
           "linux: readDiskCounters() non-empty");
+    // The live TcpSampler reads this backend. Without an override here the
+    // kernel's TCP counters were never read on Linux, so the TCP HEALTH card
+    // and --dump both said "unavailable" on the OS where they are readable.
+    TcpCounters tcpNow;
+    check(linux.readTcpCounters(tcpNow)
+              && tcpNow.tcp.contains(QStringLiteral("InSegs"))
+              && tcpNow.tcp.contains(QStringLiteral("OutSegs")),
+          "linux: readTcpCounters() reads /proc/net/snmp");
 #endif
 
     const QString report = dumpReportJson(5);
