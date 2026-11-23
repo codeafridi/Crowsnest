@@ -528,8 +528,8 @@ jobs:
           python3 - "$WORK/snap.json" <<'PY'
           import json, sys
           d = json.load(open(sys.argv[1]))
-          assert d["schema"] == 1 and len(d["processes"]) > 0, d
-          print("serve smoke ok:", d["platform"], len(d["processes"]), "procs")
+          assert d["schema"] == 1 and d["processes"] > 0, d
+          print("serve smoke ok:", d["platform"], d["processes"], "procs")
           PY
 
       - name: Serve smoke (Windows)
@@ -567,8 +567,8 @@ jobs:
           python - "$WORK/snap.json" <<'PY'
           import json, sys
           d = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert d["schema"] == 1 and len(d["processes"]) > 0, d
-          print("serve smoke ok:", d["platform"], len(d["processes"]), "procs")
+          assert d["schema"] == 1 and d["processes"] > 0, d
+          print("serve smoke ok:", d["platform"], d["processes"], "procs")
           PY
           taskkill //F //IM crowsnest.exe >/dev/null 2>&1 || true
 
