@@ -105,6 +105,7 @@ scripts are ready for certificates:
 A requested signature that cannot be applied fails the build; it never
 silently degrades to unsigned.
 
-This page covers client releases. The relay's release assets are checksum-only
-until its release process is moved into CI and given the same signing step; the
-managed relay is not open yet.
+This page covers client releases. Relay releases from 0.2.9 are signed the
+same way; the private repository uses `packaging/verify_release.sh` (which
+needs `gh auth login` because the assets are not public). Earlier relay
+releases are checksum-only.
