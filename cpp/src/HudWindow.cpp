@@ -180,7 +180,7 @@ HudWindow::HudWindow(QWidget *parent)
     footer->setSpacing(4);
     footer->addStretch(1);
 
-    m_moreButton = new QPushButton(QStringLiteral("MORE"), this);
+    m_moreButton = new QPushButton(QStringLiteral("CONSOLE"), this);
     m_moreButton->setObjectName(QStringLiteral("moreButton"));
     m_moreButton->setFocusPolicy(Qt::NoFocus);
     m_moreButton->setCursor(Qt::PointingHandCursor);
@@ -211,7 +211,7 @@ HudWindow::HudWindow(QWidget *parent)
         }
     });
 
-    m_clickButton = new QPushButton(QStringLiteral("CLICK"), this);
+    m_clickButton = new QPushButton(QStringLiteral("CLICK-THRU"), this);
     m_clickButton->setObjectName(QStringLiteral("clickButton"));
     m_clickButton->setFocusPolicy(Qt::NoFocus);
     m_clickButton->setCursor(Qt::PointingHandCursor);
@@ -291,6 +291,10 @@ HudWindow::HudWindow(QWidget *parent)
         "#moreButton:hover, #clickButton:hover, #showHideButton:hover, #pinButton:hover {"
         "  color: %TEXT%; border-color: %MUTED%;"
         "}"
+        // The console is the one action the strip exists to offer; the others
+        // are modes. It carries the accent border, not a fill, so the strip
+        // stays quiet.
+        "#moreButton { color: %TEXT%; border-color: %ACCENT%; }"
         "QLabel   { color: %DIM%; }")
         .replace(QStringLiteral("%ACCENT%"), ui_theme::accent())
         .replace(QStringLiteral("%BG%"), ui_theme::bg())
@@ -549,8 +553,16 @@ void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
     if (m_memoryValue->text() != snapshot.memory) {
         m_memoryValue->setText(snapshot.memory);
     }
-    if (m_statusValue->text() != snapshot.status) {
-        m_statusValue->setText(snapshot.status);
+    // The chip is the FOCUSED APP's health, not the machine's: "OK" beside
+    // "docker: 1 issue" read like a contradiction until it said what it was.
+    QString statusText = snapshot.status;
+    if (statusText == QStringLiteral("no-focus")) {
+        statusText = QStringLiteral("NO FOCUS");
+    } else {
+        statusText = QStringLiteral("APP ") + statusText;
+    }
+    if (m_statusValue->text() != statusText) {
+        m_statusValue->setText(statusText);
         m_statusValue->setStyleSheet(
             QStringLiteral("color:%1;").arg(statusColor(snapshot.status)));
     }
@@ -1664,8 +1676,8 @@ void HudWindow::toggleDetails() {
         move(m_savedGeometry.topLeft());
     }
 
-    m_moreButton->setText(m_detailsExpanded ? QStringLiteral("LESS")
-                                            : QStringLiteral("MORE"));
+    m_moreButton->setText(m_detailsExpanded ? QStringLiteral("COLLAPSE")
+                                            : QStringLiteral("CONSOLE"));
     applySurfaceAppearance();
 
     if (m_overlay.clickThrough) {
@@ -1689,7 +1701,7 @@ void HudWindow::toggleCompact() {
                                         : QStringLiteral("HIDE"));
 
     if (m_compact) {
-        m_moreButton->setText(QStringLiteral("MORE"));
+        m_moreButton->setText(QStringLiteral("CONSOLE"));
         m_moreButton->setVisible(false);
     } else {
         m_moreButton->setVisible(true);
@@ -1980,13 +1992,14 @@ void HudWindow::applyClickThrough(bool on) {
     m_overlay.clickThrough = on && applied;
     m_overlay.note = note;
     m_overlay.geometry = QRect(QPoint(x(), y()), size());
-    m_clickButton->setText(m_overlay.clickThrough ? QStringLiteral("CLICK+")
-                                                 : QStringLiteral("CLICK"));
+    m_clickButton->setText(m_overlay.clickThrough
+                               ? QStringLiteral("CLICK-THRU ON")
+                               : QStringLiteral("CLICK-THRU"));
     m_clickButton->setToolTip(overlayClickThroughNote(
         m_overlaySession, m_overlay.clickThroughCapable));
 
     if (m_overlaySession == OverlaySession::X11 && !applied) {
-        m_clickButton->setText(QStringLiteral("CLICK"));
+        m_clickButton->setText(QStringLiteral("CLICK-THRU"));
         m_overlay.clickThrough = false;
     }
 

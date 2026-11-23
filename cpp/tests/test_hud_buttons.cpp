@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
         check(pidLabel->text() == QStringLiteral("123"), "snapshot pid rendered");
         check(cpuLabel->text() == QStringLiteral("17%"), "snapshot cpu rendered");
         check(memLabel->text() == QStringLiteral("8 MB"), "snapshot mem rendered");
-        check(statusLabel->text() == QStringLiteral("WARN"),
+        check(statusLabel->text() == QStringLiteral("APP WARN"),
               "snapshot status rendered");
         check(compactLabel != nullptr
                   && compactLabel->text().contains(QStringLiteral("alpha")),
@@ -143,11 +143,11 @@ int main(int argc, char *argv[]) {
     }
 
     if (moreButton) {
-        check(moreButton->text() == QStringLiteral("MORE"),
-              "MORE/LESS starts as MORE");
+        check(moreButton->text() == QStringLiteral("CONSOLE"),
+              "CONSOLE/COLLAPSE starts as CONSOLE");
         moreButton->click();
-        check(moreButton->text() == QStringLiteral("LESS"),
-              "MORE click -> LESS");
+        check(moreButton->text() == QStringLiteral("COLLAPSE"),
+              "CONSOLE click -> COLLAPSE");
         moreButton->click();
     }
 
@@ -2642,7 +2642,8 @@ int main(int argc, char *argv[]) {
         moreButton2->click();
         check(hud.isExpanded() && !panel->isHidden(),
               "MORE expands the overlay in place");
-        check(moreButton2->text() == QStringLiteral("LESS"), "MORE -> LESS");
+        check(moreButton2->text() == QStringLiteral("COLLAPSE"),
+              "CONSOLE -> COLLAPSE");
 
         auto *rail = hud.findChild<QListWidget *>(QStringLiteral("ddRail"));
         if (rail != nullptr) {
@@ -3862,7 +3863,8 @@ int main(int argc, char *argv[]) {
         moreButton2->click();
         check(!hud.isExpanded() && panel->isHidden(),
               "LESS collapses the overlay in place");
-        check(moreButton2->text() == QStringLiteral("MORE"), "LESS -> MORE");
+        check(moreButton2->text() == QStringLiteral("CONSOLE"),
+              "COLLAPSE -> CONSOLE");
     }
 
     // ---- M78 process verbs ----
@@ -3967,8 +3969,8 @@ int main(int argc, char *argv[]) {
         auto *clickButton =
             hud.findChild<QPushButton *>(QStringLiteral("clickButton"));
         check(clickButton != nullptr
-                  && clickButton->text() == QStringLiteral("CLICK"),
-              "overlay: the CLICK control sits in the footer");
+                  && clickButton->text() == QStringLiteral("CLICK-THRU"),
+              "overlay: the CLICK-THRU control sits in the footer");
 
         if (clickButton != nullptr) {
             hud.show();
@@ -3977,7 +3979,7 @@ int main(int argc, char *argv[]) {
             check(!state.clickThrough,
                   "overlay: click-through is refused when no window server "
                   "can honour it");
-            check(clickButton->text() == QStringLiteral("CLICK"),
+            check(clickButton->text() == QStringLiteral("CLICK-THRU"),
                   "overlay: a refused click-through leaves the control off");
             check(!state.note.isEmpty(),
                   "overlay: the refusal states the reason");

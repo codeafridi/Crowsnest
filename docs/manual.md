@@ -321,7 +321,7 @@ matrix.
 ## Use
 
 - **Drag** the panel anywhere (grab it, including the buttons).
-- **`MORE` / `LESS`** — open/close the diagnosis panel.
+- **`CONSOLE` / `COLLAPSE`** — open/close the diagnosis panel.
 - **`HIDE` / `SHOW`** — collapse to a single line or expand.
 - **Click `docker:` or `k8s:`** — expand that badge's details.
 - **`Ctrl+C`** in the terminal — quit.
@@ -884,7 +884,7 @@ your way without getting lost:
 
 ```ini
 [overlay]
-click_through = false   ; every click but the CLICK button goes to the window below
+click_through = false   ; every click but the CLICK-THRU button goes to the window below
 sticky        = true    ; follow you across X11 desktops
 x = 200                 ; last position (restored on launch when a screen still holds it)
 y = 120
@@ -894,7 +894,7 @@ opacity = 100           ; how solid the COLLAPSED strip is, 40..100
 wallpaper = none        ; curated backdrop: none | graphite | slate | moss | ember | dusk
 ```
 
-The footer **CLICK** button toggles click-through on X11 (X Shape `ShapeInput`),
+The footer **CLICK-THRU** button toggles click-through on X11 (X Shape `ShapeInput`),
 and keeps its own rectangle live inside the input region — so the mode is never
 a one-way trip: press it again to make the whole HUD clickable. While the mode
 is on, the HUD cannot be dragged (clicks pass through); drag it with
