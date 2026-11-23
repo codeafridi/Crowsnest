@@ -523,14 +523,15 @@ jobs:
           if [ "$code" != "401" ]; then cat "$WORK/serve.log"; exit 1; fi
           curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
             http://127.0.0.1:9333/metrics | grep -q '^crowsnest_'
-          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
-            http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
-          python3 - "$WORK/snap.json" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          assert d["schema"] == 1 and d["processes"] > 0, d
-          print("serve smoke ok:", d["platform"], d["processes"], "procs")
-          PY
+          # The first snapshot can land before the process list is filled;
+          # poll until the sampler has real data instead of asserting on tick 0.
+          for _ in $(seq 1 20); do
+            curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+              http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["schema"] == 1 and d["processes"] > 0, d' "$WORK/snap.json" && break
+            sleep 0.5
+          done
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["schema"] == 1 and d["processes"] > 0, d; print("serve smoke ok:", d["platform"], d["processes"], "procs")' "$WORK/snap.json"
 
       - name: Serve smoke (Windows)
         if: runner.os == 'Windows'
@@ -562,14 +563,13 @@ jobs:
           if [ "$code" != "401" ]; then cat "$WORK/serve.log"; exit 1; fi
           curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
             http://127.0.0.1:9333/metrics | grep -q '^crowsnest_'
-          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
-            http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
-          python - "$WORK/snap.json" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert d["schema"] == 1 and d["processes"] > 0, d
-          print("serve smoke ok:", d["platform"], d["processes"], "procs")
-          PY
+          for _ in $(seq 1 20); do
+            curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+              http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
+            python -c "import json,sys; d=json.load(open(sys.argv[1], encoding='utf-8')); assert d['schema'] == 1 and d['processes'] > 0, d" "$WORK/snap.json" && break
+            sleep 0.5
+          done
+          python -c "import json,sys; d=json.load(open(sys.argv[1], encoding='utf-8')); assert d['schema'] == 1 and d['processes'] > 0, d; print('serve smoke ok:', d['platform'], d['processes'], 'procs')" "$WORK/snap.json"
           taskkill //F //IM crowsnest.exe >/dev/null 2>&1 || true
 
       - name: Record smoke
