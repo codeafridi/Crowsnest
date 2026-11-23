@@ -45,6 +45,8 @@ DisplaySnapshot demoSnapshot(int tick) {
     s.cpu = QStringLiteral("%1%").arg(cpuPct, 0, 'f', 1);
     s.memory = QStringLiteral("%1 MB").arg(rssMb, 0, 'f', 0);
     s.status = QStringLiteral("OK");
+    s.focusAvailable = true;
+    s.focusProvider = QStringLiteral("gnome-pidfile");
     s.cpuPercent = cpuPct;
     s.cpuValid = true;
     s.rssKb = static_cast<qulonglong>(rssMb * 1024.0);
@@ -72,6 +74,17 @@ DisplaySnapshot demoSnapshot(int tick) {
     s.cgroupPidsMax = 10813;
     s.focusOom.score = 187;
     s.focusOom.scoreAdj = 0;
+    s.focusThreads = 148;
+    s.focusFds = 1204;
+    s.focusVolCtx = 18234;
+    s.focusInvolCtx = 412;
+    s.focusIoReadPerSec = 3'145'728.0;
+    s.focusIoWritePerSec = 524'288.0;
+    s.focusOpenFiles = {
+        QStringLiteral("/home/dev/.config/Cursor/User/settings.json"),
+        QStringLiteral("/home/dev/.cursor/extensions/cpptools/extension.js"),
+        QStringLiteral("/tmp/crowsnest-demo.sock"),
+    };
     s.hostRun = 3;
     s.hostBlocked = 1;
     s.kernelLimits.available = true;
@@ -980,6 +993,9 @@ int main(int argc, char *argv[]) {
     }
 
     DashboardPanel panel;
+    panel.setFocusStatus(
+        QStringLiteral("focus  live via gnome-pidfile - cursor (pid 2092707)"),
+        false);
     tracePhase("panel constructed");
     auto driveHistory = [&app, &panel]() {        // Synthetic alert lifecycle: quiet -> warning -> +critical ->
         // resolve -> clear -> refire, so tiles/chart/timeline all move.
@@ -1492,7 +1508,7 @@ int main(int argc, char *argv[]) {
         QStringLiteral("on (systemd user unit crowsnest.service)");
     settingsInfo.verbsLine =
         QStringLiteral("install.sh run|start|stop|restart|status|enable|"
-                       "disable|update|uninstall|logs|vers");
+                       "disable|update|uninstall|logs|vers|focus-bridge");
     settingsInfo.metricsLine = QStringLiteral(
         "http://127.0.0.1:9107/metrics (no auth, loopback only)");
     settingsInfo.webhookLine =
