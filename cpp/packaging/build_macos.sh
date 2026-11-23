@@ -74,5 +74,7 @@ while :; do
     sleep 5
 done
 rm -f "$RW_DMG"
-shasum -a 256 "$DMG" > "${DMG}.sha256"
+# The sidecar must validate from the download directory, so hash the file by
+# its own name rather than recording the build-tree path.
+( cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256" )
 echo "built: $DMG"
