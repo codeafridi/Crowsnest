@@ -953,6 +953,36 @@ jobs:
           test ! -d "$HOME/.local/opt/crowsnest"
           echo "linux installer ok"
 
+      - name: Package and run the arm64 artifacts
+        if: matrix.qt == 'apt'
+        run: |
+          # The release job builds these on the same runner; proving them on
+          # every push means a tag cannot be the first time the arm64 bundle
+          # or AppImage is executed.
+          dist="${RUNNER_TEMP}/arm-dist"
+          mkdir -p "$dist"
+          bash cpp/packaging/build_portable.sh "$dist"
+          bash cpp/packaging/build_appimage.sh "$dist"
+          run_dir="$(mktemp -d)"
+          tar -xzf "$dist/crowsnest-portable-aarch64.tar.gz" -C "$run_dir"
+          test "$(cat "$run_dir/ARCH")" = "aarch64"
+          "$run_dir/run.sh" --dump > "${RUNNER_TEMP}/arm-bundle-dump.json"
+          appimage="$(ls "$dist"/Crowsnest-*-aarch64.AppImage)"
+          test -s "${appimage}.zsync"
+          "$appimage" --appimage-updateinformation |
+            grep -q 'Crowsnest-\*aarch64.AppImage.zsync'
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --dump \
+            > "${RUNNER_TEMP}/arm-appimage-dump.json"
+          python3 - "${RUNNER_TEMP}/arm-bundle-dump.json" \
+            "${RUNNER_TEMP}/arm-appimage-dump.json" <<'PY'
+          import json, sys
+          for path in sys.argv[1:]:
+              d = json.load(open(path))
+              assert d["platform"] == "linux" and d["processCount"] > 0, d
+              print("arm64 artifact ok:", path.rsplit("/", 1)[-1],
+                    d["processCount"], "procs")
+          PY
+
       - name: Screenshot evidence (linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
