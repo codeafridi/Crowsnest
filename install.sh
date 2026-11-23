@@ -856,7 +856,12 @@ win_uninstall_standalone() {
 
 write_wrapper() {
   mkdir -p "$BIN_DIR"
-  cat > "$WRAPPER" <<EOF
+  # Write beside the target and rename: `crowsnest update` runs THIS wrapper
+  # while the installer writes a new one. Truncating the running script makes
+  # the shell read the new bytes at the old offset ("Unterminated quoted
+  # string"); an atomic rename leaves the running inode intact.
+  wrapper_tmp="${WRAPPER}.tmp.$$"
+  cat > "$wrapper_tmp" <<EOF
 #!/bin/sh
 set -eu
 APP="\${CROWSNEST_DIR:-\$HOME/.local/opt/crowsnest}"
@@ -929,7 +934,8 @@ case "\$cmd" in
              exit 2 ;;
 esac
 EOF
-  chmod 0755 "$WRAPPER"
+  chmod 0755 "$wrapper_tmp"
+  mv -f "$wrapper_tmp" "$WRAPPER"
 }
 
 # The systemd user unit is written and loaded but never enabled or started
