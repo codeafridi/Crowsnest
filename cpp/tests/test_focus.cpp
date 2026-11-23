@@ -269,6 +269,50 @@ int main(int argc, char *argv[]) {
     check(x11Install.ok && x11Install.message.contains(QStringLiteral("X11")),
           "X11 sessions do not install a bridge");
 
+    // The DEFAULT runner (not the injected one) must strip the portable's
+    // LD_LIBRARY_PATH before a system gsettings inherits it: the bundle's
+    // older libglib otherwise shadows the host's gsettings and it dies with
+    // an undefined symbol.
+    QTemporaryDir fakeBin;
+    QTemporaryDir envHome;
+    const QString marker = fakeBin.path() + QStringLiteral("/env.txt");
+    auto writeScript = [&](const QString &name, const QString &body) {
+        QFile file(fakeBin.path() + QLatin1Char('/') + name);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(body.toUtf8());
+            file.close();
+            QFile::setPermissions(file.fileName(),
+                QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                    | QFileDevice::ExeOwner | QFileDevice::ReadGroup
+                    | QFileDevice::ExeGroup | QFileDevice::ReadOther
+                    | QFileDevice::ExeOther);
+        }
+    };
+    writeScript(QStringLiteral("gsettings"),
+                QStringLiteral("#!/bin/sh\n"
+                               "printf '%s' \"$LD_LIBRARY_PATH\" > '%1'\n"
+                               "case \"$1\" in get) printf \"['other@example']\\n\" ;; esac\n"
+                               "exit 0\n").arg(marker));
+    writeScript(QStringLiteral("gnome-extensions"),
+                QStringLiteral("#!/bin/sh\nexit 0\n"));
+    const QByteArray oldPath = qgetenv("PATH");
+    const QByteArray oldLd = qgetenv("LD_LIBRARY_PATH");
+    qputenv("PATH", fakeBin.path().toUtf8() + ":" + oldPath);
+    qputenv("LD_LIBRARY_PATH", "/tmp/crowsnest-test-bundle-lib");
+    const FocusBridgeInstallResult defaultInstall = focusBridgeInstall(
+        bridgeRoot.path(), envHome.path());
+    check(defaultInstall.ok, "the default runner installs the bridge");
+    QFile envFile(marker);
+    check(envFile.open(QIODevice::ReadOnly)
+              && envFile.readAll().isEmpty(),
+          "child tools do not inherit the bundle's LD_LIBRARY_PATH");
+    if (oldLd.isEmpty()) {
+        qunsetenv("LD_LIBRARY_PATH");
+    } else {
+        qputenv("LD_LIBRARY_PATH", oldLd);
+    }
+    qputenv("PATH", oldPath);
+
     FocusStatusInput status;
     status.desktop = QStringLiteral("gnome");
     status.sessionType = QStringLiteral("wayland");

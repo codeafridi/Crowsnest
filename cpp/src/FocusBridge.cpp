@@ -17,6 +17,16 @@ constexpr const char *kKdeId = "crowsnest-focus";
 FocusBridgeCommandResult runCommand(const QString &program,
                                     const QStringList &args) {
     QProcess process;
+    // The portable/AppImage sets LD_LIBRARY_PATH to its bundled Qt/glib.
+    // A system tool such as gsettings must not inherit that: on Ubuntu 24.04
+    // the host gsettings then loads the older bundled libglib and dies with
+    // "undefined symbol". Child tools get the clean session environment.
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("LD_LIBRARY_PATH"));
+    environment.remove(QStringLiteral("LD_PRELOAD"));
+    environment.remove(QStringLiteral("QT_PLUGIN_PATH"));
+    environment.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
+    process.setProcessEnvironment(environment);
     process.start(program, args);
     if (!process.waitForStarted(2000)) {
         return {false, QString(), process.errorString()};
