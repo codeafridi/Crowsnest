@@ -116,23 +116,8 @@ bool focusBridgeInstalled(const QString &desktop, const QString &home) {
         dir + QStringLiteral("/contents/code/main.js"));
 }
 
-QString focusBridgePayloadRoot() {
+QString focusBridgePayloadRootIn(const QString &appDir) {
     QStringList candidates;
-    const QString override = qEnvironmentVariable("CROWSNEST_BRIDGE_DIR");
-    if (!override.isEmpty()) {
-        candidates << override;
-    }
-    QString appDir;
-    if (QCoreApplication::instance() != nullptr) {
-        appDir = QCoreApplication::applicationDirPath();
-    }
-#if defined(Q_OS_LINUX)
-    if (appDir.isEmpty()) {
-        // --dump/focus-bridge run before QApplication; /proc/self/exe is the
-        // installed binary (and the extracted path inside an AppImage).
-        appDir = QFileInfo(QStringLiteral("/proc/self/exe")).absolutePath();
-    }
-#endif
     if (!appDir.isEmpty()) {
         candidates << appDir + QStringLiteral("/bridge");
         // An AppImage puts the binary at usr/bin/crowsnest and the payload at
@@ -141,17 +126,39 @@ QString focusBridgePayloadRoot() {
     }
     candidates << QStringLiteral("/usr/share/crowsnest/bridge");
     for (const QString &candidate : candidates) {
-        if (QFileInfo::exists(candidate
-                              + QStringLiteral("/gnome/")
+        if (QFileInfo::exists(candidate + QStringLiteral("/gnome/")
                               + QString::fromLatin1(kGnomeUuid)
                               + QStringLiteral("/metadata.json"))
             || QFileInfo::exists(candidate + QStringLiteral("/kwin/")
                                  + QString::fromLatin1(kKdeId)
                                  + QStringLiteral("/metadata.json"))) {
-            return candidate;
+            return QFileInfo(candidate).canonicalFilePath();
         }
     }
     return QString();
+}
+
+QString focusBridgePayloadRoot() {
+    const QString override = qEnvironmentVariable("CROWSNEST_BRIDGE_DIR");
+    if (!override.isEmpty()) {
+        return override;
+    }
+    QString appDir;
+    if (QCoreApplication::instance() != nullptr) {
+        appDir = QCoreApplication::applicationDirPath();
+    }
+#if defined(Q_OS_LINUX)
+    if (appDir.isEmpty()) {
+        // --dump/focus-bridge run before QApplication. absolutePath() on the
+        // symlink would return /proc/self, not the binary; canonicalFilePath()
+        // resolves the link first.
+        const QFileInfo exe(QStringLiteral("/proc/self/exe"));
+        const QString resolved = exe.canonicalFilePath();
+        appDir = resolved.isEmpty() ? exe.absolutePath()
+                                    : QFileInfo(resolved).absolutePath();
+    }
+#endif
+    return focusBridgePayloadRootIn(appDir);
 }
 
 FocusBridgeInstallResult focusBridgeInstall(const QString &payloadRoot,

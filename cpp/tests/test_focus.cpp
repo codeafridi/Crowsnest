@@ -222,8 +222,7 @@ int main(int argc, char *argv[]) {
     QTemporaryDir bridgeRoot;
     QTemporaryDir bridgeHome;
     QDir().mkpath(bridgeRoot.path()
-                  + QStringLiteral("/gnome/crowsnest-focus@codeafridi"));
-    for (const QString &name : {QStringLiteral("metadata.json"),
+                  + QStringLiteral("/gnome/crowsnest-focus@codeafridi"));    for (const QString &name : {QStringLiteral("metadata.json"),
                                 QStringLiteral("extension.js")}) {
         QFile file(bridgeRoot.path()
                    + QStringLiteral("/gnome/crowsnest-focus@codeafridi/")
@@ -305,6 +304,42 @@ int main(int argc, char *argv[]) {
     } else {
         qputenv("XDG_SESSION_TYPE", oldSession);
     }
+
+    // Payload discovery: beside the binary (portable) and usr/bridge
+    // (AppImage usr/bin/crowsnest). This is the bug 0.13.6 shipped with:
+    // /proc/self/exe was not canonicalised, so appDir was /proc/self.
+    QTemporaryDir portableRoot;
+    const QString portableApp = portableRoot.path() + QStringLiteral("/app");
+    const QString portableBridge =
+        portableApp + QStringLiteral("/bridge");
+    QDir().mkpath(portableBridge
+                  + QStringLiteral("/gnome/crowsnest-focus@codeafridi"));
+    QFile portableMeta(portableBridge
+                       + QStringLiteral("/gnome/crowsnest-focus@codeafridi/metadata.json"));
+    if (portableMeta.open(QIODevice::WriteOnly)) {
+        portableMeta.write("{}\n");
+        portableMeta.close();
+    }
+    check(focusBridgePayloadRootIn(portableApp)
+              == QFileInfo(portableBridge).canonicalFilePath(),
+          "payload is found beside the portable binary");
+
+    QTemporaryDir imageRoot;
+    QDir().mkpath(imageRoot.path() + QStringLiteral("/usr/bin"));
+    const QString imageBridge =
+        imageRoot.path() + QStringLiteral("/usr/bridge");
+    QDir().mkpath(imageBridge
+                  + QStringLiteral("/gnome/crowsnest-focus@codeafridi"));
+    QFile imageMeta(imageBridge
+                    + QStringLiteral("/gnome/crowsnest-focus@codeafridi/metadata.json"));
+    if (imageMeta.open(QIODevice::WriteOnly)) {
+        imageMeta.write("{}\n");
+        imageMeta.close();
+    }
+    check(focusBridgePayloadRootIn(imageRoot.path()
+                                   + QStringLiteral("/usr/bin"))
+              == QFileInfo(imageBridge).canonicalFilePath(),
+          "payload is found above an AppImage binary");
 
     kill(live, SIGKILL);
     waitpid(live, nullptr, 0);

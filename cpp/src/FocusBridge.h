@@ -49,6 +49,11 @@ QString focusBridgeUserDir(const QString &desktop,
 bool focusBridgeInstalled(const QString &desktop,
                           const QString &home = QString());
 
+// Where a binary at `appDir` finds the bundled payload. Split out so the
+// search (beside the binary, AppImage usr/bin -> usr/bridge, and the deb's
+// /usr/share/crowsnest/bridge) is testable without /proc/self/exe.
+QString focusBridgePayloadRootIn(const QString &appDir);
+
 // Where the running binary keeps the bundled payload: <app>/bridge or
 // /usr/share/crowsnest/bridge. Empty when neither exists.
 QString focusBridgePayloadRoot();
