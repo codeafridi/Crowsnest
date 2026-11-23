@@ -1,5 +1,5 @@
 #!/bin/sh
-# Crowsnest installer (Linux x86-64, macOS, Windows).
+# Crowsnest installer (Linux x86_64/aarch64, macOS, Windows).
 #
 # One-line install — the SAME command on every OS:
 #   curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh
@@ -13,9 +13,11 @@
 # installer start the HUD now and at login. Downloads show live byte/percent
 # progress on the terminal.
 #
-# Linux x86-64 (glibc >= 2.34): downloads a self-contained build (Qt 6 bundled
-# — nothing else to install) into ~/.local/opt/crowsnest, and installs the
-# desktop focus bridge (GNOME extension / KWin script) when one is needed.
+# Linux x86_64/aarch64 (glibc >= 2.34): downloads the self-contained build for
+# this architecture (Qt 6 bundled — nothing else to install) into
+# ~/.local/opt/crowsnest, and installs the desktop focus bridge (GNOME
+# extension / KWin script) when one is needed. A 32-bit ARM system is refused
+# with the arm64 requirement.
 #
 # macOS: downloads the latest DMG, mounts it, copies Crowsnest.app into
 # /Applications (falls back to ~/Applications without admin rights),
@@ -47,7 +49,25 @@ set -eu
 
 REPO="codeafridi/Crowsnest"
 RAW="https://raw.githubusercontent.com/${REPO}/main"
-BUNDLE_URL="${CROWSNEST_BUNDLE_URL:-https://github.com/${REPO}/releases/latest/download/crowsnest-portable.tar.gz}"
+
+# Linux assets are per architecture. `crowsnest-portable.tar.gz` stays the
+# x86_64 name so existing releases/scripts keep working; arm64 gets its own
+# asset and the installer refuses a mismatched bundle instead of letting the
+# kernel answer "Exec format error".
+LINUX_ARCH=""
+LINUX_BUNDLE=""
+case "$(uname -m 2>/dev/null || echo unknown)" in
+  x86_64|amd64) LINUX_ARCH=x86_64; LINUX_BUNDLE=crowsnest-portable.tar.gz ;;
+  aarch64|arm64) LINUX_ARCH=aarch64; LINUX_BUNDLE=crowsnest-portable-aarch64.tar.gz ;;
+  armv7l|armv6l|arm) LINUX_ARCH=armv7l; LINUX_BUNDLE= ;;
+  *) LINUX_ARCH="$(uname -m 2>/dev/null || echo unknown)"; LINUX_BUNDLE= ;;
+esac
+if [ -n "$LINUX_BUNDLE" ]; then
+  LINUX_BUNDLE_URL="https://github.com/${REPO}/releases/latest/download/${LINUX_BUNDLE}"
+else
+  LINUX_BUNDLE_URL="(no Linux asset for ${LINUX_ARCH:-unknown} - 64-bit x86_64 or aarch64 required)"
+fi
+BUNDLE_URL="${CROWSNEST_BUNDLE_URL:-$LINUX_BUNDLE_URL}"
 
 HOME_DIR="${HOME:-/root}"
 APP_DIR="${CROWSNEST_DIR:-$HOME_DIR/.local/opt/crowsnest}"
@@ -75,7 +95,7 @@ verify=0
 
 usage() {
   cat >&2 <<'USAGE'
-Crowsnest installer (Linux x86-64, macOS, Windows).
+Crowsnest installer (Linux x86_64/aarch64, macOS, Windows).
 
 Installs the app and the `crowsnest` command. Nothing starts automatically:
 run `crowsnest start` after installing, or pass --autostart to have the
@@ -429,6 +449,9 @@ dry_run_plan() { # <flow>
   log "Crowsnest installer plan (dry run - nothing was changed)"
   log ""
   log "  platform     $1"
+  if [ "$1" = "linux" ]; then
+    log "  arch         ${LINUX_ARCH:-unknown} (${LINUX_BUNDLE:-unsupported})"
+  fi
   log "  autostart    $plan_autostart"
   log "  download     $plan_download"
   case "$1" in
@@ -466,6 +489,12 @@ dry_run_plan() { # <flow>
 }
 
 verify_artifact() { # <flow> — download + checksum only, never install
+  if [ "$1" = "linux" ]; then
+    case "$LINUX_ARCH" in
+      x86_64|aarch64) ;;
+      *) die "unsupported Linux architecture: ${LINUX_ARCH:-unknown} (need x86_64 or aarch64)" ;;
+    esac
+  fi
   tmp="$(work_dir)" || die "no writable directory for the download"
   mkdir -p "$tmp" 2>/dev/null || true
   trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -473,7 +502,7 @@ verify_artifact() { # <flow> — download + checksum only, never install
   case "$1" in
     linux)
       url="$BUNDLE_URL"
-      name="crowsnest-portable.tar.gz"
+      name="$(basename "$url")"
       sums_url="${CROWSNEST_SUMS_URL:-https://github.com/${REPO}/releases/latest/download/SHA256SUMS}"
       ;;
     mac)
@@ -510,6 +539,14 @@ verify_artifact() { # <flow> — download + checksum only, never install
   log "  from $url"
   fetch "$url" "$tmp/$name" \
     || die "download failed ($url). Nothing was installed."
+  if [ "$1" = "linux" ]; then
+    bundle_arch="$(tar -xOf "$tmp/$name" ./ARCH 2>/dev/null | tr -d '\r\n' || true)"
+    if [ -n "$bundle_arch" ]; then
+      [ "$bundle_arch" = "$LINUX_ARCH" ] || die "this artifact is built for $bundle_arch, but this machine is $LINUX_ARCH - use the $LINUX_ARCH asset"
+    elif [ "$LINUX_ARCH" != "x86_64" ]; then
+      die "this bundle has no ARCH stamp (it predates arm64 builds) - install a current release"
+    fi
+  fi
   actual="$(sha256_of "$tmp/$name")"
   [ -n "$actual" ] || die "no sha256 tool found (sha256sum, shasum or openssl)"
   log "  sha256 $actual"
@@ -1034,8 +1071,10 @@ do_uninstall() {
 linux_install() {
   command -v tar >/dev/null 2>&1 || die "tar is required"
 
-  arch="$(uname -m 2>/dev/null || echo unknown)"
-  [ "$arch" = "x86_64" ] || log "warning: this bundle is built for x86_64; you are on $arch"
+  [ -n "$LINUX_ARCH" ] || die "unsupported Linux architecture: unknown (need x86_64 or aarch64)"
+  [ "$LINUX_ARCH" = "aarch64" ] || [ "$LINUX_ARCH" = "x86_64" ] \
+    || die "unsupported Linux architecture: $LINUX_ARCH (32-bit ARM is not supported; use a 64-bit OS)"
+  [ -n "$LINUX_BUNDLE" ] || die "no Linux bundle for $LINUX_ARCH (need x86_64 or aarch64)"
 
   # Real disk, not a tmpfs: see work_dir().
   tmp="$(work_dir)" || die "no writable directory for the download"
@@ -1046,6 +1085,14 @@ linux_install() {
   fetch "$BUNDLE_URL" "$tmp/bundle.tar.gz" \
     || die "download failed ($BUNDLE_URL). If there is no release yet, build from source (see README)."
 
+  # Refuse a mismatched artifact BEFORE touching the existing install: a
+  # wrong-arch download must not delete a working copy on its way out.
+  bundle_arch="$(tar -xOf "$tmp/bundle.tar.gz" ./ARCH 2>/dev/null | tr -d '\r\n' || true)"
+  if [ -n "$bundle_arch" ]; then
+    [ "$bundle_arch" = "$LINUX_ARCH" ] || die "this artifact is built for $bundle_arch, but this machine is $LINUX_ARCH - use the $LINUX_ARCH asset"
+  elif [ "$LINUX_ARCH" != "x86_64" ]; then
+    die "this bundle has no ARCH stamp (it predates arm64 builds) - install a current release"
+  fi
   rm -rf "$APP_DIR"
   mkdir -p "$APP_DIR"
   tar xzf "$tmp/bundle.tar.gz" -C "$APP_DIR"

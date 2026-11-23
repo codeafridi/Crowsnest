@@ -2,15 +2,20 @@
 #
 # build_portable.sh — build a self-contained (bundled-Qt) portable tarball.
 #
-# Produces dist/crowsnest-portable.tar.gz, which runs on any glibc-based
+# Produces dist/crowsnest-portable.tar.gz (x86_64) or
+# dist/crowsnest-portable-aarch64.tar.gz (arm64), which runs on any glibc-based
 # Linux with glibc >= 2.34 WITHOUT Qt installed (Qt 6, ICU and the needed
 # system libraries are bundled). Verification matrix is in the README.
 #
 # The build runs inside a rockylinux:9 container (the oldest mainstream base
-# that still packages Qt 6, giving the widest glibc floor). Requires Docker.
+# that still packages Qt 6 on both x86_64 and aarch64, giving the widest
+# glibc floor). Requires Docker. On an x86 host, build the arm bundle with
+# TARGET_ARCH=aarch64 (qemu binfmt required); a native arm64 runner needs no
+# emulation.
 #
 # Usage:
 #   bash cpp/packaging/build_portable.sh [output_dir]
+#   TARGET_ARCH=aarch64 bash cpp/packaging/build_portable.sh [output_dir]
 #
 set -euo pipefail
 
@@ -18,18 +23,30 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 out_dir="${1:-$repo_root/dist}"
 mkdir -p "$out_dir"
-tarball="$out_dir/crowsnest-portable.tar.gz"
+
+target_arch="${TARGET_ARCH:-$(uname -m)}"
+case "$target_arch" in
+  x86_64|amd64) target_arch=x86_64; tarball_name=crowsnest-portable.tar.gz ;;
+  aarch64|arm64) target_arch=aarch64; tarball_name=crowsnest-portable-aarch64.tar.gz ;;
+  *) echo "error: unsupported Linux architecture: $target_arch (need x86_64 or aarch64)" >&2; exit 1 ;;
+esac
+case "$target_arch" in
+  x86_64) default_platform=linux/amd64 ;;
+  aarch64) default_platform=linux/arm64 ;;
+esac
+docker_platform="${DOCKER_PLATFORM:-$default_platform}"
+tarball="$out_dir/$tarball_name"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "error: docker is required to build the portable bundle" >&2
   exit 1
 fi
 
-echo ">> building portable bundle (${BASE_IMAGE:-rockylinux:9} base, Qt 6 from EPEL)" >&2
+echo ">> building $target_arch portable bundle (${BASE_IMAGE:-rockylinux:9} base, Qt 6 from EPEL, platform $docker_platform)" >&2
 echo ">> output: $tarball" >&2
 
 # Everything except the final tar stream goes to stderr so stdout stays clean.
-docker run --rm -v "$repo_root":/src:ro "${BASE_IMAGE:-rockylinux:9}" bash -lc '
+docker run --rm --platform "$docker_platform" -v "$repo_root":/src:ro "${BASE_IMAGE:-rockylinux:9}" bash -lc '
 set -euo pipefail
 {
   echo ">> installing build dependencies"
@@ -57,6 +74,7 @@ set -euo pipefail
   version="$(sed -n -e "s/^CMAKE_PROJECT_VERSION:STATIC=//p" /w/CMakeCache.txt 2>/dev/null || true)"
   [ -n "$version" ] || version="unknown"
   echo "$version" > /outapp/VERSION
+  uname -m > /outapp/ARCH
   QTL="$(dirname "$(ldd /w/crowsnest | awk "/libQt6Core/{print \$3}")")"
   cp -aL "$QTL"/libQt6*.so* /outapp/lib/
   for p in "$(dirname "$QTL")"/../plugins/platforms /usr/lib64/qt6/plugins/platforms; do

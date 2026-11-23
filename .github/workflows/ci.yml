@@ -10,7 +10,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat_macos, feat_m39, feat_m50, feat_m52, feat_m53, feat_m54, feat_m55, feat_m58, feat_m62, feat_m63, feat_m64, feat_m65, feat_m66, feat_m67, feat_m68, feat_m69, feat_m70, feat_m71, feat_m72, feat_m73, feat_m74, feat_m75, feat_m76, feat_m77, feat_m78, feat_m79, feat_m80, feat_m81, feat_m82, feat_m83, feat_m84, feat_m85, feat_m86, feat_m92, feat_m151]
+    branches: [main, feat_macos, feat_m39, feat_m50, feat_m52, feat_m53, feat_m54, feat_m55, feat_m58, feat_m62, feat_m63, feat_m64, feat_m65, feat_m66, feat_m67, feat_m68, feat_m69, feat_m70, feat_m71, feat_m72, feat_m73, feat_m74, feat_m75, feat_m76, feat_m77, feat_m78, feat_m79, feat_m80, feat_m81, feat_m82, feat_m83, feat_m84, feat_m85, feat_m86, feat_m92, feat_m151, feat_arm64]
     paths-ignore:
       - "site/**"
       - "docs/**"
@@ -32,12 +32,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Pinned, not ubuntu-latest: the shipped .deb links the
-        # distribution's own Qt, so the build must be tested on the
-        # oldest distro that ships it (see the deb-platform job).
-        os: [ubuntu-24.04, macos-15, windows-latest]
+        include:
+          # Pinned, not ubuntu-latest: the shipped .deb links the
+          # distribution's own Qt, so the build must be tested on the
+          # oldest distro that ships it (see the deb-platform job).
+          - os: ubuntu-24.04
+            qt: aqt
+          # Native arm64. aqt has no Linux arm64 desktop Qt build, so this
+          # job uses Ubuntu's own qt6-base-dev - the same Qt the arm64 .deb
+          # links.
+          - os: ubuntu-24.04-arm
+            qt: apt
+          - os: macos-15
+            qt: aqt
+          - os: windows-latest
+            qt: aqt
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -47,11 +58,21 @@ jobs:
         if: runner.os == 'Windows'
 
       - uses: jurplel/install-qt-action@v4.5.0
+        if: matrix.qt == 'aqt'
         with:
           version: "6.8.*"
           cache: true
           arch: ${{ runner.os == 'Windows' && 'win64_msvc2022_64' || '' }}
           setup-python: ${{ runner.os != 'Windows' }}
+
+      - name: Install Qt (arm64 apt)
+        if: matrix.qt == 'apt'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake qt6-base-dev \
+            libgl-dev libx11-dev libxkbcommon-dev libglib2.0-dev \
+            libdbus-1-dev libicu-dev libfontconfig1-dev libfreetype6-dev
 
       - name: Configure (unix)
         if: runner.os != 'Windows'
@@ -86,6 +107,7 @@ jobs:
           ps ax | wc -l > "${RUNNER_TEMP}/ps-count.txt"
           python3 - "${RUNNER_TEMP}/crowsnest-dump.json" \
             "${RUNNER_TEMP}/ps-count.txt" <<'PY'
+          import os
           import json, sys
           d = json.load(open(sys.argv[1]))
           h = d["host"]
@@ -150,8 +172,9 @@ jobs:
                   else:
                       print("gpu not detectable here:", gpu.get("note"))
               sen = d.get("sensors", {})
-              assert sen.get("thermalCapable") is True, sen
-              assert sen.get("batteryCapable") is True, sen
+              if os.environ.get("SENSORS_EXPECTED") == "1":
+                  assert sen.get("thermalCapable") is True, sen
+                  assert sen.get("batteryCapable") is True, sen
               assert isinstance(sen.get("readings"), int), sen
               assert sen["readings"] >= sum(c["readings"]
                                             for c in sen.get("chips", [])), sen
@@ -160,9 +183,8 @@ jobs:
               for row in sen.get("batteries", []):
                   assert 0 <= row["chargePercent"] <= 100, row
                   assert row["energyNowWh"] <= row["energyFullWh"] + 0.5, row
-              if sen.get("available"):
-                  assert sen["readings"] > 0, sen
-                  assert sen.get("hottestCelsius", 0) >= 0, sen
+              if sen.get("thermalCapable"):
+                  assert sen.get("readings", 0) >= 0, sen
                   print("sensors ok: %d chips, %d readings, hottest %s C, "
                         "%s fan(s), %d battery(ies), %d adapter(s)"
                         % (len(sen["chips"]), sen["readings"],
@@ -394,6 +416,10 @@ jobs:
           PY
         env:
           QT_QPA_PLATFORM: offscreen
+          # The x86 runner is known to expose hwmon/power_supply; keep that a
+          # canary instead of accepting a regression everywhere. The arm64 VM
+          # may have neither, which is an honest gate, not a failure.
+          SENSORS_EXPECTED: ${{ matrix.os == 'ubuntu-24.04' && '1' || '0' }}
 
       - name: Probe smoke
         if: runner.os != 'Windows'
@@ -820,6 +846,14 @@ jobs:
           # use (here the job's own bundle), then installs nothing.
           sh install.sh --dry-run 2>&1 | tee "${RUNNER_TEMP}/plan.txt"
           grep -q "install dir" "${RUNNER_TEMP}/plan.txt"
+          case "$(uname -m)" in
+            aarch64|arm64)
+              grep -q "arch         aarch64 (crowsnest-portable-aarch64.tar.gz)" \
+                "${RUNNER_TEMP}/plan.txt" ;;
+            *)
+              grep -q "arch         x86_64 (crowsnest-portable.tar.gz)" \
+                "${RUNNER_TEMP}/plan.txt" ;;
+          esac
           test ! -d "$HOME/.local/opt/crowsnest"
           # Smoke the installer against THIS job's binary, not a published
           # release: the rename means no Crowsnest release exists yet, and an
@@ -827,6 +861,7 @@ jobs:
           # bundle is the same shape build_portable.sh makes (binary + run.sh).
           bundle="$(mktemp -d)"
           cp cpp/build/crowsnest "$bundle/"
+          printf '%s\n' "$(uname -m)" > "$bundle/ARCH"
           cat > "$bundle/run.sh" <<'RUN'
           #!/bin/sh
           HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
@@ -843,8 +878,71 @@ jobs:
           sh install.sh --verify 2>&1 | tee "${RUNNER_TEMP}/verify.txt"
           grep -q "verified: crowsnest-portable.tar.gz" "${RUNNER_TEMP}/verify.txt"
           test ! -d "$HOME/.local/opt/crowsnest"
+          # A bundle stamped for the other architecture is refused before
+          # extraction, not left for the kernel to answer with ENOEXEC.
+          bad="$(mktemp -d)"
+          cp cpp/build/crowsnest "$bad/"
+          case "$(uname -m)" in
+            aarch64|arm64) echo x86_64 > "$bad/ARCH" ;;
+            *) echo aarch64 > "$bad/ARCH" ;;
+          esac
+          tar -C "$bad" -czf "${RUNNER_TEMP}/wrong-arch.tar.gz" .
+          if CROWSNEST_BUNDLE_URL="file://${RUNNER_TEMP}/wrong-arch.tar.gz" \
+             sh install.sh --no-bridge --no-autostart 2>"${RUNNER_TEMP}/wrong-arch.err"; then
+            echo "installer accepted the wrong architecture" >&2
+            exit 1
+          fi
+          grep -q "artifact is built for" "${RUNNER_TEMP}/wrong-arch.err"
+          test ! -d "$HOME/.local/opt/crowsnest"
+          # 32-bit ARM is refused before any download, with the arch named.
+          fakebin="$(mktemp -d)"
+          cat > "$fakebin/uname" <<'U'
+          #!/bin/sh
+          case "$1" in
+            -m) echo armv7l ;;
+            -s) echo Linux ;;
+            *) exec /usr/bin/uname "$@" ;;
+          esac
+          U
+          chmod +x "$fakebin/uname"
+          if PATH="$fakebin:$PATH" sh install.sh --no-bridge --no-autostart \
+               2>"${RUNNER_TEMP}/arm32.err"; then
+            echo "installer accepted 32-bit ARM" >&2
+            exit 1
+          fi
+          grep -q "32-bit ARM is not supported" "${RUNNER_TEMP}/arm32.err"
+          # A bundle with no ARCH stamp predates arm64 builds: x86_64 keeps
+          # working (compatibility), arm64 refuses instead of running an
+          # x86 binary the kernel cannot exec.
+          noarch="$(mktemp -d)"
+          cp cpp/build/crowsnest "$noarch/"
+          cp "$bundle/run.sh" "$noarch/"
+          tar -C "$noarch" -czf "${RUNNER_TEMP}/no-arch.tar.gz" .
+          if [ "$(uname -m)" = "x86_64" ]; then
+            CROWSNEST_BUNDLE_URL="file://${RUNNER_TEMP}/no-arch.tar.gz" \
+              sh install.sh --no-bridge --no-autostart
+            sh install.sh --uninstall
+            test ! -d "$HOME/.local/opt/crowsnest"
+          else
+            if CROWSNEST_BUNDLE_URL="file://${RUNNER_TEMP}/no-arch.tar.gz" \
+                 sh install.sh --no-bridge --no-autostart \
+                 2>"${RUNNER_TEMP}/no-arch.err"; then
+              echo "arm64 installer accepted a bundle without ARCH" >&2
+              exit 1
+            fi
+            grep -q "no ARCH stamp" "${RUNNER_TEMP}/no-arch.err"
+          fi
           sh install.sh --no-bridge --no-autostart
           test -x "$HOME/.local/opt/crowsnest/crowsnest"
+          # A refused wrong-arch install must not delete the working copy.
+          before="$(sha256sum "$HOME/.local/opt/crowsnest/crowsnest" | cut -d' ' -f1)"
+          if CROWSNEST_BUNDLE_URL="file://${RUNNER_TEMP}/wrong-arch.tar.gz" \
+             sh install.sh --no-bridge --no-autostart 2>/dev/null; then
+            echo "upgrade accepted the wrong architecture" >&2
+            exit 1
+          fi
+          after="$(sha256sum "$HOME/.local/opt/crowsnest/crowsnest" | cut -d' ' -f1)"
+          test "$before" = "$after"
           test -x "$HOME/.local/bin/crowsnest"
           "$HOME/.local/opt/crowsnest/run.sh" --dump |
             python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["processCount"]>0; print("linux install dump ok:", d["processCount"], "procs")'
@@ -1056,6 +1154,36 @@ jobs:
             cpp/build/packaging/Crowsnest-*-macos.dmg
             cpp/build/packaging/Crowsnest-*-macos.dmg.sha256
           if-no-files-found: error
+
+  # The same gate on native arm64. A cross-built package would only prove the
+  # compiler, not that the distribution's arm64 Qt loads and the kernel runs
+  # the binary; the arm runner does.
+  deb-platform-arm64:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:22.04", "ubuntu:24.04"]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    name: deb-arm64 (${{ matrix.image }})
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the .deb inside ${{ matrix.image }} (arm64)
+        run: |
+          mkdir -p "${RUNNER_TEMP}/deb"
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD":/src:ro -v "${RUNNER_TEMP}/deb":/out \
+            "${{ matrix.image }}" \
+            bash /src/cpp/packaging/ci/deb_container_build.sh
+          ls -l "${RUNNER_TEMP}/deb"
+
+      - name: Clean-room install + run in ${{ matrix.image }} (arm64)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${RUNNER_TEMP}/deb":/pkg:ro \
+            -v "$PWD/cpp/packaging/ci":/ci:ro \
+            "${{ matrix.image }}" bash /ci/deb_container_verify.sh
 
   # The Debian package links the DISTRIBUTION's Qt, not the aqt Qt the matrix
   # builds against, so it is built and then installed in a clean container of

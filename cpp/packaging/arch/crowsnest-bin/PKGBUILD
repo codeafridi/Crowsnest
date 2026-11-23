@@ -1,6 +1,9 @@
 # Maintainer: Crowsnest <noreply@example.com>
 # Prebuilt binary for AUR (package name: crowsnest-bin). Repackages the
 # official portable bundle (Qt 6 is bundled, no Qt needed on the host).
+# This package is x86_64 only because makepkg's checksum refresh computes one
+# source set; arm64 users install the same bundle from the release page or
+# build the source package (`crowsnest`), which supports aarch64.
 # Publish: bash cpp/packaging/arch/publish-aur.sh crowsnest-bin
 pkgname=crowsnest-bin
 pkgver=0.6.0

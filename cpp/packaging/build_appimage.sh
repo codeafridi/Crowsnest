@@ -3,9 +3,9 @@
 # build_appimage.sh - build a single-file AppImage from the portable bundle.
 #
 # Reuses the self-contained, bundled-Qt output of build_portable.sh, so the
-# resulting AppImage runs on any glibc >= 2.34 x86-64 distro with no Qt or
-# compiler installed. appimagetool is downloaded on first use; Docker is only
-# needed if the portable bundle has not been built yet.
+# resulting AppImage runs on any glibc >= 2.34 x86_64 or aarch64 distro with
+# no Qt or compiler installed. appimagetool is downloaded on first use; Docker
+# is only needed if the portable bundle has not been built yet.
 #
 # Usage:
 #   bash cpp/packaging/build_appimage.sh [output_dir]
@@ -22,15 +22,19 @@ mkdir -p "$out_dir"
 
 version="${VERSION:-$(git -C "$repo_root" describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)}"
 version="${version#v}"
-arch="$(uname -m)"
-[ "$arch" = "x86_64" ] || { echo "error: AppImage target is x86_64, you are on $arch" >&2; exit 1; }
+arch="${TARGET_ARCH:-$(uname -m)}"
+case "$arch" in
+  x86_64|amd64) arch=x86_64; bundle_name=crowsnest-portable.tar.gz ;;
+  aarch64|arm64) arch=aarch64; bundle_name=crowsnest-portable-aarch64.tar.gz ;;
+  *) echo "error: unsupported AppImage architecture: $arch (need x86_64 or aarch64)" >&2; exit 1 ;;
+esac
 
-bundle="$out_dir/crowsnest-portable.tar.gz"
+bundle="$out_dir/$bundle_name"
 appdir="$out_dir/Crowsnest.AppDir"
 appimage="$out_dir/Crowsnest-${version}-${arch}.AppImage"
 tool_dir="$out_dir/.tools"
-appimagetool="$tool_dir/appimagetool-x86_64.AppImage"
-appimagetool_url="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage}"
+appimagetool="$tool_dir/appimagetool-${arch}.AppImage"
+appimagetool_url="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage}"
 
 log() { printf '>> %s\n' "$*" >&2; }
 
@@ -41,7 +45,7 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # 1. Portable bundle (bundled Qt). Build it if missing.
 if [ ! -f "$bundle" ]; then
   log "portable bundle not found; building it (requires Docker)"
-  bash "$here/build_portable.sh" "$out_dir"
+  TARGET_ARCH="$arch" bash "$here/build_portable.sh" "$out_dir"
 fi
 
 # 2. Assemble the AppDir.
@@ -108,7 +112,7 @@ fi
 #    up); when zsyncmake is on PATH it also writes the .zsync file, so we
 #    expose the copy bundled inside appimagetool if the host has none.
 log "building AppImage"
-export UPDATE_INFORMATION="${UPDATE_INFORMATION:-gh-releases-zsync|codeafridi|Crowsnest|latest|Crowsnest-*x86_64.AppImage.zsync}"
+export UPDATE_INFORMATION="${UPDATE_INFORMATION:-gh-releases-zsync|codeafridi|Crowsnest|latest|Crowsnest-*${arch}.AppImage.zsync}"
 if ! command -v zsyncmake >/dev/null 2>&1; then
   # appimagetool ships zsyncmake inside itself, but `--appimage-extract`
   # ignores an output directory and unpacks into ./squashfs-root, so the

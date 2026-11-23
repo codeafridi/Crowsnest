@@ -69,9 +69,12 @@ package-manager rescue (`apt/dnf/yum/zypper/pacman/apk`) → clear manual
 instructions. Snap-packaged curl (which cannot write files on some setups) is
 only tried after the native tools.
 
-- **Linux (x86-64, glibc ≥ 2.34)** — downloads a self-contained build (Qt 6
-  bundled — nothing else to install), puts it in `~/.local/opt/crowsnest`, and
-  adds a `crowsnest` command. **Nothing is started.** To have it start at login
+- **Linux (x86-64 or arm64, glibc ≥ 2.34)** — downloads the self-contained
+  build for this architecture (Qt 6 bundled — nothing else to install), puts it
+  in `~/.local/opt/crowsnest`, and adds a `crowsnest` command. The bundle's
+  `ARCH` stamp is checked before extraction, so an x86-64 binary is never
+  unpacked onto arm64 (or the reverse); 32-bit ARM is refused with the arm64
+  requirement. **Nothing is started.** To have it start at login
   as well, re-run with `--autostart` (systemd user unit when systemd is
   available, an XDG autostart entry otherwise). The desktop focus bridge is
   installed when one is needed (see [Compatibility](#compatibility)).
@@ -180,7 +183,7 @@ The tree compiles on the oldest Qt 6 the distro channel ships (6.2 on Ubuntu
 the `.deb` links the *distribution's* Qt rather than a bundled copy:
 
 ```bash
-bash cpp/packaging/build_deb.sh   # writes build/packaging/crowsnest_<ver>_amd64.deb
+bash cpp/packaging/build_deb.sh   # writes build/packaging/crowsnest_<ver>_<dpkg arch>.deb
 # or prove it end to end, in a clean container of the target release:
 docker run --rm -v "$PWD":/src:ro -v /tmp/deb:/out ubuntu:24.04 \
   bash /src/cpp/packaging/ci/deb_container_build.sh
@@ -203,7 +206,7 @@ build:
 ```bash
 git clone https://github.com/codeafridi/Crowsnest.git
 cd Crowsnest
-bash cpp/packaging/build_portable.sh          # writes dist/crowsnest-portable.tar.gz
+bash cpp/packaging/build_portable.sh          # writes dist/crowsnest-portable.tar.gz (x86-64) or -aarch64.tar.gz
 mkdir -p ~/.local/opt/crowsnest
 tar xzf dist/crowsnest-portable.tar.gz -C ~/.local/opt/crowsnest
 ~/.local/opt/crowsnest/run.sh             # run it
@@ -214,16 +217,17 @@ tar xzf dist/crowsnest-portable.tar.gz -C ~/.local/opt/crowsnest
 <details>
 <summary><strong>Install as an AppImage</strong></summary>
 
-One file, no install step. Runs on any glibc ≥ 2.34 x86-64 distro, Qt bundled.
-It self-updates via delta (a `.zsync` file ships alongside on the release page —
-use [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate)):
+One file, no install step. Runs on any glibc ≥ 2.34 x86-64 or aarch64 distro,
+Qt bundled. It self-updates via delta (a `.zsync` file ships alongside on the
+release page — use [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate)):
 
 ```bash
 # Needs curl (or wget + manual URL editing). Resolves the current versioned name:
 tag=$(curl -fsSI -o /dev/null -w '%{url_effective}' https://github.com/codeafridi/Crowsnest/releases/latest | sed 's#.*/tag/##')
-curl -fLO "https://github.com/codeafridi/Crowsnest/releases/download/${tag}/Crowsnest-${tag#v}-x86_64.AppImage"
-chmod +x Crowsnest-*-x86_64.AppImage
-./Crowsnest-*-x86_64.AppImage
+arch=$(uname -m)   # x86_64 or aarch64
+curl -fLO "https://github.com/codeafridi/Crowsnest/releases/download/${tag}/Crowsnest-${tag#v}-${arch}.AppImage"
+chmod +x Crowsnest-*-${arch}.AppImage
+./Crowsnest-*-${arch}.AppImage
 ```
 
 Asset names carry the version, so there is no stable `releases/latest/download`
@@ -248,7 +252,8 @@ verify, then install (`apt` resolves the Qt dependencies automatically):
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-sudo apt install ./crowsnest_0.6.0_amd64.deb
+# amd64 on x86-64, arm64 on aarch64 (the asset name matches dpkg's arch):
+sudo apt install "./crowsnest_0.6.0_$(dpkg --print-architecture).deb"
 ```
 
 This installs `/usr/bin/crowsnest`, a user unit
@@ -283,8 +288,12 @@ the distro's own Qt; "Portable" = the bundled one-liner install, with no Qt pres
 | Ubuntu 20.04 / Debian 11 | ➖ | ➖ | glibc too old for the bundle; no Qt 6 pkg |
 | RHEL 8 / Rocky 8 / Alma 8 | ➖ | ➖ | no Qt 6 in EPEL 8 |
 
-**Portable bundle floor:** glibc ≥ 2.34 (distros released ~2021 onward) and the
-x86-64 architecture. Untested but expected to work: Gentoo, Void, NixOS,
+**Portable bundle floor:** glibc ≥ 2.34 (distros released ~2021 onward) and one
+of the two 64-bit architectures the release publishes: **x86-64** (`amd64`) or
+**arm64** (`aarch64`). The same table applies to both; each is built and tested
+on a native runner of that architecture, and the arm64 `.deb` is installed and
+run in clean Ubuntu 22.04/24.04 arm64 containers. 32-bit ARM is not supported
+and the installer says so. Untested but expected to work: Gentoo, Void, NixOS,
 SteamOS/Bazzite (glibc ≥ 2.34).
 
 ### macOS (beta, 0.7+)

@@ -47,9 +47,11 @@ Windows, in PowerShell:
 irm https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/windows/install.ps1 | iex
 ```
 
-The script detects the platform, installs the app and puts `crowsnest` on your
-path. Every release also carries a `.deb`, a `.dmg`, an `.msi`, a portable zip
-and an AppImage for people who prefer to install by hand.
+The script detects the platform **and the Linux architecture** (x86-64 or
+arm64), installs the matching self-contained build and puts `crowsnest` on your
+path. Every release also carries `.deb` packages and AppImages for both
+architectures, a `.dmg`, an `.msi` and a portable zip for people who prefer to
+install by hand. 32-bit ARM is refused with a clear message.
 
 The first start puts a compact strip on screen. Click it to open the console.
 
@@ -187,10 +189,12 @@ expose are replaced or gated.
 <tr><td>Alpine</td><td>yes</td><td>no</td><td>musl build from source</td></tr>
 </table>
 
-The portable bundle needs glibc 2.34 or newer on 64 bit x86. macOS 12 or newer
-is supported, and Windows 10 and 11. Every release is built and tested on the
-three platform runners and installed from scratch in clean containers, not only
-on the machine it was written on.
+The portable bundle needs glibc 2.34 or newer on 64-bit x86-64 or arm64 (the
+installer picks the matching asset and refuses a mismatched one before
+extraction). macOS 12 or newer is supported, and Windows 10 and 11. Every
+release is built and tested on the three platform runners — plus a native
+arm64 Linux runner — and installed from scratch in clean containers of the
+target architecture, not only on the machine it was written on.
 
 ## Configuration
 

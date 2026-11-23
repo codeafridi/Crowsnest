@@ -44,7 +44,7 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -72,11 +72,63 @@ jobs:
             -v "$PWD/cpp/packaging/ci":/ci:ro \
             ubuntu:24.04 bash /ci/deb_container_verify.sh
 
+      - name: Build portable + AppImage (x86_64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          mkdir -p "$dist"
+          bash cpp/packaging/build_portable.sh "$dist"
+          bash cpp/packaging/build_appimage.sh "$dist"
+          ls -lh "$dist"
+
+      - name: Verify portable bundle (x86_64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          test "$(tar -xOf "$dist/crowsnest-portable.tar.gz" ./ARCH)" = "x86_64"
+          run_dir="$(mktemp -d)"
+          tar -xzf "$dist/crowsnest-portable.tar.gz" -C "$run_dir"
+          "$run_dir/run.sh" --dump > "${RUNNER_TEMP}/portable-dump.json"
+          python3 - "${RUNNER_TEMP}/portable-dump.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d["platform"] == "linux" and d["processCount"] > 0, d
+          print("portable x86_64 ok:", d["processCount"], "procs")
+          PY
+
+      - name: Verify AppImage (x86_64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          appimage="$(ls "$dist"/Crowsnest-*-x86_64.AppImage)"
+          test -s "${appimage}.zsync"
+          "$appimage" --appimage-updateinformation |
+            grep -q 'Crowsnest-\*x86_64.AppImage.zsync'
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --dump \
+            > "${RUNNER_TEMP}/appimage-dump.json"
+          python3 - "${RUNNER_TEMP}/appimage-dump.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d["platform"] == "linux" and d["processCount"] > 0, d
+          print("appimage x86_64 ok:", d["processCount"], "procs")
+          PY
+
+      # One staging directory, flat: artifacts must not carry the AppDir,
+      # .tools or a path prefix into the release, and the unified
+      # SHA256SUMS has to be keyed by the asset's own basename.
+      - name: Stage release assets
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          dest="$GITHUB_WORKSPACE/dist-release"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp cpp/build/packaging/*.deb "$dest/"
+          cp "$dist/crowsnest-portable.tar.gz" "$dest/"
+          cp "$dist"/Crowsnest-*-x86_64.AppImage "$dest/"
+          cp "$dist"/Crowsnest-*-x86_64.AppImage.zsync "$dest/"
+          ls -lh "$dest"
+
       - name: Checksums + AUR refresh data
         run: |
           version="${GITHUB_REF_NAME#v}"
           sed -i "s/^pkgver=.*/pkgver=$version/" cpp/packaging/arch/PKGBUILD cpp/packaging/arch/crowsnest-bin/PKGBUILD
-          cd cpp/build/packaging && sha256sum *.deb > SHA256SUMS && cat SHA256SUMS
           # Source tarball hash for the AUR `crowsnest` package (publish-aur.sh
           # runs updpkgsums anyway; this is a cross-check).
           curl -sL "https://github.com/codeafridi/Crowsnest/archive/refs/tags/v$version.tar.gz" -o /tmp/src.tar.gz
@@ -94,9 +146,109 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: packages
-          path: |
-            cpp/build/packaging/*.deb
-            cpp/build/packaging/SHA256SUMS
+          path: dist-release/*
+          if-no-files-found: error
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Qt 6 (arm64)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake qt6-base-dev libgl-dev libx11-dev \
+            libxkbcommon-dev libglib2.0-dev libdbus-1-dev libicu-dev \
+            libfontconfig1-dev libfreetype6-dev
+
+      - name: Build and test (arm64)
+        run: |
+          cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build cpp/build -j"$(nproc)"
+          QT_QPA_PLATFORM=offscreen ctest --test-dir cpp/build --output-on-failure
+
+      - name: Build .deb (arm64)
+        run: bash cpp/packaging/build_deb.sh
+
+      - name: Build portable + AppImage (arm64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          mkdir -p "$dist"
+          bash cpp/packaging/build_portable.sh "$dist"
+          bash cpp/packaging/build_appimage.sh "$dist"
+          ls -lh "$dist"
+
+      - name: Verify portable bundle (arm64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          run_dir="$(mktemp -d)"
+          tar -xzf "$dist/crowsnest-portable-aarch64.tar.gz" -C "$run_dir"
+          test "$(cat "$run_dir/ARCH")" = "aarch64"
+          "$run_dir/run.sh" --dump > "${RUNNER_TEMP}/portable-dump.json"
+          python3 - "${RUNNER_TEMP}/portable-dump.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d["platform"] == "linux" and d["processCount"] > 0, d
+          assert d["host"]["cores"] > 0, d
+          print("portable aarch64 ok:", d["processCount"], "procs,",
+                d["host"]["cores"], "cores")
+          PY
+
+      - name: Verify AppImage (arm64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          appimage="$(ls "$dist"/Crowsnest-*-aarch64.AppImage)"
+          test -s "${appimage}.zsync"
+          "$appimage" --appimage-updateinformation |
+            grep -q 'Crowsnest-\*aarch64.AppImage.zsync'
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --dump \
+            > "${RUNNER_TEMP}/appimage-dump.json"
+          python3 - "${RUNNER_TEMP}/appimage-dump.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d["platform"] == "linux" and d["processCount"] > 0, d
+          print("appimage aarch64 ok:", d["processCount"], "procs")
+          PY
+
+      - name: Installer smoke (arm64 local bundle)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          ( cd "$dist" && sha256sum crowsnest-portable-aarch64.tar.gz > SHA256SUMS )
+          export CROWSNEST_BUNDLE_URL="file://${dist}/crowsnest-portable-aarch64.tar.gz"
+          export CROWSNEST_SUMS_URL="file://${dist}/SHA256SUMS"
+          sh install.sh --dry-run 2>&1 | tee "${RUNNER_TEMP}/plan.txt"
+          grep -q "arch         aarch64 (crowsnest-portable-aarch64.tar.gz)" \
+            "${RUNNER_TEMP}/plan.txt"
+          sh install.sh --verify 2>&1 | tee "${RUNNER_TEMP}/verify.txt"
+          grep -q "verified: crowsnest-portable-aarch64.tar.gz" "${RUNNER_TEMP}/verify.txt"
+          test ! -d "$HOME/.local/opt/crowsnest"
+          sh install.sh --no-bridge --no-autostart
+          "$HOME/.local/opt/crowsnest/run.sh" --dump |
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["processCount"]>0; print("arm64 install dump ok:", d["processCount"], "procs")'
+          sh install.sh --uninstall
+          test ! -d "$HOME/.local/opt/crowsnest"
+          echo "arm64 installer ok"
+
+      - name: Stage release assets (arm64)
+        run: |
+          dist="${RUNNER_TEMP}/linux-dist"
+          dest="$GITHUB_WORKSPACE/dist-release"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp cpp/build/packaging/*.deb "$dest/"
+          cp "$dist/crowsnest-portable-aarch64.tar.gz" "$dest/"
+          cp "$dist"/Crowsnest-*-aarch64.AppImage "$dest/"
+          cp "$dist"/Crowsnest-*-aarch64.AppImage.zsync "$dest/"
+          ls -lh "$dest"
+
+      - name: Upload arm64 artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-arm64
+          path: dist-release/*
+          if-no-files-found: error
 
   build-windows:
     runs-on: windows-latest
@@ -166,8 +318,48 @@ jobs:
           path: cpp/packaging/windows/manifests/
           if-no-files-found: error
 
+  checksums:
+    needs: [build, build-macos, build-windows, build-linux-arm64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: dist/linux
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-arm64
+          path: dist/arm64
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-macos
+          path: dist/macos
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-windows
+          path: dist/windows
+      - name: Build the unified manifest
+        run: |
+          cd dist
+          # Flat basenames: install.sh --verify looks an asset up by its own
+          # name in SHA256SUMS, so ./linux/<name> would never match.
+          find . -type f ! -name '*.sha256' ! -name 'SHA256SUMS' -print0 |
+            sort -z | xargs -0 sha256sum |
+            sed 's|  \./[^/]*/|  |' > SHA256SUMS
+          dupes="$(awk '{print $2}' SHA256SUMS | sort | uniq -d)"
+          if [ -n "$dupes" ]; then
+            echo "duplicate asset names make the manifest ambiguous: $dupes" >&2
+            exit 1
+          fi
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-checksums
+          path: dist/SHA256SUMS
+          if-no-files-found: error
+
   github-release:
-    needs: [build, build-macos, build-windows]
+    needs: [checksums]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
@@ -182,20 +374,25 @@ jobs:
         with:
           name: packages-windows
           path: dist-windows
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-arm64
+          path: dist-arm64
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-checksums
+          path: dist-checksums
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            dist-ci/*.deb
-            dist-ci/SHA256SUMS
-            dist-macos/*.dmg
-            dist-macos/*.dmg.sha256
-            dist-windows/*.msi
-            dist-windows/*.msi.sha256
-            dist-windows/*-portable.zip
-            dist-windows/*-portable.zip.sha256
+            dist-ci/*
+            dist-arm64/*
+            dist-macos/*
+            dist-windows/*
+            dist-checksums/SHA256SUMS
           generate_release_notes: true
-      # NOTE: the portable tarball + AppImage (with zsync) are built by the
-      # maintainer via bash cpp/packaging/build_portable.sh && bash
-      # cpp/packaging/build_appimage.sh and attached to the same release, so
-      # `crowsnest update` and AppImage delta updates keep working.
+      # NOTE: every artifact above is built by this workflow: the portable
+      # bundles, AppImages (with zsync) and both .debs included. `crowsnest
+      # update` and the AppImage delta channel read `latest` from the same
+      # release, so all of them must be attached before the release is.

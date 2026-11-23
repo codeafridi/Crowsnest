@@ -39,7 +39,32 @@ docker run --rm -v /tmp/deb:/pkg:ro -v "$PWD/cpp/packaging/ci":/ci:ro \
 
 The verify script installs the package in a bare container, checks that every
 shared object resolves, and runs `--dump` and `--probe`. That is the gate for
-both a Qt API newer than the floor and an under declared `Depends:` line.
+both a Qt API newer than the floor and an under declared `Depends:` line. CI
+runs the same pair inside `ubuntu:22.04` and `ubuntu:24.04` containers on x86-64
+and on native arm64 runners, so the arm64 package is proven the same way.
+
+## Portable bundles and AppImages
+
+Both self-contained formats are built inside a Rocky 9 container (EPEL Qt 6,
+glibc 2.34 floor) and carry an `ARCH` stamp the installer checks:
+
+```bash
+# this machine's architecture (x86_64 or aarch64)
+bash cpp/packaging/build_portable.sh
+bash cpp/packaging/build_appimage.sh
+
+# cross-build the arm64 bundle on an x86 host (qemu binfmt required)
+TARGET_ARCH=aarch64 bash cpp/packaging/build_portable.sh dist-arm64
+
+# or reuse an existing bundle for the AppImage (no Docker)
+TARGET_ARCH=aarch64 bash cpp/packaging/build_appimage.sh dist-arm64
+```
+
+Output names: `crowsnest-portable.tar.gz` / `crowsnest-portable-aarch64.tar.gz`
+and `Crowsnest-<version>-<arch>.AppImage` plus its `.zsync`. The installer
+picks the asset for `uname -m`, refuses a bundle stamped for the other
+architecture before extraction, and refuses 32-bit ARM with the arm64
+requirement.
 
 ## Tests
 
