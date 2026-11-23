@@ -1146,6 +1146,35 @@ EOF
   esac
 }
 
+require_glibc() {
+  # The portable bundle is built against glibc 2.34 (Rocky 9) and bundles Qt,
+  # not libc. musl cannot load it at all, and an older glibc fails at exec with
+  # a version error long after a "successful" install. Refuse up front, before
+  # anything is downloaded or replaced.
+  case "$(uname -m 2>/dev/null || echo unknown)" in
+    x86_64|amd64) musl_ld=/lib/ld-musl-x86_64.so.1 ;;
+    aarch64|arm64) musl_ld=/lib/ld-musl-aarch64.so.1 ;;
+    *) musl_ld="" ;;
+  esac
+  if { [ -n "$musl_ld" ] && [ -e "$musl_ld" ]; } \
+     || { command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | head -1 | grep -qi musl; }; then
+    die "musl libc is not supported by the prebuilt bundle - it needs glibc 2.34 or newer. Use a glibc distribution (Ubuntu, Debian, Fedora, Arch, openSUSE) or build from source."
+  fi
+  if command -v getconf >/dev/null 2>&1; then
+    libc_version="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true)"
+    case "$libc_version" in
+      [0-9]*)
+        major="${libc_version%%.*}"
+        rest="${libc_version#*.}"
+        minor="${rest%%.*}"
+        if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 34 ]; }; then
+          die "glibc $libc_version is too old - the prebuilt bundle needs glibc 2.34 or newer."
+        fi
+        ;;
+    esac
+  fi
+}
+
 # Library mode (M58a tests): source install.sh with CROWSNEST_LIB=1 to reuse
 # fetch()/run_priv() without executing the main dispatch.
 if [ "${CROWSNEST_LIB:-}" = "1" ]; then
@@ -1159,6 +1188,13 @@ case "$kernel_sys" in
   MINGW*|MSYS*|CYGWIN*) os_flow="win" ;;
   *) die "unsupported OS: $kernel_sys (Linux / macOS / Windows only)" ;;
 esac
+
+# The Linux bundle is a glibc artifact; refuse musl/old glibc before the plan,
+# so a dry run on such a system is honest too. Uninstall and --verify still
+# work: removing files and checking a download need no loader.
+if [ "$os_flow" = "linux" ] && [ "$mode" != "uninstall" ] && [ "$verify" -eq 0 ]; then
+  require_glibc
+fi
 
 if [ "$dry_run" -eq 1 ]; then
   dry_run_plan "$os_flow"
