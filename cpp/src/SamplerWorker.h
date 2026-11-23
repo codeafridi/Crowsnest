@@ -49,6 +49,10 @@ public slots:
     // thread; the sampler never blocks on either.
     void setCloudPageVisible(bool visible);
     void refreshCloudNow();
+    // Pin/unpin the focused-app subject. Queued from the HUD thread; the
+    // sampler re-resolves the identity and re-checks it every tick.
+    void pinFocus(int pid);
+    void clearFocusPin();
 
 signals:
     void snapshotReady(const DisplaySnapshot &snapshot);

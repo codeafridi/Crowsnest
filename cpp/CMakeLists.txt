@@ -36,6 +36,8 @@ add_library(crowsnest_core STATIC
     src/GnomePidFileProvider.h
     src/FocusSampler.cpp
     src/FocusSampler.h
+    src/FocusBridge.cpp
+    src/FocusBridge.h
     src/CpuSampler.cpp
     src/CpuSampler.h
     src/AlertEngine.cpp

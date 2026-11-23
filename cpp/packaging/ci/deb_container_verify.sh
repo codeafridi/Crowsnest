@@ -51,3 +51,12 @@ cat /tmp/crowsnest-probe.txt
 grep -q "probe summary requested=2 received=2" /tmp/crowsnest-probe.txt
 grep -q "tickMs=" /tmp/crowsnest-probe.txt
 echo "clean-room probe ok"
+
+# The focus-bridge verb must find the payload the package installed under
+# /usr/share/crowsnest/bridge, not only the portable's beside-the-binary copy.
+focus_home="$(mktemp -d)"
+HOME="$focus_home" XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland \
+  /usr/bin/crowsnest focus-bridge > /tmp/focus-bridge.txt 2>&1 || true
+cat /tmp/focus-bridge.txt
+test -f "$focus_home/.local/share/gnome-shell/extensions/crowsnest-focus@codeafridi/extension.js"
+echo "focus bridge payload ok"

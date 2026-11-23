@@ -16,6 +16,25 @@ FocusSampler::FocusSampler(const FocusedWindowProvider *provider,
 
 FocusSample FocusSampler::sample() const {
     FocusSample result;
+    result.providerName = m_provider != nullptr
+        ? m_provider->name()
+        : QStringLiteral("none");
+
+    // A pin outranks live focus. The start time is part of the identity, so a
+    // pid that was recycled by another process does not inherit the pin.
+    if (m_pinActive) {
+        if (m_backend.identity(m_pinIdentity.pid) == m_pinIdentity) {
+            result.available = true;
+            result.pinned = true;
+            result.identity = m_pinIdentity;
+            result.appName = m_pinName;
+            result.providerName = QStringLiteral("pinned");
+            return result;
+        }
+        m_pinActive = false;
+        m_pinIdentity = ProcessIdentity{};
+        m_pinName.clear();
+    }
 
     if (m_provider == nullptr) {
         return result;
@@ -63,4 +82,29 @@ FocusSample FocusSampler::sample() const {
     m_lastName = result.appName;
 
     return result;
+}
+
+void FocusSampler::pin(int pid) {
+    m_pinActive = false;
+    m_pinIdentity = ProcessIdentity{};
+    m_pinName.clear();
+    if (pid <= 0) {
+        return;
+    }
+    const ProcessIdentity identity = m_backend.identity(pid);
+    if (!identity.isValid()) {
+        return;
+    }
+    m_pinIdentity = identity;
+    m_pinName = m_backend.comm(pid);
+    if (m_pinName.isEmpty()) {
+        m_pinName = QStringLiteral("pid %1").arg(pid);
+    }
+    m_pinActive = true;
+}
+
+void FocusSampler::unpin() {
+    m_pinActive = false;
+    m_pinIdentity = ProcessIdentity{};
+    m_pinName.clear();
 }

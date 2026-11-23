@@ -65,9 +65,12 @@ crowsnest update     install the latest release
 crowsnest uninstall  remove it
 ```
 
-On GNOME or KDE, enable the focus bridge once so the HUD can see the active
-window. [docs/manual.md](docs/manual.md) has the command for both desktops.
-Everything else works without it.
+On GNOME or KDE (Wayland), the focused-window bridge is a one-time setup:
+`crowsnest focus-bridge`, or Settings -> Collection -> FOCUS -> SET UP. It copies
+the bundled GNOME extension / KWin script and enables it; GNOME needs a log out
+and back in. The strip's PIN button holds the current app as the subject when
+focus moves. [docs/focus.md](docs/focus.md) covers every provider, the pin and
+the status line. Everything else works without the bridge.
 
 ### What the installer does, and how to check it first
 
@@ -288,6 +291,7 @@ left off.
 * [docs/cloud.md](docs/cloud.md): cloud identity, rates and billed spend
 * [docs/fleet.md](docs/fleet.md): several machines in one console
 * [docs/remote.md](docs/remote.md): the relay reporter and its privacy rules
+* [docs/focus.md](docs/focus.md): every focus provider, the one-time bridge setup, the PIN and the status line
 * [docs/pricing.md](docs/pricing.md): what is free (the app and a relay you run) and what the managed relay costs
 * [docs/build.md](docs/build.md): build from source and the package gate
 

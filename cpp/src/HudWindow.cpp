@@ -1,5 +1,9 @@
 #include "HudWindow.h"
 
+#include "FocusBridge.h"
+
+#include <QDebug>
+
 #include "DashboardPanel.h"
 #include "CloudProbe.h"
 #include "Theme.h"
@@ -82,6 +86,8 @@ HudWindow::HudWindow(QWidget *parent)
                     m_panel->setWebhookLine(m_webhook->statusLine());
                 }
             });
+    m_focusDesktop = focusDesktopId();
+    m_focusBridgeInstalled = focusBridgeInstalled(m_focusDesktop);
 
     m_pages = new QWidget(this);
     auto *pagesLayout = new QVBoxLayout(m_pages);
@@ -186,6 +192,25 @@ HudWindow::HudWindow(QWidget *parent)
     m_showHideButton->setCursor(Qt::PointingHandCursor);
     connect(m_showHideButton, &QPushButton::clicked, this, &HudWindow::toggleCompact);
 
+    m_pinButton = new QPushButton(QStringLiteral("PIN"), this);
+    m_pinButton->setObjectName(QStringLiteral("pinButton"));
+    m_pinButton->setFocusPolicy(Qt::NoFocus);
+    m_pinButton->setCursor(Qt::PointingHandCursor);
+    m_pinButton->setEnabled(false);
+    m_pinButton->setToolTip(QStringLiteral(
+        "pin the focused app so it stays the subject when focus moves"));
+    connect(m_pinButton, &QPushButton::clicked, this, [this]() {
+        if (m_lastSnapshot.focusPinned) {
+            emit focusUnpinRequested();
+            return;
+        }
+        bool ok = false;
+        const int pid = m_lastSnapshot.pid.toInt(&ok);
+        if (ok && pid > 0) {
+            emit focusPinRequested(pid);
+        }
+    });
+
     m_clickButton = new QPushButton(QStringLiteral("CLICK"), this);
     m_clickButton->setObjectName(QStringLiteral("clickButton"));
     m_clickButton->setFocusPolicy(Qt::NoFocus);
@@ -207,13 +232,14 @@ HudWindow::HudWindow(QWidget *parent)
     connect(m_overlaySaveTimer, &QTimer::timeout, this,
             &HudWindow::persistOverlay);
 
+    footer->addWidget(m_pinButton);
     footer->addWidget(m_moreButton);
     footer->addWidget(m_clickButton);
     footer->addWidget(m_showHideButton);
     root->addLayout(footer);
 
     for (QPushButton *button : {m_dockerButton, m_kubeButton, m_moreButton,
-                                m_clickButton, m_showHideButton}) {
+                                m_clickButton, m_showHideButton, m_pinButton}) {
         button->installEventFilter(this);
     }
 
@@ -255,14 +281,14 @@ HudWindow::HudWindow(QWidget *parent)
         "  background-color: %SURFACE%;"
         "  border-left: 1px solid %BORDER%;"
         "}"
-        "#moreButton, #clickButton, #showHideButton {"
+        "#moreButton, #clickButton, #showHideButton, #pinButton {"
         "  color: %MUTED%;"
         "  background-color: transparent;"
         "  border: 1px solid %BORDER%;"
         "  font-size: 9px;"
         "  padding: 3px 10px;"
         "}"
-        "#moreButton:hover, #clickButton:hover, #showHideButton:hover {"
+        "#moreButton:hover, #clickButton:hover, #showHideButton:hover, #pinButton:hover {"
         "  color: %TEXT%; border-color: %MUTED%;"
         "}"
         "QLabel   { color: %DIM%; }")
@@ -296,6 +322,17 @@ DashboardPanel *HudWindow::ensureConsole() {
     m_panel = new DashboardPanel(m_pages);
     connect(m_panel, &DashboardPanel::collapseRequested, this,
             &HudWindow::toggleDetails);
+    connect(m_panel, &DashboardPanel::focusBridgeSetupRequested, this,
+            [this]() {
+                const FocusBridgeInstallResult result = focusBridgeInstall();
+                m_focusBridgeInstalled =
+                    focusBridgeInstalled(m_focusDesktop);
+                if (m_panel != nullptr) {
+                    m_panel->setFocusStatus(result.message,
+                                            !m_focusBridgeInstalled);
+                }
+                qInfo().noquote() << "focus bridge:" << result.message;
+            });
     connect(m_panel, &DashboardPanel::monitorChanged, this,
             &HudWindow::applyMonitorChange);
     connect(m_panel, &DashboardPanel::monitorsResetRequested, this,
@@ -518,9 +555,40 @@ void HudWindow::setSnapshot(const DisplaySnapshot &snapshot) {
             QStringLiteral("color:%1;").arg(statusColor(snapshot.status)));
     }
 
+    m_pinButton->setText(snapshot.focusPinned ? QStringLiteral("UNPIN")
+                                              : QStringLiteral("PIN"));
+    m_pinButton->setEnabled(snapshot.focusPinned
+                            || (snapshot.focusAvailable
+                                && snapshot.pid != QStringLiteral("--")));
+    m_pinButton->setToolTip(snapshot.focusPinned
+        ? QStringLiteral("pinned to %1 (pid %2) - click to follow focus again")
+              .arg(snapshot.appName, snapshot.pid)
+        : QStringLiteral(
+              "pin the focused app so it stays the subject when focus moves"));
+
     updateCompactText();
     if (m_panel != nullptr) {
         m_panel->setSnapshot(snapshot);
+        if (++m_focusBridgeCheckTick % 30 == 1) {
+            m_focusBridgeInstalled = focusBridgeInstalled(m_focusDesktop);
+        }
+        FocusStatusInput focusStatus;
+        focusStatus.desktop = m_focusDesktop;
+        focusStatus.sessionType = qEnvironmentVariable("XDG_SESSION_TYPE");
+        focusStatus.provider = snapshot.focusProvider;
+        focusStatus.available = snapshot.focusAvailable;
+        focusStatus.pinned = snapshot.focusPinned;
+        focusStatus.app = snapshot.appName;
+        focusStatus.pid = snapshot.pid;
+        focusStatus.bridgeInstalled = m_focusBridgeInstalled;
+        const bool wayland = focusStatus.sessionType.compare(
+                                 QStringLiteral("wayland"),
+                                 Qt::CaseInsensitive) == 0;
+        const bool canSetup = wayland && !snapshot.focusAvailable
+            && !snapshot.focusPinned
+            && (m_focusDesktop == QStringLiteral("gnome")
+                || m_focusDesktop == QStringLiteral("kde"));
+        m_panel->setFocusStatus(focusStatusText(focusStatus), canSetup);
     }
 
     m_alertInput.appCpuValid = snapshot.cpuValid;

@@ -10,7 +10,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat_macos, feat_m39, feat_m50, feat_m52, feat_m53, feat_m54, feat_m55, feat_m58, feat_m62, feat_m63, feat_m64, feat_m65, feat_m66, feat_m67, feat_m68, feat_m69, feat_m70, feat_m71, feat_m72, feat_m73, feat_m74, feat_m75, feat_m76, feat_m77, feat_m78, feat_m79, feat_m80, feat_m81, feat_m82, feat_m83, feat_m84, feat_m85, feat_m86, feat_m92, feat_m151, feat_arm64]
+    branches: [main, feat_macos, feat_m39, feat_m50, feat_m52, feat_m53, feat_m54, feat_m55, feat_m58, feat_m62, feat_m63, feat_m64, feat_m65, feat_m66, feat_m67, feat_m68, feat_m69, feat_m70, feat_m71, feat_m72, feat_m73, feat_m74, feat_m75, feat_m76, feat_m77, feat_m78, feat_m79, feat_m80, feat_m81, feat_m82, feat_m83, feat_m84, feat_m85, feat_m86, feat_m92, feat_m151, feat_arm64, feat_focus]
     paths-ignore:
       - "site/**"
       - "docs/**"
@@ -284,6 +284,12 @@ jobs:
           assert all(e["freeG"] <= e["totalG"] + 0.01
                      for e in fs if "freeG" in e), fs[:3]
           print("filesystems ok:", len(fs), "entries")
+          focus = d.get("focus", {})
+          assert focus.get("listParseOk") is True, focus
+          assert focus.get("listTextOk") is True, focus
+          assert focus.get("statusGateOk") is True, focus
+          assert focus.get("status"), focus
+          print("focus ok:", focus.get("status"))
           cloud = d.get("cloud", {})
           assert cloud.get("rateLookupOk") is True, cloud
           assert cloud.get("costMathOk") is True, cloud
@@ -574,6 +580,12 @@ jobs:
           assert all(e["freeG"] <= e["totalG"] + 0.01
                      for e in fs if "freeG" in e), fs[:3]
           print("filesystems ok:", len(fs), "entries")
+          focus = d.get("focus", {})
+          assert focus.get("listParseOk") is True, focus
+          assert focus.get("listTextOk") is True, focus
+          assert focus.get("statusGateOk") is True, focus
+          assert focus.get("status"), focus
+          print("focus ok:", focus.get("status"))
           cloud = d.get("cloud", {})
           assert cloud.get("rateLookupOk") is True, cloud
           assert cloud.get("costMathOk") is True, cloud
@@ -949,6 +961,10 @@ jobs:
           "$HOME/.local/bin/crowsnest" status
           "$HOME/.local/bin/crowsnest" --dump 2>/dev/null |
             python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["processCount"]>0; print("linux wrapper passthrough ok")'
+          XDG_CURRENT_DESKTOP=test-no-desktop XDG_SESSION_TYPE=wayland \
+            "$HOME/.local/bin/crowsnest" focus-bridge |
+            grep -q "no desktop focus bridge"
+          echo "linux focus-bridge verb ok"
           sh install.sh --uninstall
           test ! -d "$HOME/.local/opt/crowsnest"
           echo "linux installer ok"

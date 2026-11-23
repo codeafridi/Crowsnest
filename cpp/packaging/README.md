@@ -18,8 +18,8 @@ Package names (typical):
 | Fedora | `gcc-c++ cmake qt6-qtbase-devel qt6-qtbase` (DBus via `qt6-qtbase`) |
 | Arch / CachyOS | `base-devel cmake qt6-base` |
 
-X11 focus detection additionally needs `xdotool` (X11/XWayland sessions only).
-Wayland sessions use compositor integrations (below) instead.
+No external focus tool is needed on X11: the native EWMH provider is built in.
+Wayland sessions use the compositor integrations (below).
 
 ## Build
 
@@ -48,12 +48,20 @@ own channel:
 
 | Session | Mechanism |
 | --- | --- |
-| GNOME (Wayland/X11) | GNOME Shell extension (`gnome_extension/crowsnest-focus@codeafridi`) |
-| KDE Plasma (Wayland) | KWin script + D-Bus (`cpp/kwin_script`, `cpp/install_kde_focus.sh`) |
+| GNOME on Wayland | GNOME Shell extension; install with `crowsnest focus-bridge` (log out and back in) |
+| KDE Plasma on Wayland | KWin script + D-Bus; install with `crowsnest focus-bridge` |
 | Hyprland | `hyprctl` |
 | Sway | `swaymsg` |
-| X11 / XWayland (Cinnamon, XFCE, MATE, KDE-X11) | `xdotool` |
+| niri | the compositor's focused-window event |
+| X11 / XWayland (Cinnamon, XFCE, MATE, KDE-X11) | native EWMH `_NET_ACTIVE_WINDOW` + `_NET_WM_PID`; no xdotool |
 | Other Wayland compositors | not supported (shows `no-focus`) |
+
+The bridge payload ships in the portable bundle/AppImage beside the binary and
+in the `.deb` at `/usr/share/crowsnest/bridge`. `crowsnest focus-bridge` copies
+and enables it; the Settings -> Collection -> FOCUS card does the same and
+states the live provider. The strip's **PIN** button holds the current app as
+the subject when focus moves. [docs/focus.md](../../docs/focus.md) is the full
+reference.
 
 There is no generic Wayland way to obtain the focused PID (the foreign-toplevel
 protocols expose only `app_id`/`title`), so compositor-specific adapters are

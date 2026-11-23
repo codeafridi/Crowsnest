@@ -52,6 +52,16 @@ EOF
 install -m 0644 "$ROOT_DIR/packaging/README.md" \
   "$STAGE/usr/share/doc/crowsnest/README.md"
 
+# Desktop focus bridge payload. The app finds it at
+# /usr/share/crowsnest/bridge and installs it into the user's session on
+# request (`crowsnest focus-bridge` or Settings -> FOCUS -> SET UP).
+install -d "$STAGE/usr/share/crowsnest/bridge/gnome" \
+          "$STAGE/usr/share/crowsnest/bridge/kwin"
+cp -r "$ROOT_DIR/../gnome_extension/crowsnest-focus@codeafridi" \
+  "$STAGE/usr/share/crowsnest/bridge/gnome/"
+cp -r "$ROOT_DIR/kwin_script/crowsnest-focus" \
+  "$STAGE/usr/share/crowsnest/bridge/kwin/"
+
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: crowsnest
 Version: $VERSION

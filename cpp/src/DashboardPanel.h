@@ -167,6 +167,10 @@ public:
                              bool ok, int httpStatus, const QString &detail);
 
     void setSettingsInfo(const SettingsInfo &info);
+    // The focus card changes with the session, not with SettingsInfo (which
+    // is read once at startup). Called per snapshot; the panel only repaints
+    // when the sentence or button visibility changes.
+    void setFocusStatus(const QString &text, bool canSetup);
     void setHistoryView(const HistoryViewInfo &view);
     void setHistorySelection(const QString &position, const QString &detail);
 
@@ -209,6 +213,9 @@ signals:
     void teamLabelSilenceRequested(const QString &matcher, int minutes);
     void teamGroupChanged(const QString &key);
     void monitorsResetRequested();
+    // The Settings FOCUS card's setup button; the window installs the bridge
+    // and reports the result on the same card.
+    void focusBridgeSetupRequested();
     void historyExportRequested(const QString &format);
     void historySeekRequested(int index);
     // 0 = 1 h tier, 1 = 24 h tier.
@@ -862,6 +869,8 @@ private:
     TickCost m_liveTick;
     QLabel *m_settingsSoftware = nullptr;
     QLabel *m_settingsGeneral = nullptr;
+    QLabel *m_settingsFocus = nullptr;
+    QPushButton *m_focusSetupButton = nullptr;
 
     QLabel *m_remoteReport = nullptr;
     QLabel *m_settingsScope = nullptr;

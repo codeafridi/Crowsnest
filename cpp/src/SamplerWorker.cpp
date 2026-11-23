@@ -132,6 +132,16 @@ QString SamplerWorker::localIpv4() const {
     return QString();
 }
 
+void SamplerWorker::pinFocus(int pid) {
+    m_sampler.pin(pid);
+    sampleNow();
+}
+
+void SamplerWorker::clearFocusPin() {
+    m_sampler.unpin();
+    sampleNow();
+}
+
 void SamplerWorker::sampleNow() {
     // M84: bracket the whole tick. The section list is rebuilt per tick and
     // the bounded total window keeps the memory cost flat for a HUD that runs
@@ -187,6 +197,9 @@ void SamplerWorker::updateSelfCost() {
 
 DisplaySnapshot SamplerWorker::buildSnapshot(const FocusSample &focus) {
     DisplaySnapshot snap;
+    snap.focusAvailable = focus.available;
+    snap.focusPinned = focus.pinned;
+    snap.focusProvider = focus.providerName;
 
     if (!focus.available) {
         // M58: no early return. Desktops without any focus provider

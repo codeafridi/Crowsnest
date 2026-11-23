@@ -100,6 +100,12 @@ struct DisplaySnapshot {
     QString cpu = QStringLiteral("--");
     QString memory = QStringLiteral("--");
     QString status = QStringLiteral("IDLE");
+    // Focus source for this tick: live provider name, "pinned" while a pin is
+    // active, "none" when the session has no provider. The Settings row and
+    // the PIN button read these.
+    bool focusAvailable = false;
+    bool focusPinned = false;
+    QString focusProvider;
     bool cpuValid = false;
     double cpuPercent = 0.0;
     unsigned long long rssKb = 0;

@@ -24,6 +24,7 @@
 #include "RemoteStatus.h"
 #include "FleetStatus.h"
 #include "DumpReport.h"
+#include "FocusBridge.h"
 #include "HistoryLog.h"
 #include "AppLog.h"
 #include "ProbeRun.h"
@@ -280,7 +281,7 @@ QString settingsVerbsLine() {
                           "|enable|disable|update|uninstall|logs");
 #else
     return QStringLiteral("install.sh run|start|stop|restart|status|enable"
-                          "|disable|update|uninstall|logs|vers");
+                          "|disable|update|uninstall|logs|vers|focus-bridge");
 #endif
 }
 
@@ -604,6 +605,11 @@ int main(int argc, char *argv[]) {
             }
             return status;
         }
+        if (arg == QByteArrayLiteral("focus-bridge")) {
+            const FocusBridgeInstallResult result = focusBridgeInstall();
+            std::printf("%s\n", qUtf8Printable(result.message));
+            return result.ok ? 0 : 1;
+        }
 #if defined(Q_OS_WIN)
         if (arg.startsWith(QByteArrayLiteral("--autostart="))) {
             autostartCommand(QString::fromLocal8Bit(
@@ -916,6 +922,10 @@ int main(int argc, char *argv[]) {
                      &SamplerWorker::setCloudPageVisible);
     QObject::connect(&hud, &HudWindow::cloudRefreshRequested, worker,
                      &SamplerWorker::refreshCloudNow);
+    QObject::connect(&hud, &HudWindow::focusPinRequested, worker,
+                     &SamplerWorker::pinFocus);
+    QObject::connect(&hud, &HudWindow::focusUnpinRequested, worker,
+                     &SamplerWorker::clearFocusPin);
 
     // One server, two routes: /metrics for a scraper, /api/v1/snapshot for a
     // peer. It exists when EITHER switch is on, so turning off the scrape

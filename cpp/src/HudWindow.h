@@ -122,6 +122,10 @@ signals:
     // so the scrape and the page describe the same fleet.
     void fleetStatusChanged(const FleetStatus &status);
     void cloudRefreshRequested();
+    // Pin/unpin the focused app as the subject. The sampler thread owns the
+    // pin; these cross to it queued.
+    void focusPinRequested(int pid);
+    void focusUnpinRequested();
     // M97: one report's worth of bytes. Emitted with the sample id already
     // fixed, so a retry of the same envelope cannot mint a second report.
     void remoteEnvelopeReady(const RemoteEnvelope &envelope);
@@ -288,6 +292,7 @@ private:
     QPushButton *m_moreButton = nullptr;
     QPushButton *m_showHideButton = nullptr;
     QPushButton *m_clickButton = nullptr;
+    QPushButton *m_pinButton = nullptr;
     QTimer *m_overlaySaveTimer = nullptr;
     // Debounces appearance writes: a slider drag is dozens of value changes and
     // the file only needs the last one.
@@ -310,6 +315,9 @@ private:
     void publishOverlayState();
     void refreshOverlayState();
     DisplaySnapshot m_lastSnapshot;
+    QString m_focusDesktop;
+    bool m_focusBridgeInstalled = false;
+    int m_focusBridgeCheckTick = 0;
     FleetStatus m_fleetStatus;
     QList<FleetPeer> m_fleetSshPeers;
     bool m_detailsExpanded = false;

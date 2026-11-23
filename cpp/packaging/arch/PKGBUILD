@@ -55,5 +55,11 @@ EOF
         "$pkgdir/usr/share/icons/hicolor/scalable/apps/crowsnest.svg"
     install -Dm0644 "Crowsnest-$pkgver/LICENSE" \
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -dm0755 "$pkgdir/usr/share/crowsnest/bridge/gnome" \
+        "$pkgdir/usr/share/crowsnest/bridge/kwin"
+    cp -r "Crowsnest-$pkgver/gnome_extension/crowsnest-focus@codeafridi" \
+        "$pkgdir/usr/share/crowsnest/bridge/gnome/"
+    cp -r "Crowsnest-$pkgver/cpp/kwin_script/crowsnest-focus" \
+        "$pkgdir/usr/share/crowsnest/bridge/kwin/"
 }
 

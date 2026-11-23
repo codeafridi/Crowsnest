@@ -896,6 +896,7 @@ case "\$cmd" in
   status)    if running; then pgrep -af "\$APP/crowsnest" 2>/dev/null || echo "running"; else echo "not running"; fi; [ -f "\$APP/VERSION" ] && printf 'version: ' && cat "\$APP/VERSION" || true ;;
   vers)      [ -f "\$APP/VERSION" ] && cat "\$APP/VERSION" || echo "unknown" ;;
   logs)      tail_log ;;
+  focus-bridge) exec "\$APP/run.sh" focus-bridge ;;
   enable)    if have_sd && systemctl --user enable --now "\$UNIT" 2>/dev/null; then :; else add_xdg_entry; launch_now; fi ;;
   disable)   if have_sd; then systemctl --user disable --now "\$UNIT" 2>/dev/null || true; fi; rm_xdg_entry; stop_app ;;
   update)    if have_sd; then systemctl --user stop "\$UNIT" 2>/dev/null || true; fi
@@ -922,7 +923,7 @@ case "\$cmd" in
   path)      echo "\$APP" ;;
   -*)        exec "\$APP/run.sh" "\$cmd" "\$@" ;;
   *)         echo "crowsnest: unknown command: \$cmd" >&2
-             echo "  run|serve start stop restart status vers logs enable disable update uninstall path" >&2
+             echo "  run|serve start stop restart status vers logs focus-bridge enable disable update uninstall path" >&2
              exit 2 ;;
 esac
 EOF
@@ -1124,6 +1125,7 @@ Next steps:
   crowsnest logs        tail the HUD output
   crowsnest vers        show the installed version
   crowsnest path        show where it is installed
+  crowsnest focus-bridge  install/re-enable the GNOME/KDE focus bridge
   crowsnest enable      also run at every login
   crowsnest disable     stop and don't start at login
   crowsnest update      upgrade to the latest version

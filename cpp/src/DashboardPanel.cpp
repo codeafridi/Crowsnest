@@ -3523,6 +3523,27 @@ QWidget *DashboardPanel::buildSettingsView() {
 
     collectionPage->addWidget(makeCard(QStringLiteral("GENERAL"),
                                        m_settingsGeneral, view));
+
+    m_settingsFocus = new QLabel(QStringLiteral("focus  checking..."), view);
+    m_settingsFocus->setObjectName(QStringLiteral("ddFocusStatus"));
+    m_settingsFocus->setFont(monoFont(10));
+    m_settingsFocus->setWordWrap(true);
+    m_settingsFocus->setTextFormat(Qt::PlainText);
+    m_focusSetupButton =
+        new QPushButton(QStringLiteral("SET UP FOCUS BRIDGE"), view);
+    m_focusSetupButton->setObjectName(QStringLiteral("ddFocusSetup"));
+    m_focusSetupButton->setFocusPolicy(Qt::NoFocus);
+    m_focusSetupButton->setCursor(Qt::PointingHandCursor);
+    m_focusSetupButton->setVisible(false);
+    connect(m_focusSetupButton, &QPushButton::clicked, this,
+            &DashboardPanel::focusBridgeSetupRequested);
+    auto *focusCard = new QWidget(view);
+    auto *focusLayout = new QVBoxLayout(focusCard);
+    focusLayout->setContentsMargins(0, 0, 0, 0);
+    focusLayout->setSpacing(8);
+    focusLayout->addWidget(m_settingsFocus);
+    focusLayout->addWidget(m_focusSetupButton, 0, Qt::AlignLeft);
+    collectionPage->addWidget(makeCard(QStringLiteral("FOCUS"), focusCard, view));
     collectionPage->addWidget(makeCard(QStringLiteral("COLLECTION SCOPE"),
                                        m_settingsScope, view));
 
@@ -4431,6 +4452,18 @@ void DashboardPanel::setHistorySelection(const QString &position,
                 i < lines.size() ? lines.at(i) : QString());
             m_histDetailLines.at(i)->setVisible(i < lines.size());
         }
+    }
+}
+
+void DashboardPanel::setFocusStatus(const QString &text, bool canSetup) {
+    if (m_settingsFocus == nullptr) {
+        return;
+    }
+    if (m_settingsFocus->text() != text) {
+        m_settingsFocus->setText(text);
+    }
+    if (m_focusSetupButton != nullptr) {
+        m_focusSetupButton->setVisible(canSetup);
     }
 }
 

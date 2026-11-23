@@ -253,13 +253,14 @@ verify, then install (`apt` resolves the Qt dependencies automatically):
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
 # amd64 on x86-64, arm64 on aarch64 (the asset name matches dpkg's arch):
-sudo apt install "./crowsnest_0.6.0_$(dpkg --print-architecture).deb"
+sudo apt install ./crowsnest_*_$(dpkg --print-architecture).deb
 ```
 
 This installs `/usr/bin/crowsnest`, a user unit
-(`/usr/lib/systemd/user/crowsnest.service`), a launcher, and docs. It does not
-start anything; enable start-at-login with
-`systemctl --user enable --now crowsnest.service`.
+(`/usr/lib/systemd/user/crowsnest.service`), a launcher, docs, and the focus
+bridge payload at `/usr/share/crowsnest/bridge` (run `crowsnest focus-bridge`
+to install it into your GNOME/KDE session). It does not start anything; enable
+start-at-login with `systemctl --user enable --now crowsnest.service`.
 Remove with `sudo apt remove crowsnest`.
 
 </details>
@@ -357,29 +358,45 @@ says so rather than showing an empty box.
 
 ## GNOME / KDE setup
 
-Focus detection works on GNOME, KDE, Sway, niri, and X11. On **GNOME** and **KDE**
-the focused app is shared through a small bridge — the installer sets it up
-automatically when it detects your desktop, then you just **log out and back in**
-once so the shell loads it.
-
-If you installed by hand instead, add the bridge yourself:
-
-**GNOME** (then log out and back in):
+Focus detection works on GNOME, KDE, Sway, niri, Hyprland and X11. On **GNOME**
+and **KDE Wayland** the focused app is shared through a small bridge. The
+installer sets it up when it detects your desktop, and the app can install or
+repair it later:
 
 ```bash
-bash install_gnome_extension.sh
+crowsnest focus-bridge
 ```
 
-**KDE Plasma (Wayland):**
+or open **Settings -> Collection -> FOCUS** and press **SET UP FOCUS BRIDGE**.
+The command copies the bundled GNOME extension / KWin script into your session
+and enables it; GNOME then needs one **log out and back in** so the shell loads
+it. `crowsnest focus-bridge` is safe to re-run, and a `.deb` install carries the
+same payload at `/usr/share/crowsnest/bridge`.
 
-```bash
-bash cpp/install_kde_focus.sh
-```
+The FOCUS card states which provider is live, or exactly what is missing:
 
-On **Sway / niri / Hyprland / X11**, install the matching tool (`swaymsg` /
-`niri` / `hyprctl` / `xdotool`) and you're done. Other Wayland compositors run
-fine but show `no-focus`. If the app column reads `--`, run
-`CROWSNEST_PROBE=1 crowsnest` to see which focus provider was detected.
+- `focus  live via gnome-pidfile - firefox (pid 4242)` - working.
+- `focus  off - GNOME bridge not installed (run: crowsnest focus-bridge)`.
+- `focus  off - GNOME bridge installed but not loaded (run: crowsnest
+  focus-bridge, then log out and back in)`.
+- `focus  off - no focused X11 window` - the native X11 provider, no window.
+- `focus  off - no focus provider for this session` - a compositor with no
+  supported surface; the host cards still fill.
+
+On **Sway / niri / Hyprland**, install the matching tool (`swaymsg` / `niri` /
+`hyprctl`) and you're done. X11 needs no external tool.
+
+### Pin the subject
+
+The strip's **PIN** button holds the current app as the subject when focus
+moves (a full-screen game, a VM, a long build). The button becomes **UNPIN**;
+the pin lives only for the running app and is dropped automatically when that
+process exits or its pid is recycled. It is not written to the config file, so
+a restart always starts on live focus.
+
+`crowsnest --dump` carries a `focus` block (`provider`, `available`,
+`bridgeInstalled`, `status` plus four deterministic self-tests), which is the
+first thing to read when focus looks wrong.
 
 ## Docker & Kubernetes
 
@@ -964,19 +981,16 @@ a `{"crowsnest": {...}}` envelope with `version`, `platform`, `hostname`,
 
 Handy environment variables:
 
-- `CROWSNEST_PROBE=1 ./crowsnest` — print the detected focus provider and
-  focused PID, then exit.
+- `crowsnest --dump` — the JSON `focus` block names the provider, whether it is
+  live, the bridge state, and a one-line `status`.
 - `CROWSNEST_LOG=/tmp/overlay.log` — log status to a file.
 
 ## Troubleshooting
 
 **The app column shows `--` / `no-focus`.** Focus detection isn't available yet.
 
-1. Run the probe to see which provider was chosen:
-
-   ```bash
-   CROWSNEST_PROBE=1 ./cpp/build/crowsnest
-   ```
+1. Run `crowsnest --dump` and read `focus.status` (it names the provider and the
+   next action). `crowsnest focus-bridge` installs or re-enables the bridge.
 
 2. Set up the bridge for your desktop (see
    [GNOME / KDE setup](#gnome--kde-setup)) and, on GNOME, **log out and back in**.

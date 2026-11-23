@@ -159,6 +159,73 @@ int main(int argc, char *argv[]) {
     check(hud.findChild<QLabel *>(QStringLiteral("details")) == nullptr,
           "inline DIAGNOSIS panel removed");
 
+    auto *pinButton = hud.findChild<QPushButton *>(QStringLiteral("pinButton"));
+    check(pinButton != nullptr, "PIN button exists");
+    int pinRequested = 0;
+    bool unpinRequested = false;
+    QObject::connect(&hud, &HudWindow::focusPinRequested,
+                     [&pinRequested](int pid) { pinRequested = pid; });
+    QObject::connect(&hud, &HudWindow::focusUnpinRequested,
+                     [&unpinRequested]() { unpinRequested = true; });
+
+    DisplaySnapshot focused = makeSnapshot("alpha", "123", "17%", "8 MB", "OK");
+    focused.focusAvailable = true;
+    focused.focusProvider = QStringLiteral("gnome-pidfile");
+    hud.setSnapshot(focused);
+    if (pinButton) {
+        check(pinButton->isEnabled(), "PIN enabled with a focused app");
+        check(pinButton->text() == QStringLiteral("PIN"),
+              "PIN starts unpinned");
+        pinButton->click();
+        check(pinRequested == 123, "PIN requests the focused pid");
+    }
+    DisplaySnapshot pinned = focused;
+    pinned.focusPinned = true;
+    pinned.focusProvider = QStringLiteral("pinned");
+    hud.setSnapshot(pinned);
+    if (pinButton) {
+        check(pinButton->text() == QStringLiteral("UNPIN"),
+              "pinned snapshot shows UNPIN");
+        pinButton->click();
+        check(unpinRequested, "UNPIN requests live focus");
+    }
+    hud.setSnapshot(makeSnapshot("--", "--", "--", "--", "no-focus"));
+    if (pinButton) {
+        check(!pinButton->isEnabled(), "PIN disabled without focus");
+    }
+
+    if (panel != nullptr) {
+        auto *focusStatus =
+            panel->findChild<QLabel *>(QStringLiteral("ddFocusStatus"));
+        auto *focusSetup =
+            panel->findChild<QPushButton *>(QStringLiteral("ddFocusSetup"));
+        check(focusStatus != nullptr && focusSetup != nullptr,
+              "Settings FOCUS card exists");
+        bool setupRequested = false;
+        QObject::connect(panel, &DashboardPanel::focusBridgeSetupRequested,
+                         [&setupRequested]() { setupRequested = true; });
+        panel->setFocusStatus(QStringLiteral("focus  off - test"), true);
+        check(focusStatus != nullptr
+                  && focusStatus->text() == QStringLiteral("focus  off - test"),
+              "focus status rendered");
+        check(focusSetup != nullptr && !focusSetup->isHidden(),
+              "setup button shown when needed");
+        const QByteArray oldDesktop = qgetenv("XDG_CURRENT_DESKTOP");
+        qputenv("XDG_CURRENT_DESKTOP", "test-no-desktop");
+        if (focusSetup) {
+            focusSetup->click();
+        }
+        if (oldDesktop.isEmpty()) {
+            qunsetenv("XDG_CURRENT_DESKTOP");
+        } else {
+            qputenv("XDG_CURRENT_DESKTOP", oldDesktop);
+        }
+        check(setupRequested, "setup button requests the bridge");
+        panel->setFocusStatus(QStringLiteral("focus  live"), false);
+        check(focusSetup != nullptr && focusSetup->isHidden(),
+              "setup button hidden when live");
+    }
+
     DisplaySnapshot withProcs = makeSnapshot("alpha", "123", "17%", "8 MB", "OK");
     withProcs.rssKb = 8192;
     withProcs.vmsKb = 9216;

@@ -19,6 +19,10 @@
 
 #include "OverlayStatus.h"
 #include "ProcessDiskStatus.h"
+#include "FocusBridge.h"
+#include "FocusProviderFactory.h"
+#include "FocusSampler.h"
+#include "FocusedWindowProvider.h"
 
 #include "DiskStatus.h"
 #include "ProcessActions.h"
@@ -40,6 +44,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <memory>
 #if defined(Q_OS_WIN)
 #include <process.h>
 #else
@@ -1229,6 +1234,58 @@ QString dumpReportJson(int maxProcs) {
                            session,
                            session == OverlaySession::X11 && shapeAvailable));
         root.insert(QStringLiteral("overlay"), overlay);
+    }
+
+    {
+        QJsonObject focus;
+        const QString desktop = focusDesktopId();
+        focus.insert(QStringLiteral("desktop"),
+                     desktop.isEmpty() ? QStringLiteral("other") : desktop);
+        focus.insert(QStringLiteral("sessionType"),
+                     qEnvironmentVariableIsEmpty("XDG_SESSION_TYPE")
+                         ? QStringLiteral("unknown")
+                         : qEnvironmentVariable("XDG_SESSION_TYPE"));
+        focus.insert(QStringLiteral("bridgeInstalled"),
+                     focusBridgeInstalled(desktop));
+        const QString payloadRoot = focusBridgePayloadRoot();
+        if (!payloadRoot.isEmpty()) {
+            focus.insert(QStringLiteral("payloadRoot"), payloadRoot);
+        }
+
+        std::unique_ptr<FocusedWindowProvider> provider =
+            createFocusProvider(Config{});
+        FocusSampler sampler(provider.get());
+        const FocusSample sample = sampler.sample();
+        focus.insert(QStringLiteral("provider"), sample.providerName);
+        focus.insert(QStringLiteral("available"), sample.available);
+        if (sample.available) {
+            focus.insert(QStringLiteral("app"), sample.appName);
+            focus.insert(QStringLiteral("pid"), sample.identity.pid);
+        }
+        FocusStatusInput status;
+        status.desktop = desktop;
+        status.sessionType = qEnvironmentVariable("XDG_SESSION_TYPE");
+        status.provider = sample.providerName;
+        status.available = sample.available;
+        status.app = sample.appName;
+        status.pid = QString::number(sample.identity.pid);
+        status.bridgeInstalled = focusBridgeInstalled(desktop);
+        focus.insert(QStringLiteral("status"), focusStatusText(status));
+
+        const QStringList parsed = parseGnomeExtensionList(
+            QStringLiteral("['a@b', 'c']"));
+        focus.insert(QStringLiteral("listParseOk"),
+                     parsed == QStringList({QStringLiteral("a@b"),
+                                            QStringLiteral("c")}));
+        focus.insert(QStringLiteral("listTextOk"),
+                     gnomeExtensionListText({QStringLiteral("a@b"),
+                                             QStringLiteral("c")})
+                         == QStringLiteral("['a@b', 'c']"));
+        FocusStatusInput empty;
+        focus.insert(QStringLiteral("statusGateOk"),
+                     focusStatusText(empty).contains(
+                         QStringLiteral("no focus provider")));
+        root.insert(QStringLiteral("focus"), focus);
     }
 
     {
