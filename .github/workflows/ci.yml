@@ -998,6 +998,21 @@ jobs:
               print("arm64 artifact ok:", path.rsplit("/", 1)[-1],
                     d["processCount"], "procs")
           PY
+          # The bridge payload must be discoverable from the bundle's own
+          # appDir on native arm (qemu's /proc/self/exe cannot prove this).
+          focus_bin="$(mktemp -d)"
+          cat > "$focus_bin/gsettings" <<'G'
+          #!/bin/sh
+          case "$1" in get) echo "[]" ;; esac
+          exit 0
+          G
+          chmod +x "$focus_bin/gsettings"
+          focus_home="$(mktemp -d)"
+          PATH="$focus_bin:$PATH" HOME="$focus_home" \
+            XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland \
+            "$run_dir/run.sh" focus-bridge
+          test -f "$focus_home/.local/share/gnome-shell/extensions/crowsnest-focus@codeafridi/extension.js"
+          echo "arm64 focus-bridge payload ok"
 
       - name: Screenshot evidence (linux)
         if: matrix.os == 'ubuntu-24.04'

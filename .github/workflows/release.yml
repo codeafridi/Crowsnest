@@ -94,6 +94,20 @@ jobs:
           print("portable x86_64 ok:", d["processCount"], "procs")
           PY
 
+          focus_bin="$(mktemp -d)"
+          cat > "$focus_bin/gsettings" <<'G'
+          #!/bin/sh
+          case "$1" in get) echo "[]" ;; esac
+          exit 0
+          G
+          chmod +x "$focus_bin/gsettings"
+          focus_home="$(mktemp -d)"
+          PATH="$focus_bin:$PATH" HOME="$focus_home" \
+            XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland \
+            "$run_dir/run.sh" focus-bridge
+          test -f "$focus_home/.local/share/gnome-shell/extensions/crowsnest-focus@codeafridi/extension.js"
+          echo "portable x86_64 focus-bridge payload ok"
+
       - name: Verify AppImage (x86_64)
         run: |
           dist="${RUNNER_TEMP}/linux-dist"
@@ -196,6 +210,20 @@ jobs:
           print("portable aarch64 ok:", d["processCount"], "procs,",
                 d["host"]["cores"], "cores")
           PY
+
+          focus_bin="$(mktemp -d)"
+          cat > "$focus_bin/gsettings" <<'G'
+          #!/bin/sh
+          case "$1" in get) echo "[]" ;; esac
+          exit 0
+          G
+          chmod +x "$focus_bin/gsettings"
+          focus_home="$(mktemp -d)"
+          PATH="$focus_bin:$PATH" HOME="$focus_home" \
+            XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland \
+            "$run_dir/run.sh" focus-bridge
+          test -f "$focus_home/.local/share/gnome-shell/extensions/crowsnest-focus@codeafridi/extension.js"
+          echo "portable aarch64 focus-bridge payload ok"
 
       - name: Verify AppImage (arm64)
         run: |
