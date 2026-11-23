@@ -1231,20 +1231,39 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build the .deb inside ${{ matrix.image }} (arm64)
+        timeout-minutes: 30
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
+          set -euo pipefail
+          # A stalled registry connection used to burn the whole 45-minute job
+          # budget with no output. Pull under a bound and retry; an image that
+          # is already local survives a failed manifest check.
+          for attempt in 1 2 3; do
+            if timeout 300 docker pull --platform linux/arm64 "$IMAGE"; then
+              break
+            fi
+            echo "docker pull attempt ${attempt} failed; retrying in 15 s"
+            sleep 15
+          done
+          docker image inspect "$IMAGE" >/dev/null
           mkdir -p "${RUNNER_TEMP}/deb"
-          docker run --rm --platform linux/arm64 \
+          timeout 1500 docker run --rm --platform linux/arm64 \
             -v "$PWD":/src:ro -v "${RUNNER_TEMP}/deb":/out \
-            "${{ matrix.image }}" \
+            "$IMAGE" \
             bash /src/cpp/packaging/ci/deb_container_build.sh
           ls -l "${RUNNER_TEMP}/deb"
 
       - name: Clean-room install + run in ${{ matrix.image }} (arm64)
+        timeout-minutes: 10
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
-          docker run --rm --platform linux/arm64 \
+          set -euo pipefail
+          timeout 600 docker run --rm --platform linux/arm64 \
             -v "${RUNNER_TEMP}/deb":/pkg:ro \
             -v "$PWD/cpp/packaging/ci":/ci:ro \
-            "${{ matrix.image }}" bash /ci/deb_container_verify.sh
+            "$IMAGE" bash /ci/deb_container_verify.sh
 
   # The Debian package links the DISTRIBUTION's Qt, not the aqt Qt the matrix
   # builds against, so it is built and then installed in a clean container of
@@ -1263,15 +1282,33 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build the .deb inside ${{ matrix.image }}
+        timeout-minutes: 30
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
+          set -euo pipefail
+          # Bound the pull: a stalled registry connection must fail the step
+          # with a message, not silently consume the job's whole timeout.
+          for attempt in 1 2 3; do
+            if timeout 300 docker pull "$IMAGE"; then break; fi
+            echo "docker pull attempt ${attempt} failed; retrying in 15 s"
+            sleep 15
+          done
+          docker image inspect "$IMAGE" >/dev/null
           mkdir -p "${RUNNER_TEMP}/deb"
-          docker run --rm -v "$PWD":/src:ro -v "${RUNNER_TEMP}/deb":/out \
-            "${{ matrix.image }}" \
+          timeout 1500 docker run --rm \
+            -v "$PWD":/src:ro -v "${RUNNER_TEMP}/deb":/out \
+            "$IMAGE" \
             bash /src/cpp/packaging/ci/deb_container_build.sh
           ls -l "${RUNNER_TEMP}/deb"
 
       - name: Clean-room install + run in ${{ matrix.image }}
+        timeout-minutes: 10
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
-          docker run --rm -v "${RUNNER_TEMP}/deb":/pkg:ro \
+          set -euo pipefail
+          timeout 600 docker run --rm \
+            -v "${RUNNER_TEMP}/deb":/pkg:ro \
             -v "$PWD/cpp/packaging/ci":/ci:ro \
-            "${{ matrix.image }}" bash /ci/deb_container_verify.sh
+            "$IMAGE" bash /ci/deb_container_verify.sh

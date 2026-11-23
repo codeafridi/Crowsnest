@@ -67,8 +67,18 @@ jobs:
       # Qt API newer than the floor and an under-declared Depends: line before
       # a user's `apt install` does.
       - name: Clean-room install + run
+        timeout-minutes: 10
         run: |
-          docker run --rm -v "$PWD/cpp/build/packaging":/pkg:ro \
+          set -euo pipefail
+          # Bound the registry: a stalled pull must fail here, not consume the
+          # job budget with no output.
+          for attempt in 1 2 3; do
+            if timeout 300 docker pull ubuntu:24.04; then break; fi
+            echo "docker pull attempt ${attempt} failed; retrying in 15 s"
+            sleep 15
+          done
+          docker image inspect ubuntu:24.04 >/dev/null
+          timeout 600 docker run --rm -v "$PWD/cpp/build/packaging":/pkg:ro \
             -v "$PWD/cpp/packaging/ci":/ci:ro \
             ubuntu:24.04 bash /ci/deb_container_verify.sh
 
