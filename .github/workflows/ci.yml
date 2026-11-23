@@ -487,6 +487,91 @@ jobs:
           print(cost[0])
           PY
 
+      # The headless collector is what a display-less fleet member runs; prove
+      # the endpoint, its bearer check and the snapshot on every runner.
+      - name: Serve smoke
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          CROWSNEST_BIN=./cpp/build/crowsnest
+          if [ "$(uname -s)" = "Darwin" ] && [ -x ./cpp/build/crowsnest.app/Contents/MacOS/crowsnest ]; then
+            CROWSNEST_BIN=./cpp/build/crowsnest.app/Contents/MacOS/crowsnest
+          fi
+          WORK="${RUNNER_TEMP}/serve-smoke"
+          mkdir -p "$WORK"
+          cat > "$WORK/config.ini" <<'EOF'
+          [metrics]
+          enabled = true
+          bind = 127.0.0.1
+          port = 9333
+          token = serve-smoke-token-0123456789abcdef
+
+          [fleet]
+          enabled = true
+          share = true
+          token = serve-smoke-token-0123456789abcdef
+          EOF
+          CROWSNEST_CONFIG="$WORK/config.ini" "$CROWSNEST_BIN" serve > "$WORK/serve.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          code=000
+          for _ in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9333/metrics || true)
+            [ "$code" = "401" ] && break
+            sleep 0.5
+          done
+          if [ "$code" != "401" ]; then cat "$WORK/serve.log"; exit 1; fi
+          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+            http://127.0.0.1:9333/metrics | grep -q '^crowsnest_'
+          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+            http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
+          python3 - "$WORK/snap.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d["schema"] == 1 and d["processCount"] > 0, d
+          print("serve smoke ok:", d["platform"], d["processCount"], "procs")
+          PY
+
+      - name: Serve smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          CROWSNEST_BIN=./cpp/build/Release/crowsnest.exe
+          WORK="${RUNNER_TEMP}/serve-smoke"
+          mkdir -p "$WORK"
+          cat > "$WORK/config.ini" <<'EOF'
+          [metrics]
+          enabled = true
+          bind = 127.0.0.1
+          port = 9333
+          token = serve-smoke-token-0123456789abcdef
+
+          [fleet]
+          enabled = true
+          share = true
+          token = serve-smoke-token-0123456789abcdef
+          EOF
+          CROWSNEST_CONFIG="$(cygpath -w "$WORK/config.ini")" "$CROWSNEST_BIN" serve > "$WORK/serve.log" 2>&1 &
+          code=000
+          for _ in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9333/metrics || true)
+            [ "$code" = "401" ] && break
+            sleep 0.5
+          done
+          if [ "$code" != "401" ]; then cat "$WORK/serve.log"; exit 1; fi
+          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+            http://127.0.0.1:9333/metrics | grep -q '^crowsnest_'
+          curl -fsS -H 'Authorization: Bearer serve-smoke-token-0123456789abcdef' \
+            http://127.0.0.1:9333/api/v1/snapshot > "$WORK/snap.json"
+          python - "$WORK/snap.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert d["schema"] == 1 and d["processCount"] > 0, d
+          print("serve smoke ok:", d["platform"], d["processCount"], "procs")
+          PY
+          taskkill //F //IM crowsnest.exe >/dev/null 2>&1 || true
+
       - name: Record smoke
         if: runner.os != 'Windows'
         run: |
@@ -515,6 +600,12 @@ jobs:
           print("export json ok: %d samples, cpu %s"
                 % (len(d["samples"]), host["cpuPercent"]))
           PY
+          # Stdout mode is data-only: a summary after the document would be a
+          # parse error for jq/python, so the summary goes to stderr.
+          "$CROWSNEST_BIN" --record=2 --format=json > "${RUNNER_TEMP}/stdout.json" 2>/dev/null
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["crowsnest"]; assert len(d["samples"]) == 2' "${RUNNER_TEMP}/stdout.json"
+          "$CROWSNEST_BIN" --record=2 --format=csv > "${RUNNER_TEMP}/stdout.csv" 2>/dev/null
+          [ "$(wc -l < "${RUNNER_TEMP}/stdout.csv")" -eq 3 ]
         env:
           QT_QPA_PLATFORM: offscreen
 
@@ -537,6 +628,9 @@ jobs:
           assert len(d["samples"]) == 2, d["samples"]
           print("export json ok: %d samples" % len(d["samples"]))
           PY
+          # Data on stdout, summary on stderr, on Windows too.
+          ./cpp/build/Release/crowsnest.exe --record=2 --format=json > "${RUNNER_TEMP}/stdout.json" 2>/dev/null
+          python -c "import json,sys; d=json.load(open(sys.argv[1], encoding='utf-8'))['crowsnest']; assert len(d['samples']) == 2" "${RUNNER_TEMP}/stdout.json"
 
       - name: Dump smoke (Windows)
         if: runner.os == 'Windows'

@@ -123,6 +123,38 @@ int main(int argc, char *argv[]) {
 
     delete thread;
 
+    // M58d, extended by the deep pass: with no focus provider the host tail
+    // still fills, and the per-interface rows are part of that tail. A machine
+    // with no focus source used to lose the Network page's INTERFACES card and
+    // every crowsnest_net_* series.
+    {
+        FakeProvider none(-1);
+        auto *thread2 = new QThread;
+        auto *worker2 = new SamplerWorker(&none);
+        worker2->moveToThread(thread2);
+        QObject::connect(thread2, &QThread::started, worker2, &SamplerWorker::start);
+        QObject::connect(thread2, &QThread::finished, worker2, &QObject::deleteLater);
+        int got = 0;
+        DisplaySnapshot noFocus;
+        QObject::connect(worker2, &SamplerWorker::snapshotReady, &app,
+                         [&got, &noFocus](const DisplaySnapshot &s) {
+                             ++got;
+                             noFocus = s;
+                         });
+        thread2->start();
+        const bool ticked = waitFor(got, 1, 4000);
+        check(ticked, "no-focus worker emits a snapshot");
+        check(!noFocus.focusAvailable, "no-focus snapshot says focus unavailable");
+        check(noFocus.hostAvailable, "no-focus snapshot still fills the host");
+#ifdef Q_OS_LINUX
+        check(!noFocus.interfaces.isEmpty(),
+              "no-focus snapshot still carries interface rows");
+#endif
+        thread2->quit();
+        thread2->wait();
+        delete thread2;
+    }
+
     kill(live, SIGKILL);
     waitpid(live, nullptr, 0);
 

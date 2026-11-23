@@ -7,6 +7,9 @@
 
 #if defined(Q_OS_LINUX)
 #include "platform/linux/LinuxBackend.h"
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #endif
 
 #include <QCoreApplication>
@@ -151,7 +154,23 @@ int main(int argc, char *argv[]) {
           "linux: procCpu(self)");
     check(linux.identity(self).isValid(), "linux: identity(self) valid");
     check(linux.countFds(self) >= 0, "linux: countFds(self)");
-    check(!linux.readNetSockets().isEmpty(), "linux: readNetSockets() non-empty");
+    // A container with no sockets is a valid netns: create one so the check
+    // proves the parser, not that some daemon happened to be running.
+    const int probeSocket = ::socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in probeAddr{};
+    probeAddr.sin_family = AF_INET;
+    probeAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    probeAddr.sin_port = 0;
+    const bool listening = probeSocket >= 0
+        && ::bind(probeSocket, reinterpret_cast<sockaddr *>(&probeAddr),
+                  sizeof(probeAddr)) == 0
+        && ::listen(probeSocket, 1) == 0;
+    check(listening, "linux: test listener bound");
+    check(!linux.readNetSockets().isEmpty(),
+          "linux: readNetSockets() non-empty");
+    if (probeSocket >= 0) {
+        ::close(probeSocket);
+    }
     linuxproc::HostCpuTimes hostCpu;
     check(linux.hostCpuTimes(hostCpu) && hostCpu.total > 0,
           "linux: hostCpuTimes() positive");

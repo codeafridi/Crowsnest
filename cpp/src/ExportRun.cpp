@@ -162,17 +162,17 @@ int exportRun(int argc, char **argv) {
         std::fwrite(body.toUtf8().constData(), 1, size_t(body.toUtf8().size()),
                     stdout);
         std::fflush(stdout);
-        std::printf("export summary format=%s samples=%d\n",
-                    args.format.toUtf8().constData(), int(rows.size()));
-        std::fflush(stdout);
+        // Stdout carries the document and nothing else: a summary line after
+        // the JSON is valid to a human and a parse error to jq/python.
+        std::fprintf(stderr, "export summary format=%s samples=%d\n",
+                     args.format.toUtf8().constData(), int(rows.size()));
         return rows.isEmpty() ? 1 : 0;
     }
 
     QFile file(args.out);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        std::printf("export error: could not write %s\n",
-                    args.out.toUtf8().constData());
-        std::fflush(stdout);
+        std::fprintf(stderr, "export error: could not write %s\n",
+                     args.out.toUtf8().constData());
         return 1;
     }
     file.write(body.toUtf8());

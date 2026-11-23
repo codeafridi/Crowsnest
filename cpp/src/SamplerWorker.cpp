@@ -517,23 +517,6 @@ DisplaySnapshot SamplerWorker::buildSnapshot(const FocusSample &focus) {
               });
     snap.socketStateCounts = counts;
 
-    QList<linuxproc::InterfaceStats> interfaceStats;
-    if (m_backend->hostInterfaces(interfaceStats)) {
-        QList<InterfaceRow> interfaceRows;
-        for (const linuxproc::InterfaceStats &stats : interfaceStats) {
-            InterfaceRow row;
-            row.name = stats.name;
-            row.rxBytes = stats.rxBytes;
-            row.txBytes = stats.txBytes;
-            const NetRateTracker::Rate rate =
-                m_netTracker.update(stats.name, stats.rxBytes, stats.txBytes);
-            row.rxPerSec = rate.rxPerSec;
-            row.txPerSec = rate.txPerSec;
-            interfaceRows.append(row);
-        }
-        snap.interfaces = interfaceRows;
-    }
-
     linuxproc::CgroupInfo cgroup;
     if (m_backend->capabilities().cgroups
         && m_backend->cgroupSample(focus.identity.pid, cgroup)
@@ -607,6 +590,30 @@ void SamplerWorker::fillHostTail(DisplaySnapshot &snapshot,
 
     snapshot.hostInfo = m_hostInfo;
     hostSection.end();
+
+    {
+        // Per-interface rows are host data, not focused-app data: without this
+        // a machine with no focus provider lost its INTERFACES card and its
+        // crowsnest_net_* series. The M58 rule (the tail fills without focus)
+        // applies here too.
+        tickbudget::Section section(&m_tickSections, "interfaces");
+        QList<linuxproc::InterfaceStats> interfaceStats;
+        if (m_backend->hostInterfaces(interfaceStats)) {
+            QList<InterfaceRow> interfaceRows;
+            for (const linuxproc::InterfaceStats &stats : interfaceStats) {
+                InterfaceRow row;
+                row.name = stats.name;
+                row.rxBytes = stats.rxBytes;
+                row.txBytes = stats.txBytes;
+                const NetRateTracker::Rate rate =
+                    m_netTracker.update(stats.name, stats.rxBytes, stats.txBytes);
+                row.rxPerSec = rate.rxPerSec;
+                row.txPerSec = rate.txPerSec;
+                interfaceRows.append(row);
+            }
+            snapshot.interfaces = interfaceRows;
+        }
+    }
 
     {
         tickbudget::Section section(&m_tickSections, "disks");
