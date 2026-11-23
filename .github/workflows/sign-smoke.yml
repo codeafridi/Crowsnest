@@ -1,0 +1,34 @@
+name: sign smoke
+
+# Temporary workflow: proves cosign keyless signing and the certificate
+# identity shape on this repository before the release workflow relies on it.
+# Deleted after the run.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: sigstore/cosign-installer@v4.1.3
+        with:
+          cosign-release: "v3.1.4"
+
+      - name: Sign and verify keyless
+        run: |
+          printf 'test manifest %s\n' "$(date -u +%s)" > SHA256SUMS
+          cosign sign-blob --yes \
+            --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity \
+              "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/sign-smoke.yml@refs/heads/${GITHUB_REF_NAME}" \
+            --certificate-oidc-issuer \
+              "https://token.actions.githubusercontent.com" \
+            SHA256SUMS
+          ls -l SHA256SUMS SHA256SUMS.sigstore.json
