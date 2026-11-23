@@ -140,6 +140,7 @@ jobs:
           bash -n cpp/packaging/arch/publish-aur.sh
           bash -n cpp/packaging/build_ppa.sh
           bash -n cpp/packaging/build_appimage.sh
+          bash -n cpp/packaging/verify_release.sh
           python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('cpp/packaging/obs/_service'); print('obs _service: valid XML')"
 
       - name: Upload artifacts
@@ -321,6 +322,11 @@ jobs:
   checksums:
     needs: [build, build-macos, build-windows, build-linux-arm64]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Sigstore keyless signing mints a short-lived certificate from the
+      # workflow's OIDC identity; no long-lived key is stored anywhere.
+      id-token: write
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -352,10 +358,29 @@ jobs:
             exit 1
           fi
           cat SHA256SUMS
+
+      - uses: sigstore/cosign-installer@v4.1.3
+        with:
+          cosign-release: "v3.1.4"
+
+      - name: Sign and verify the manifest (Sigstore keyless)
+        run: |
+          cosign sign-blob --yes \
+            --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+          cosign verify-blob --bundle dist/SHA256SUMS.sigstore.json \
+            --certificate-identity \
+              "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            --certificate-oidc-issuer \
+              "https://token.actions.githubusercontent.com" \
+            dist/SHA256SUMS
+          ls -l dist/SHA256SUMS dist/SHA256SUMS.sigstore.json
+
       - uses: actions/upload-artifact@v7
         with:
           name: packages-checksums
-          path: dist/SHA256SUMS
+          path: |
+            dist/SHA256SUMS
+            dist/SHA256SUMS.sigstore.json
           if-no-files-found: error
 
   github-release:
@@ -391,6 +416,7 @@ jobs:
             dist-macos/*
             dist-windows/*
             dist-checksums/SHA256SUMS
+            dist-checksums/SHA256SUMS.sigstore.json
           generate_release_notes: true
       # NOTE: every artifact above is built by this workflow: the portable
       # bundles, AppImages (with zsync) and both .debs included. `crowsnest

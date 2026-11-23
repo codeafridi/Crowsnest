@@ -51,6 +51,36 @@ foreach ($dll in $runtimeDlls) {
     Copy-Item $src $stage
 }
 
+# ---- Optional Authenticode. Off by default: the project has no Windows
+# certificate. Set CROWSNEST_SIGN_CERT to a .pfx/.p12 path (and
+# CROWSNEST_SIGN_PASSWORD when it has one) to sign the exe and the MSI;
+# a requested signature that cannot be applied is an error, never a silent
+# unsigned build.
+$signCert = $env:CROWSNEST_SIGN_CERT
+$signPassword = $env:CROWSNEST_SIGN_PASSWORD
+$signtool = $null
+if ($signCert) {
+    $candidates = @()
+    $onPath = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($onPath) { $candidates += $onPath.Source }
+    $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path $kits) {
+        $candidates += Get-ChildItem -Path $kits -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending | ForEach-Object { $_.FullName }
+    }
+    $signtool = $candidates | Select-Object -First 1
+    if (-not $signtool) {
+        throw "CROWSNEST_SIGN_CERT is set but signtool.exe was not found"
+    }
+    $signArgs = @("sign", "/fd", "SHA256", "/f", $signCert,
+                  "/tr", "http://timestamp.digicert.com", "/td", "SHA256")
+    if ($signPassword) { $signArgs += @("/p", $signPassword) }
+    & $signtool @signArgs $stagedExe
+    & $signtool verify /pa /v $stagedExe
+    Write-Host "authenticode: signed crowsnest.exe"
+}
+
 # ---- Generate payload.wxs: one Component per file, nested Directories.
 $files = Get-ChildItem -Recurse -File $stage
 $sha1 = New-Object System.Security.Cryptography.SHA1CryptoServiceProvider
@@ -133,6 +163,16 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 $msiOut = Join-Path $outDir "Crowsnest-$Version-windows.msi"
 wix build -arch x64 -d Version=$Version -b $stage -b $PSScriptRoot -o $msiOut `
     (Join-Path $PSScriptRoot "Crowsnest.wxs") $payloadPath
+
+if ($signCert) {
+    $msiArgs = @("sign", "/fd", "SHA256", "/f", $signCert,
+                 "/tr", "http://timestamp.digicert.com", "/td", "SHA256")
+    if ($signPassword) { $msiArgs += @("/p", $signPassword) }
+    $msiArgs += $msiOut
+    & $signtool @msiArgs
+    & $signtool verify /pa /v $msiOut
+    Write-Host "authenticode: signed the MSI"
+}
 
 $hash = (Get-FileHash -Algorithm SHA256 $msiOut).Hash.ToLower()
 "$hash  Crowsnest-$Version-windows.msi" |

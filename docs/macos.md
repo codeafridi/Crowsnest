@@ -102,5 +102,7 @@ bash cpp/packaging/build_macos.sh
 
 Universal `arm64;x86_64` by default (`CROWSNEST_ARCHS` overrides), requires
 Qt 6.8+ (`QT_ROOT_DIR` or `macdeployqt` in PATH) and Xcode CLT.
-Notarization is pending (no Apple Developer account yet); the DMG is
-signed-free until then.
+The `SHA256SUMS` manifest is Sigstore-signed; the DMG itself is not
+Apple-notarized yet (no Developer ID account). `build_macos.sh` accepts
+`CROWSNEST_CODESIGN_IDENTITY` and `CROWSNEST_NOTARY_PROFILE` to sign and
+notarize when an account/certificate exists.

@@ -115,8 +115,14 @@ directory, the command path, the service/autostart target and what `uninstall`
 removes. `--verify` / `-Verify` downloads the artifact that would be
 installed, hashes it, compares it with the release's `SHA256SUMS` (or the
 per-asset `.sha256` sidecar), prints both digests on a mismatch and installs
-nothing. **The checksum proves the bytes are the published bytes; it cannot
-prove who published them — the releases are not code-signed.**
+nothing.
+
+The checksum proves the bytes. The `SHA256SUMS` manifest is also signed with
+Sigstore keyless by the release workflow, so the publisher can be checked
+without a key; `cpp/packaging/verify_release.sh --all` does both on any OS
+with `cosign` installed ([docs/verify.md](verify.md)). **The macOS and
+Windows installers themselves are not Apple/Microsoft-signed yet**, so
+Gatekeeper/SmartScreen still warn once.
 
 What is written, exactly (nothing else): on Linux the app under
 `~/.local/opt/crowsnest`, the command in `~/.local/bin`, the user unit under

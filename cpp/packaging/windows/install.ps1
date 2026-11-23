@@ -231,8 +231,10 @@ function Test-Artifact {
                 Info ''
                 Info "verified: $name matches the release manifest"
                 Info 'Nothing was installed (this is -Verify).'
-                Info 'The checksum proves the bytes are the published bytes; it does'
-                Info 'not prove who published them - the release is not code-signed.'
+                Info 'The checksum proves the bytes. The SHA256SUMS manifest is also'
+                Info 'Sigstore-signed by the release workflow; docs/verify.md shows'
+                Info 'how to check the publisher. The Windows installer itself is not'
+                Info 'Authenticode-signed yet.'
                 $code = 0
             } else {
                 Info ''

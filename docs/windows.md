@@ -55,7 +55,11 @@ the community source (one-time PR per version after a release).
 ## Unsigned build — SmartScreen first run
 
 There is no Authenticode certificate yet (same policy as the macOS
-DMG). On the first run the MSI/portable you may see
+DMG). The `SHA256SUMS` manifest is Sigstore-signed, so the publisher can be
+checked with `cpp/packaging/verify_release.sh --all`; the MSI/portable
+themselves are not Authenticode-signed. `build_msi.ps1` accepts
+`CROWSNEST_SIGN_CERT` (+ `CROWSNEST_SIGN_PASSWORD`) and signs the exe and MSI
+when a certificate exists. On the first run you may see
 "Windows protected your PC":
 
 1. Click **More info**.

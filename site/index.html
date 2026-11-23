@@ -244,11 +244,12 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             <p class="install-after">After install: <code>crowsnest</code> to run it, <code>crowsnest status</code> to check it, <code>crowsnest stop</code> to quit it, <code>crowsnest update</code> to upgrade, and <code>crowsnest serve</code> to run the headless collector on a display-less fleet member.</p>
 
             <div class="verify">
-              <p class="plate-no">VERIFY / UNSIGNED BUILDS</p>
-              <p>Every release carries a <code>SHA256SUMS</code> file. To download and check the exact artifact without installing it:</p>
-              <pre class="verify-cmd">curl -fsSL https://raw.githubusercontent.com/codeafridi/Crowsnest/main/install.sh | sh -s -- --verify</pre>
-              <p>On Windows the downloaded installer takes <code>-Verify</code>. A checksum proves the bytes, not the publisher: the builds are unsigned, and the source is public.</p>
-              <p class="verify-link"><a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">SHA256SUMS and signatures on Releases &nearr;</a></p>
+              <p class="plate-no">VERIFY / SIGNED MANIFEST</p>
+              <p>Every release carries a <code>SHA256SUMS</code> file and a Sigstore bundle. To download, check the bytes and check the publisher without installing anything:</p>
+              <pre class="verify-cmd">curl -fsSLO https://raw.githubusercontent.com/codeafridi/Crowsnest/main/cpp/packaging/verify_release.sh
+bash verify_release.sh --all</pre>
+              <p>Or use the one-liner's <code>--verify</code> for the checksum only (Windows <code>-Verify</code>). The manifest is signed keyless by the release workflow, so there is no key to fetch. The macOS/Windows installers themselves are not Apple/Microsoft-signed yet, so Gatekeeper/SmartScreen still warn once.</p>
+              <p class="verify-link"><a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">SHA256SUMS and Sigstore bundles on Releases &nearr;</a></p>
             </div>
           </div>
         </div>

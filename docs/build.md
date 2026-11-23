@@ -66,6 +66,33 @@ picks the asset for `uname -m`, refuses a bundle stamped for the other
 architecture before extraction, and refuses 32-bit ARM with the arm64
 requirement.
 
+## Release provenance and signing
+
+The release workflow signs `SHA256SUMS` with Sigstore keyless at the tag, and
+the publish step refuses to run if the signature does not verify. To check a
+release yourself (no key needed):
+
+```bash
+bash cpp/packaging/verify_release.sh --all v0.13.5
+```
+
+The macOS and Windows packages have optional OS signing, off until a
+certificate exists:
+
+```bash
+# macOS: Developer ID Application + a notarytool keychain profile
+CROWSNEST_CODESIGN_IDENTITY="Developer ID Application: ..." \
+CROWSNEST_NOTARY_PROFILE="crowsnest-notary" bash cpp/packaging/build_macos.sh
+
+# Windows: .pfx path and password
+CROWSNEST_SIGN_CERT=C:\keys\crowsnest.pfx CROWSNEST_SIGN_PASSWORD=... \
+  pwsh cpp/packaging/windows/build_msi.ps1 -Version 0.13.5
+```
+
+A requested signature that cannot be applied fails the build. [docs/verify.md](../verify.md)
+has the exact verification commands and what each layer does and does not
+prove.
+
 ## Tests
 
 ```bash

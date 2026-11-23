@@ -574,8 +574,10 @@ verify_artifact() { # <flow> — download + checksum only, never install
     log ""
     log "verified: $name matches the release manifest"
     log "Nothing was installed (this is --verify)."
-    log "The checksum proves the bytes are the published bytes; it does not"
-    log "prove who published them - the release is not code-signed."
+    log "The checksum proves the bytes. The SHA256SUMS manifest is also signed"
+    log "with Sigstore by the release workflow; docs/verify.md shows how to"
+    log "check the publisher. The macOS/Windows installers themselves are not"
+    log "OS-code-signed yet."
     exit 0
   fi
   log ""

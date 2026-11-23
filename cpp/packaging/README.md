@@ -67,6 +67,21 @@ There is no generic Wayland way to obtain the focused PID (the foreign-toplevel
 protocols expose only `app_id`/`title`), so compositor-specific adapters are
 required.
 
+## Verify a release
+
+The release workflow signs the unified `SHA256SUMS` with Sigstore keyless (no
+key to fetch or rotate) and verifies the signature before publishing:
+
+```bash
+bash cpp/packaging/verify_release.sh --all v0.13.5
+```
+
+`--all` checks the signature against this repository's release workflow at
+that tag, then downloads every asset the manifest names and checks each
+digest. [docs/verify.md](../../docs/verify.md) has the manual commands and the
+OS-code-signing status (Apple notarization / Windows Authenticode need
+certificates; the scripts accept them when present).
+
 ## Configuration
 
 Optional INI file at `~/.config/crowsnest/config.ini`

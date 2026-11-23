@@ -87,8 +87,17 @@ command path, the service file and what `uninstall` would remove. It
 downloads nothing and changes nothing. `--verify` fetches the artifact that
 would be installed, hashes it, compares it with the release's `SHA256SUMS`
 (or the per-asset `.sha256` sidecar on macOS and Windows), and installs
-nothing. The checksum proves the bytes are the published bytes; it cannot
-prove who published them, because the releases are not code-signed.
+nothing. The checksum proves the bytes; the manifest is also signed with
+Sigstore keyless by the release workflow, so the publisher can be checked
+without a key:
+
+```sh
+bash cpp/packaging/verify_release.sh --all
+```
+
+The macOS and Windows installers themselves are not Apple/Microsoft-signed
+yet, so Gatekeeper and SmartScreen still warn once. [docs/verify.md](docs/verify.md)
+has the exact commands and what the signature does and does not prove.
 
 On Linux **no root is needed**: the app goes to `~/.local/opt/crowsnest`, the
 command to `~/.local/bin/crowsnest`, the user unit to
@@ -292,6 +301,7 @@ left off.
 * [docs/fleet.md](docs/fleet.md): several machines in one console
 * [docs/remote.md](docs/remote.md): the relay reporter and its privacy rules
 * [docs/focus.md](docs/focus.md): every focus provider, the one-time bridge setup, the PIN and the status line
+* [docs/verify.md](docs/verify.md): verify a release's Sigstore-signed manifest, and the OS-code-signing status
 * [docs/pricing.md](docs/pricing.md): what is free (the app and a relay you run) and what the managed relay costs
 * [docs/build.md](docs/build.md): build from source and the package gate
 
