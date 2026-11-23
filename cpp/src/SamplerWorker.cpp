@@ -592,6 +592,11 @@ void SamplerWorker::fillHostTail(DisplaySnapshot &snapshot,
     hostSection.end();
 
     {
+        tickbudget::Section section(&m_tickSections, "pids");
+        snapshot.hostProcessCount = m_backend->allPids().size();
+    }
+
+    {
         // Per-interface rows are host data, not focused-app data: without this
         // a machine with no focus provider lost its INTERFACES card and its
         // crowsnest_net_* series. The M58 rule (the tail fills without focus)

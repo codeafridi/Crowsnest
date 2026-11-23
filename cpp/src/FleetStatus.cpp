@@ -594,7 +594,7 @@ FleetPeer fleetSelfPeer(const DisplaySnapshot &snapshot, const QString &name,
     }
     self.netRxPerSec = snapshot.hostNetRxPerSec;
     self.netTxPerSec = snapshot.hostNetTxPerSec;
-    self.processCount = snapshot.processes.size();
+    self.processCount = snapshot.hostProcessCount;
     self.listeningCount = snapshot.listeningPorts.size();
     self.connectionCount = snapshot.connections.size();
     int established = 0;
@@ -698,7 +698,7 @@ QByteArray fleetSnapshotJson(const DisplaySnapshot &snapshot,
     host.insert(QStringLiteral("netTxPerSec"), snapshot.hostNetTxPerSec);
     root.insert(QStringLiteral("host"), host);
 
-    root.insert(QStringLiteral("processes"), snapshot.processes.size());
+    root.insert(QStringLiteral("processes"), snapshot.hostProcessCount);
 
     int established = 0;
     for (const ConnectionRow &row : snapshot.connections) {

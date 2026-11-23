@@ -1,6 +1,7 @@
 #include "TraceSource.h"
 
 #include <QHostAddress>
+#include <QDebug>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -23,6 +24,8 @@ void TraceSource::start() {
     m_server = new QTcpServer(this);
     if (!m_server->listen(QHostAddress::LocalHost,
                           static_cast<quint16>(m_config.port))) {
+        qWarning("otlp: cannot listen on 127.0.0.1:%d - %s",
+                 m_config.port, qPrintable(m_server->errorString()));
         delete m_server;
         m_server = nullptr;
         return;

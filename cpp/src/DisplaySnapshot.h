@@ -112,6 +112,11 @@ struct DisplaySnapshot {
     unsigned long long vmsKb = 0;
     unsigned long long swapKb = 0;
     unsigned long long sharedKb = 0;
+    // Host-wide process count. The rows above are the focused app's group, so
+    // they are empty on a display-less/no-focus machine; the fleet payload and
+    // the peer summary still need one honest number for the host.
+    int hostProcessCount = 0;
+
     QList<ProcessRow> processes;
     bool processNetAvailable = false;
     bool processNetWarming = false;

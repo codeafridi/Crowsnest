@@ -150,6 +150,8 @@ int main(int argc, char *argv[]) {
         check(!noFocus.interfaces.isEmpty(),
               "no-focus snapshot still carries interface rows");
 #endif
+        check(noFocus.hostProcessCount > 0,
+              "no-focus snapshot still counts host processes");
         thread2->quit();
         thread2->wait();
         delete thread2;

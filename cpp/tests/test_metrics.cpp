@@ -9042,6 +9042,7 @@ int main(int argc, char *argv[]) {
         sample.hostMemAvailableKb = 2000000;
         sample.hostLoad1 = 2.25;
         sample.sequence = 11;
+        sample.hostProcessCount = 321;
         const QByteArray document = fleetSnapshotJson(
             sample, QStringLiteral("box"), QStringLiteral("box.local"),
             QStringLiteral("9.9.9"), QStringLiteral("linux"));
@@ -9054,6 +9055,7 @@ int main(int argc, char *argv[]) {
                   && readBack.version == QStringLiteral("9.9.9")
                   && readBack.platform == QStringLiteral("linux")
                   && readBack.sequence == 11
+                  && readBack.processCount == 321
                   && qAbs(readBack.cpuPercent - 31.5) < 0.001
                   && qAbs(readBack.load1 - 2.25) < 0.001
                   && readBack.memAvailableKb == 2000000

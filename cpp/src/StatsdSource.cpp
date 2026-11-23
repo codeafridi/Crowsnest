@@ -1,6 +1,7 @@
 #include "StatsdSource.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QHostAddress>
 #include <QTimer>
 #include <QUdpSocket>
@@ -17,6 +18,8 @@ void StatsdSource::start() {
     m_socket = new QUdpSocket(this);
     if (!m_socket->bind(QHostAddress::LocalHost,
                         static_cast<quint16>(m_config.port))) {
+        qWarning("dogstatsd: cannot bind 127.0.0.1:%d - %s",
+                 m_config.port, qPrintable(m_socket->errorString()));
         delete m_socket;
         m_socket = nullptr;
         emit statsdReady(StatsdSnapshot{});
