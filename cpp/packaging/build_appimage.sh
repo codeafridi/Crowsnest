@@ -12,6 +12,8 @@
 #
 # Environment:
 #   APPIMAGETOOL_URL  override the appimagetool download URL
+#   APPIMAGE_RUNTIME_URL  override the type2 runtime download URL
+#   APPIMAGE_RUNTIME_SHA256  refuse a runtime whose sha256 does not match
 #
 set -euo pipefail
 
@@ -89,7 +91,47 @@ exec "$HERE/usr/bin/crowsnest" "$@"
 EOF
 chmod +x "$appdir/AppRun"
 
-# 3. appimagetool.
+# 3. appimagetool + the type2 runtime.
+#
+#    The runtime is fetched here, not left to appimagetool: its internal
+#    downloader has no visible connect/size bound, and a stalled socket once
+#    held a local build for minutes. Bounding and retrying the fetch keeps a
+#    release from hanging on it, and APPIMAGE_RUNTIME_SHA256 lets an operator
+#    pin the bytes they trust.
+tool_dir="$out_dir/.tools"
+runtime="$tool_dir/runtime-${arch}"
+if [ ! -s "$runtime" ]; then
+  mkdir -p "$tool_dir"
+  runtime_url="${APPIMAGE_RUNTIME_URL:-https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${arch}}"
+  log "downloading runtime"
+  ok=0
+  for _ in 1 2 3; do
+    rm -f "${runtime}.part"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --connect-timeout 15 --max-time 120 \
+        -o "${runtime}.part" "$runtime_url" && ok=1
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q --timeout=120 -O "${runtime}.part" "$runtime_url" && ok=1
+    else
+      echo "error: need curl or wget to download the AppImage runtime" >&2
+      exit 1
+    fi
+    [ "$ok" -eq 1 ] && break
+  done
+  if [ "$ok" -ne 1 ]; then
+    echo "error: could not download the AppImage runtime from $runtime_url" >&2
+    exit 1
+  fi
+  mv "${runtime}.part" "$runtime"
+fi
+if [ -n "${APPIMAGE_RUNTIME_SHA256:-}" ]; then
+  actual="$(sha256sum "$runtime" | awk '{print $1}')"
+  [ "$actual" = "$APPIMAGE_RUNTIME_SHA256" ] || {
+    echo "error: runtime sha256 $actual does not match APPIMAGE_RUNTIME_SHA256" >&2
+    exit 1
+  }
+fi
+
 if [ ! -x "$appimagetool" ]; then
   mkdir -p "$tool_dir"
   log "downloading appimagetool"
@@ -129,8 +171,8 @@ if ! command -v zsyncmake >/dev/null 2>&1; then
     echo "         AppImageUpdate delta support" >&2
   fi
 fi
-if ! ARCH="$arch" "$appimagetool" -u "$UPDATE_INFORMATION" --no-appstream "$appdir" "$appimage" >/dev/null 2>&1; then
-  ARCH="$arch" "$appimagetool" -u "$UPDATE_INFORMATION" "$appdir" "$appimage"
+if ! ARCH="$arch" "$appimagetool" --runtime-file "$runtime" -u "$UPDATE_INFORMATION" --no-appstream "$appdir" "$appimage" >/dev/null 2>&1; then
+  ARCH="$arch" "$appimagetool" --runtime-file "$runtime" -u "$UPDATE_INFORMATION" "$appdir" "$appimage"
 fi
 chmod +x "$appimage" 2>/dev/null || true
 
