@@ -69,11 +69,14 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
           <div class="hero-visual" aria-label="The Crowsnest console with the overlay strip">
             <div class="frame console-frame">
               <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> CONSOLE / OVERVIEW <span class="frame-live">LIVE CAPTURE</span></div>
-              <a href="shots/overview.webp" target="_blank" rel="noopener"><img src="shots/overview.webp" width="1020" height="1040" alt="Crowsnest Overview console: focused app CPU, memory and process count, host CPU, memory and load, network and disk charts, and the watchdog cards." fetchpriority="high" /></a>
+              <a href="#console"><img src="shots/console-live-poster.webp" width="1020" height="1040" alt="Crowsnest's console on a real machine: focused app CPU, memory and process count, host CPU, memory and load, network and disk charts, and the watchdog cards." fetchpriority="high" /></a>
             </div>
             <div class="overlay-float">
               <span class="float-label">OVERLAY / 430 PX</span>
-              <img src="hud.png" width="430" height="197" alt="The compact Crowsnest overlay: focused app cursor, its PID, CPU and RSS, Docker and Kubernetes lines, and the PIN/MORE/CLICK/HIDE buttons." />
+              <video width="430" height="208" autoplay muted loop playsinline poster="hud.png" aria-label="A live capture of the compact Crowsnest strip: the focused app's CPU and memory update once a second, with Docker and Kubernetes counts and the PIN, CONSOLE, CLICK-THRU and HIDE buttons.">
+                <source src="shots/hud-live.webm" type="video/webm" />
+                <source src="shots/hud-live.mp4" type="video/mp4" />
+              </video>
             </div>
           </div>
         </div>
@@ -86,7 +89,7 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             <h2>The strip.</h2>
             <p>Always on top, always the app you are actually using. 430 pixels wide, refreshed every second, with the process tree, disk and TCP for the focused window. <strong>PIN</strong> holds the current app when focus moves; on GNOME/KDE Wayland a one-time bridge supplies the focused window (<code>crowsnest focus-bridge</code>).</p>
             <ul class="micro-list">
-              <li><span>430 × 197</span>pixels</li>
+              <li><span>430</span>pixels wide</li>
               <li><span>1 s</span>refresh</li>
               <li><span>FOCUS</span>follows or PIN</li>
               <li><span>MIT</span>no account</li>
@@ -95,7 +98,10 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
           <div class="hud-stage">
             <div class="dimension dimension-top"><span>430 PX</span></div>
             <div class="hud-art">
-              <img src="hud.png" width="430" height="197" alt="The compact Crowsnest overlay, actual size: focused app cursor, PID, CPU and RSS, Docker and Kubernetes lines, and PIN/MORE/CLICK/HIDE buttons." loading="lazy" />
+              <video width="430" height="208" autoplay muted loop playsinline preload="metadata" poster="hud.png" aria-label="The compact Crowsnest overlay at actual size: the focused app, its CPU and memory updating, Docker and Kubernetes counts, and the footer controls.">
+                <source src="shots/hud-live.webm" type="video/webm" />
+                <source src="shots/hud-live.mp4" type="video/mp4" />
+              </video>
               <span class="hud-corner tl"></span><span class="hud-corner tr"></span><span class="hud-corner bl"></span><span class="hud-corner br"></span>
             </div>
           </div>
@@ -107,7 +113,7 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
           <div class="plate-head">
             <p class="plate-no">PLATE 02 / CONSOLE</p>
             <h2>The machine.</h2>
-            <p>One click opens the same binary as a 34-view console. The process tree, the host, containers, Kubernetes, traces, the cloud bill. A live capture, not a mock-up.</p>
+            <p>One click opens the same binary as a 34-view console. The process tree, the host, containers, Kubernetes, traces, the cloud bill. A live capture from the maintainer's machine, not a mock-up.</p>
           </div>
           <div class="console-stage">
             <div class="ann-col" aria-hidden="true">
@@ -119,11 +125,14 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             <div class="console-art">
               <div class="frame main-frame">
                 <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> CONSOLE / OVERVIEW</div>
-                <img src="shots/overview.webp" width="1020" height="1040" alt="The Crowsnest Overview console: focused app and host metrics with charts, the I/O and network band, and watchdog rows." loading="lazy" />
+                <video width="1020" height="1040" autoplay muted loop playsinline preload="metadata" poster="shots/console-live-poster.webp" aria-label="A live capture of the Crowsnest console on a real machine: the Overview page with focused-app and host charts, the I/O and network band, the watchdog rows, then scrolled to the lower cards.">
+                  <source src="shots/console-live.webm" type="video/webm" />
+                  <source src="shots/console-live.mp4" type="video/mp4" />
+                </video>
               </div>
               <div class="frame inset-frame">
                 <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> CONSOLE / PROCESSES</div>
-                <img src="shots/processes.webp" width="1020" height="1040" alt="The Crowsnest Processes view: a grouped process tree with CPU, RSS, threads, fds, disk and TCP rates, and listening ports." loading="lazy" />
+                <img src="shots/processes-live.webp" width="1020" height="1040" alt="The Crowsnest Processes view on a real machine: a grouped process tree with CPU, RSS, threads, fds, disk and TCP rates, listening ports, the signal controls and the focused process detail." loading="lazy" />
               </div>
             </div>
           </div>
@@ -269,7 +278,7 @@ bash verify_release.sh --all</pre>
             <details class="faq-item"><summary><span>05</span>Which platforms, and what is gated?</summary><p>Linux, macOS and Windows from the same codebase. Collection depth differs by what each OS will hand an unprivileged process, and the console names every gap instead of showing a blank: macOS redacts TCP counters without root, Windows has no load average, cgroups and PSI pressure are Linux surfaces, per-process socket rates need Linux. What works on your OS is listed in Settings, per surface.</p></details>
             <details class="faq-item"><summary><span>06</span>What data leaves my machine?</summary><p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p></details>
             <details class="faq-item"><summary><span>07</span>How do updates work?</summary><p><code>crowsnest update</code> stops the running HUD, fetches the latest release bundle and swaps it in. The AppImage updates itself over zsync, and the .deb, DMG, MSI and portable zip are on the <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases page</a> if you prefer to install by hand.</p></details>
-            <details class="faq-item"><summary><span>08</span>How does it know which app is focused?</summary><p>On GNOME or KDE Wayland it uses a small bridge the installer sets up, or <code>crowsnest focus-bridge</code> if it needs reinstalling. Hyprland, Sway, niri and X11 use their own sources. The strip's <strong>PIN</strong> holds the current app when focus moves, and Settings -> Collection -> FOCUS names the live provider or the next step. <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/focus.md" rel="noopener">The focus reference</a> has every case.</p></details>
+            <details class="faq-item"><summary><span>08</span>How does it know which app is focused?</summary><p>On GNOME or KDE Wayland it uses a small bridge the installer sets up, or <code>crowsnest focus-bridge</code> if it needs reinstalling. Hyprland, Sway, niri and X11 use their own sources; any other Wayland compositor has no focus source, and the strip says <strong>NO FOCUS</strong> while the host, disk and network cards keep collecting. The strip's <strong>PIN</strong> holds the current app when focus moves, and Settings -> Collection -> FOCUS names the live provider or the next step. <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/focus.md" rel="noopener">The focus reference</a> has every case.</p></details>
           </div>
         </div>
       </section>
