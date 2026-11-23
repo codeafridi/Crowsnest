@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crowsnest. A focused process HUD and a 34-view console</title>
-    <meta name="description" content="Crowsnest puts the focused app's CPU, memory, threads, disk and TCP in a 430px strip, then opens a 34-view console for the host, containers, Kubernetes, traces and cloud cost. Linux, macOS and Windows. Local only, MIT. The app is free; Team adds a $9 relay for shared fleet state, 14-day trial, no card." />
+    <meta name="description" content="Crowsnest puts the focused app's CPU, memory, threads, disk and TCP in a 430px strip, then opens a 34-view console for the host, containers, Kubernetes, traces and cloud cost. Linux, macOS and Windows. The app and the relay are MIT and free to run yourself; the managed relay is $9 with a 14-day trial." />
     <meta name="theme-color" content="#080b0e" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
@@ -60,7 +60,7 @@
 https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             </div>
             <div class="hero-under">
-              <span>FREE · TEAM $9/MO · NO ACCOUNT</span>
+              <span>FREE APP · FREE RELAY · MANAGED $9</span>
               <button class="copy-link" type="button" data-copy="#install-command">COPY INSTALL</button>
               <a href="https://github.com/codeafridi/Crowsnest" rel="noopener">VIEW SOURCE &nearr;</a>
             </div>
@@ -138,7 +138,7 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
         <div class="wrap plate-grid reverse">
           <div class="relay-stage">
             <div class="frame relay-frame">
-              <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> RELAY / FLEET <span class="frame-live">TEAM</span></div>
+              <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> RELAY / FLEET <span class="frame-live">RELAY</span></div>
               <a href="shots/relay-fleet.webp" target="_blank" rel="noopener"><img src="shots/relay-fleet.webp" width="1280" height="760" alt="The relay's Fleet page: twelve labeled machines, ten reporting, two silent with dashes in every value column, a composition strip and a watch column." loading="lazy" /></a>
             </div>
             <div class="relay-notes">
@@ -147,16 +147,16 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             </div>
           </div>
           <div class="plate-copy">
-            <p class="plate-no">PLATE 03 / TEAM RELAY</p>
+            <p class="plate-no">PLATE 03 / THE RELAY</p>
             <h2>The relay.</h2>
-            <p>Optional shared state that outlives a closed laptop. The fleet, the incident queue, delivery and the on-call rota live on a relay you run &mdash; not on the machine that just went to sleep.</p>
+            <p>Optional shared state that outlives a closed laptop. The fleet, the incident queue, delivery and the on-call rota live on a relay you run &mdash; not on the machine that just went to sleep. It is MIT and free to self-host.</p>
             <dl class="relay-facts">
               <div><dt>Machines</dt><dd>100</dd></div>
               <div><dt>Seats</dt><dd>10</dd></div>
               <div><dt>Cadence floor</dt><dd>15 s</dd></div>
               <div><dt>Share links</dt><dd>25</dd></div>
             </dl>
-            <a class="arrow-link" href="relay.html">TEAM / $9 A MONTH &nearr;</a>
+            <a class="arrow-link" href="relay.html">THE RELAY / SELF-HOST FREE &nearr;</a>
           </div>
         </div>
       </section>
@@ -164,26 +164,28 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
       <section class="plate spec" id="spec">
         <div class="wrap">
           <div class="plate-head spec-head">
-            <p class="plate-no">SPEC / FREE AND PAID</p>
-            <h2>Free app.<br /><em>Team is $9.</em></h2>
-            <p>The desktop app is the whole app: every view, no account, no telemetry, no licence check. Team adds a relay you run. One price per workspace.</p>
+            <p class="plate-no">SPEC / FREE AND MANAGED</p>
+            <h2>Free app.<br /><em>Relay free too.</em></h2>
+            <p>The desktop app is the whole app: every view, no account, no telemetry, no licence check. The relay is MIT too, and free to run yourself. The $9 plan is that same relay managed by us.</p>
           </div>
 
           <div class="spec-scroll">
-            <div class="spec-table" role="table" aria-label="Free and Team plans">
+            <div class="spec-table" role="table" aria-label="Free and managed relay plans">
               <div class="spec-row spec-headrow" role="row">
                 <span role="columnheader">WHAT YOU GET</span>
                 <span role="columnheader">FREE <b>$0</b></span>
-                <span role="columnheader" class="team-col">TEAM <b>$9/mo</b></span>
+                <span role="columnheader" class="team-col">MANAGED <b>$9/mo</b></span>
               </div>
               <div class="spec-row" role="row"><span>34 console views, Linux, macOS and Windows</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
               <div class="spec-row" role="row"><span>Desktop alerts, incidents, silences, SLO burn, webhooks</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
               <div class="spec-row" role="row"><span>Fleet view over your own LAN</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
-              <div class="spec-row" role="row"><span>Fleet state that survives a closed laptop</span><span class="no">&mdash;</span><span class="yes team-col">YES</span></div>
-              <div class="spec-row" role="row"><span>Browser dashboard with share links</span><span class="no">&mdash;</span><span class="yes team-col">YES</span></div>
-              <div class="spec-row" role="row"><span>Delivery: email, webhook, Slack, PagerDuty, Opsgenie, Discord, Teams</span><span class="no">&mdash;</span><span class="yes team-col">YES</span></div>
-              <div class="spec-row" role="row"><span>Routing tree, escalation steps, on-call rota</span><span class="no">&mdash;</span><span class="yes team-col">YES</span></div>
-              <div class="spec-row" role="row"><span>Members with roles, invites, audit trail</span><span class="no">&mdash;</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Relay: fleet state that survives a closed laptop</span><span class="yes">SELF-HOSTED</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Browser dashboard with share links</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Delivery: email, webhook, Slack, PagerDuty, Opsgenie, Discord, Teams</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Routing tree, escalation steps, on-call rota</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Members with roles, invites, audit trail</span><span class="yes">YES</span><span class="yes team-col">YES</span></div>
+              <div class="spec-row" role="row"><span>Postgres, TLS, upgrades, backups, mail</span><span>you</span><span class="team-col">we do</span></div>
+              <div class="spec-row" role="row"><span>Support</span><span>community</span><span class="team-col">included</span></div>
               <div class="spec-row spec-pricerow" role="row"><span>Price</span><span>$0 forever</span><span class="team-col">$9/mo &middot; $90/yr</span></div>
             </div>
           </div>
@@ -192,7 +194,7 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
             <a class="btn btn-green" href="#install">Install the app &mdash; free</a>
             <a class="btn" href="relay.html">Read the relay manual</a>
           </div>
-          <p class="managed-note">Managed hosting is not open yet: the relay is one static binary you run beside Postgres on your own server. The 14-day trial starts the day that relay begins serving your workspace, and the relay binary is MIT.</p>
+          <p class="managed-note">Managed hosting is not open yet. Self-hosting is free today: one static binary beside Postgres, MIT, no licence check and no expiry. The $9/$90 plan and its 14-day trial apply to the managed relay when it opens.</p>
 
           
         </div>
@@ -260,11 +262,11 @@ https://github.com/codeafridi/Crowsnest/raw/main/install.sh | sh</pre>
           </div>
           <div class="faq-list">
             <details class="faq-item"><summary><span>01</span>Is it really free?</summary><p>Yes. The desktop app is MIT with no account, no telemetry, no licence check and no feature gate. Every one of the 34 views ships in the free build. Local telemetry is never metered, and there is nothing to buy to use it.</p></details>
-            <details class="faq-item"><summary><span>02</span>What does Team add?</summary><p>Shared state that outlives a closed laptop: a relay that holds the fleet view, the incident queue, the on-call rota and the alert delivery while machines sleep or reboot. $9 a month or $90 a year, 14-day trial, no card. The desktop app itself is never gated &mdash; turning <code>[remote]</code> on is the entire upgrade. <a href="#spec">Pricing and limits</a>.</p></details>
-            <details class="faq-item"><summary><span>03</span>When does the trial start?</summary><p>The day a relay you run begins serving your workspace &mdash; not when you sign up. It runs 14 days, needs no card, and carries the full Team limits.</p></details>
+            <details class="faq-item"><summary><span>02</span>What is the $9 plan?</summary><p>The managed relay: we run the same relay for you &mdash; hosting, TLS, upgrades, backups, mail and support. The relay is MIT and free to self-host; nothing is feature-gated. $9 a month or $90 a year, 14-day trial, no card, when managed hosting opens. <a href="#spec">Pricing and limits</a>.</p></details>
+            <details class="faq-item"><summary><span>03</span>When does the trial start?</summary><p>On the managed relay, when your hosted workspace is provisioned: 14 days, no card, full limits. A relay you run yourself has no trial and no expiry &mdash; it is free, with or without us.</p></details>
             <details class="faq-item"><summary><span>04</span>What happens if I cancel, or a payment lapses?</summary><p>Cancellation keeps the plan to the end of the period, then data is kept 30 days before a counted delete with a receipt. A lapsed payment gives 7 days of grace: read-only by day 7, cancelled by the pass on day 8. Restore inside the window and nothing is lost.</p></details>
             <details class="faq-item"><summary><span>05</span>Which platforms, and what is gated?</summary><p>Linux, macOS and Windows from the same codebase. Collection depth differs by what each OS will hand an unprivileged process, and the console names every gap instead of showing a blank: macOS redacts TCP counters without root, Windows has no load average, cgroups and PSI pressure are Linux surfaces, per-process socket rates need Linux. What works on your OS is listed in Settings, per surface.</p></details>
-            <details class="faq-item"><summary><span>06</span>What data leaves my machine?</summary><p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a Team relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p></details>
+            <details class="faq-item"><summary><span>06</span>What data leaves my machine?</summary><p>By default, nothing. The outbound calls are all opt-in and all yours: the cloud metadata read for instance identity, your own webhook, your own Prometheus scraper, and <code>[remote]</code> reporting if you link a relay. Even then the payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</p></details>
             <details class="faq-item"><summary><span>07</span>How do updates work?</summary><p><code>crowsnest update</code> stops the running HUD, fetches the latest release bundle and swaps it in. The AppImage updates itself over zsync, and the .deb, DMG, MSI and portable zip are on the <a href="https://github.com/codeafridi/Crowsnest/releases" rel="noopener">Releases page</a> if you prefer to install by hand.</p></details>
           </div>
         </div>

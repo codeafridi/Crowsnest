@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Relay manual. Crowsnest Team</title>
-    <meta name="description" content="The Crowsnest Team relay: what it holds, plan limits, retention, four setup steps, and the lifecycle for past due, cancellation and deletion. One static binary beside your own Postgres." />
+    <title>Relay manual. Crowsnest</title>
+    <meta name="description" content="The Crowsnest relay: what it holds, plan limits, retention, four setup steps, and the managed lifecycle for past due, cancellation and deletion. One static binary beside your own Postgres, MIT and free to self-host." />
     <meta name="theme-color" content="#080b0e" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
@@ -18,7 +18,7 @@
     <div class="topstrip">
       <div class="wrap topstrip-inner">
         <span class="topstrip-build"><i class="dot" aria-hidden="true"></i> CROWSNEST 0.13.5</span>
-        <span>TEAM / RELAY MANUAL</span>
+        <span>RELAY / FIELD MANUAL</span>
         <span>LINUX / MACOS / WINDOWS</span>
         <span>MIT</span>
       </div>
@@ -51,23 +51,23 @@
       <section class="page-hero">
         <div class="wrap page-hero-grid">
           <div class="page-hero-copy">
-            <p class="plate-no">RELAY / TEAM MANUAL</p>
+            <p class="plate-no">RELAY / FIELD MANUAL</p>
             <h1>Shared state for the <em>fleet.</em></h1>
-            <p>The desktop app is local. The relay is the part that outlives the laptop: fleet state, incidents, delivery and the on-call rota, on a static binary you run beside your own Postgres.</p>
+            <p>The desktop app is local. The relay is the part that outlives the laptop: fleet state, incidents, delivery and the on-call rota, on a static binary you run beside your own Postgres. It is MIT and free to self-host.</p>
             <div class="hero-actions">
-              <a class="btn btn-green" href="index.html#spec">Team &mdash; $9 a month</a>
-              <a class="btn" href="index.html#install">Install the app</a>
+              <a class="btn btn-green" href="#setup">Self-host &mdash; free</a>
+              <a class="btn" href="index.html#spec">Managed &mdash; $9 when open</a>
             </div>
             <dl class="relay-hero-facts">
               <div><dt>Machines</dt><dd>100</dd></div>
               <div><dt>Seats</dt><dd>10</dd></div>
               <div><dt>Cadence floor</dt><dd>15 s</dd></div>
-              <div><dt>Trial</dt><dd>14 days</dd></div>
+              <div><dt>Managed trial</dt><dd>14 days</dd></div>
             </dl>
           </div>
           <figure class="page-hero-shot">
             <div class="frame relay-frame">
-              <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> RELAY / FLEET <span class="frame-live">TEAM</span></div>
+              <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> RELAY / FLEET <span class="frame-live">RELAY</span></div>
               <a href="shots/relay-fleet.webp" target="_blank" rel="noopener"><img src="shots/relay-fleet.webp" width="1280" height="760" alt="The relay's Fleet page: twelve labeled machines, ten reporting, two silent with dashes in every value column, a composition strip and a watch column." /></a>
             </div>
             <figcaption>A machine that stopped reporting shows a dash, never a stale reading.</figcaption>
@@ -137,12 +137,12 @@
         </div>
       </section>
 
-      <section class="plate">
+      <section class="plate" id="setup">
         <div class="wrap">
           <div class="plate-head">
             <p class="plate-no">03 / SETUP</p>
             <h2>Four steps. The relay is yours.</h2>
-            <p>No managed hosting is needed. One static binary, one Postgres database, and the free client on every machine you want to see.</p>
+            <p>Self-hosting is free and needs no managed service: one static binary, one Postgres database, and the free client on every machine you want to see. Managed hosting is not open yet.</p>
           </div>
           <div class="relay-setup-grid">
             <ol class="steps">
@@ -168,8 +168,10 @@ token   = the-machine-token</pre>
           <div class="plate-head">
             <p class="plate-no">04 / LIFECYCLE</p>
             <h2>Past due, cancel, delete.</h2>
+            <p>These are the managed plan's clocks. A relay you run yourself has no billing, no trial timer and no expiry.</p>
           </div>
           <ul class="truth">
+            <li><strong>What is free:</strong> the desktop app and the relay. Self-host it with no licence key, no trial clock and no phone-home; every feature is in it.</li>
             <li><strong>Past due:</strong> 7 days of grace. Read-only by day 7, cancelled by the pass on day 8. Restore inside the window and everything keeps running.</li>
             <li><strong>Cancel:</strong> the plan runs to the end of the period, then data is kept 30 days before a real delete &mdash; counts in a receipt, and an optional export whose sha256 is in that receipt.</li>
             <li><strong>What you are not buying:</strong> gating of the desktop app. <code>[remote]</code> ships in the free build off by default, there is no licence check anywhere, and the report payload never carries process lists, command lines, environment, paths or logs &mdash; the schema refuses them and <a href="https://github.com/codeafridi/Crowsnest/blob/main/docs/remote.md" rel="noopener">the field list documents every byte</a>.</li>
@@ -180,12 +182,12 @@ token   = the-machine-token</pre>
       <section class="plate relay-cta">
         <div class="wrap relay-cta-inner">
           <div>
-            <p class="plate-no">START / TEAM</p>
+            <p class="plate-no">START / RELAY</p>
             <h2>Run the relay. <em>Close the laptop.</em></h2>
           </div>
           <div class="hero-actions">
-            <a class="btn btn-green" href="index.html#spec">Team &mdash; $9 a month</a>
-            <a class="btn" href="index.html#install">Install the app</a>
+            <a class="btn btn-green" href="#setup">Self-host &mdash; free</a>
+            <a class="btn" href="index.html#spec">Managed &mdash; $9 when open</a>
           </div>
         </div>
       </section>

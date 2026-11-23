@@ -1,8 +1,17 @@
-# Remote reporting (paid tier client)
+# Remote reporting (the relay)
 
 The desktop app is free and fully local. `[remote]` is the one part that can send
-anything off the machine, it is **off by default**, and turning it on is the whole
-upgrade — there is no licence check.
+anything off the machine, it is **off by default**, and turning it on links a
+relay. The relay is MIT and free to run yourself; the paid option is the managed
+relay Crowsnest operates.
+
+## Free to self-host, paid to have it run for you
+
+The relay binary is MIT. Self-hosting has no licence key, no trial timer and no
+phone-home, and every feature is available in it. The paid product is the
+**managed relay** (hosted, upgraded, backed up and supported by Crowsnest; not
+open yet) at $9/month or $90/year with a 14-day trial and no card. There is no
+signed licence to buy or bypass. [pricing.md](pricing.md) is the long version.
 
 ## What is sent
 

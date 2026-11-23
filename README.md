@@ -31,7 +31,8 @@ that ties a spike to the event that caused it.
 
 The desktop app is free and complete on its own. Shared state across machines
 lives in the Crowsnest relay, a separate server that nothing talks to until you
-enable it.
+enable it. The relay is MIT and free to run yourself; the managed relay is the
+paid option.
 
 ## Quickstart
 
@@ -287,6 +288,7 @@ left off.
 * [docs/cloud.md](docs/cloud.md): cloud identity, rates and billed spend
 * [docs/fleet.md](docs/fleet.md): several machines in one console
 * [docs/remote.md](docs/remote.md): the relay reporter and its privacy rules
+* [docs/pricing.md](docs/pricing.md): what is free (the app and a relay you run) and what the managed relay costs
 * [docs/build.md](docs/build.md): build from source and the package gate
 
 ## Contributing
