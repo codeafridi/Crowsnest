@@ -57,21 +57,6 @@ set -euo pipefail
     dbus-devel fontconfig-devel freetype-devel libX11-devel libxcb-devel \
     libicu-devel libglvnd-glx libglvnd-egl libglvnd-opengl >/dev/null 2>&1
 
-  # Qt 6.10 ships its OpenSSL backend as a plugin and has no functional
-  # backend against Rocky 9.9 OpenSSL 3.5 (the plugin loads, then Qt reports
-  # "No functional TLS backend"). Build the 3.0 LTS line and bundle that pair:
-  # the plugin is ABI-compatible with 3.0, and it is the version the distro Qt
-  # on Ubuntu/Debian links. The host OpenSSL is not used, so the bundle keeps
-  # its glibc 2.34 floor.
-  echo ">> building OpenSSL 3.0 LTS"
-  curl -fsSL https://www.openssl.org/source/openssl-3.0.18.tar.gz \
-    -o /tmp/openssl.tgz
-  tar xzf /tmp/openssl.tgz -C /tmp
-  ( cd /tmp/openssl-3.0.18
-    ./Configure --prefix=/opt/openssl --libdir=lib shared no-tests >/dev/null
-    make -j"$(nproc)" >/dev/null
-    make install_sw >/dev/null )
-
   echo ">> building"
   rm -rf /w
   cmake -S /src/cpp -B /w -DCMAKE_BUILD_TYPE=Release >/dev/null
@@ -100,12 +85,19 @@ set -euo pipefail
   # functional backend at all ("No TLS backend is available"), so the remote
   # link, HTTPS synthetic checks and the certificate card silently fail in the
   # portable bundle even though the same binary works against the distro Qt.
+  #
+  # The plugin imports only OPENSSL_3.0.0 symbols, so any system OpenSSL 3
+  # works, and libssl/libcrypto are deliberately NOT bundled: LD_LIBRARY_PATH
+  # is inherited by every child process, and a bundled libcrypto 3.0 makes
+  # systemd journalctl fail (systemd-shared needs OPENSSL_3.4.0), which broke
+  # the Logs page in the 0.14.2 bundle. The host OpenSSL 3 is the same
+  # requirement a distribution Qt build has.
   for p in "$(dirname "$QTL")"/../plugins/tls /usr/lib64/qt6/plugins/tls; do
     [ -d "$p" ] && cp -a "$p"/libqopensslbackend.so /outapp/plugins/tls/ 2>/dev/null || true
   done
 
   # Bundle every non-core shared library (dereferencing symlinks) until closure.
-  core="libc\.so|libm\.so|libpthread|libdl\.so|librt\.so|libgcc_s|libstdc\+\+|ld-linux|libresolv|libnsl"
+  core="libc\.so|libm\.so|libpthread|libdl\.so|librt\.so|libgcc_s|libstdc\+\+|ld-linux|libresolv|libnsl|libssl\.so|libcrypto\.so"
   for _ in 1 2 3 4 5; do
     for t in /outapp/crowsnest /outapp/lib/*.so* \
              /outapp/plugins/platforms/*.so /outapp/plugins/tls/*.so; do
@@ -114,11 +106,6 @@ set -euo pipefail
       b="$(basename "$l")"; [ -e "/outapp/lib/$b" ] || cp -L "$l" "/outapp/lib/$b" 2>/dev/null || true
     done
   done
-
-  # The closure above took the Rocky 9 libssl/libcrypto for the plugin. Replace
-  # that pair with the 3.0 build; the sonames match and the Qt plugin works.
-  cp -L /opt/openssl/lib/libssl.so.3 /opt/openssl/lib/libcrypto.so.3 \
-    /outapp/lib/
 
   printf "%s\n" \
     "#!/bin/sh" \
