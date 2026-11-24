@@ -28,7 +28,7 @@ downloads every asset the manifest names and checks each digest. Pass a tag
 instead of `latest` to pin one:
 
 ```sh
-bash cpp/packaging/verify_release.sh --all v0.13.5
+bash cpp/packaging/verify_release.sh --all v0.14.0
 ```
 
 Exit codes: `0` verified, `1` signature/checksum failure, `2` usage or cosign
@@ -37,7 +37,7 @@ missing. A failed signature or checksum means **do not install**.
 ## Without the script
 
 ```sh
-tag=v0.13.5   # the release you are checking
+tag=v0.14.0   # the release you are checking
 base="https://github.com/codeafridi/Crowsnest/releases/download/$tag"
 curl -fsSLO "$base/SHA256SUMS"
 curl -fsSLO "$base/SHA256SUMS.sigstore.json"

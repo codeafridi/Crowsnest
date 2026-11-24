@@ -73,7 +73,7 @@ The release workflow signs the unified `SHA256SUMS` with Sigstore keyless (no
 key to fetch or rotate) and verifies the signature before publishing:
 
 ```bash
-bash cpp/packaging/verify_release.sh --all v0.13.5
+bash cpp/packaging/verify_release.sh --all v0.14.0
 ```
 
 `--all` checks the signature against this repository's release workflow at

@@ -73,7 +73,7 @@ the publish step refuses to run if the signature does not verify. To check a
 release yourself (no key needed):
 
 ```bash
-bash cpp/packaging/verify_release.sh --all v0.13.5
+bash cpp/packaging/verify_release.sh --all v0.14.0
 ```
 
 The macOS and Windows packages have optional OS signing, off until a
@@ -86,7 +86,7 @@ CROWSNEST_NOTARY_PROFILE="crowsnest-notary" bash cpp/packaging/build_macos.sh
 
 # Windows: .pfx path and password
 CROWSNEST_SIGN_CERT=C:\keys\crowsnest.pfx CROWSNEST_SIGN_PASSWORD=... \
-  pwsh cpp/packaging/windows/build_msi.ps1 -Version 0.13.5
+  pwsh cpp/packaging/windows/build_msi.ps1 -Version 0.14.0
 ```
 
 A requested signature that cannot be applied fails the build. [docs/verify.md](../verify.md)
