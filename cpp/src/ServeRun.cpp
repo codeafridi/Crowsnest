@@ -35,6 +35,9 @@ int serveRun(int argc, char **argv) {
     qputenv("QT_LOGGING_RULES", QByteArrayLiteral("qt.*=false"));
     QCoreApplication app(argc, argv);
     installAppMessageLogger();
+    // The remote runner starts its own thread; resolve Qt's TLS backend on
+    // this one first so the first HTTPS request cannot lose that race.
+    (void)remoteWarmTlsBackend();
 
     QString configError;
     Config config = loadConfig(defaultConfigPath(), &configError);

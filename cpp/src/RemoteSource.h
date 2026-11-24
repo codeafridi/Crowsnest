@@ -38,6 +38,13 @@ RemotePostResult remoteHttpPost(const QString &url, const QString &token,
 // replacing it. Returns an empty configuration and sets `error` when the named
 // file holds no certificate, so the post fails with the file's name instead of
 // a misleading "certificate not trusted".
+// Qt resolves its TLS backend lazily, on the first QSslSocket built. The
+// reporter, the Team poll and HTTPS checks each own a worker thread and can
+// race that first use: a lost race leaves the process with "No functional TLS
+// backend was found" until restart, so every HTTPS path fails while HTTP keeps
+// working. The GUI calls this once on the main thread before any worker starts.
+bool remoteWarmTlsBackend();
+
 QSslConfiguration remoteSslConfiguration(const QString &caFile,
                                          QString *error);
 

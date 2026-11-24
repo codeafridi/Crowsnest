@@ -674,6 +674,16 @@ int main(int argc, char *argv[]) {
     }
     QApplication::setPalette(ui_theme::darkPalette());
 
+    // Resolve Qt's TLS backend here, on the main thread, before any worker
+    // exists. The reporter, the Team poll and the synthetic checks can race
+    // the first QSslSocket from their own threads, and a lost race leaves the
+    // process with no backend at all: HTTP keeps working while every HTTPS
+    // path reports "TLS initialization failed" until restart.
+    if (!remoteWarmTlsBackend()) {
+        qWarning("TLS: no backend in this build - HTTPS relay links, the "
+                 "certificate card and HTTPS checks are unavailable");
+    }
+
 #if defined(Q_OS_WIN)
     if (!g_windowsCtrlHandlerInstalled) {
         SetConsoleCtrlHandler(windowsConsoleCtrlHandler, TRUE);

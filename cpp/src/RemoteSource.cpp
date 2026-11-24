@@ -29,6 +29,14 @@ QString remoteAnswerReason(const QByteArray &body) {
 
 } // namespace
 
+bool remoteWarmTlsBackend() {
+    // The object is deliberately short-lived: constructing a QSslSocket is
+    // what makes Qt pick and initialise its backend, and this call only forces
+    // that resolution to happen on the calling (main) thread.
+    const QSslSocket warmup;
+    return QSslSocket::supportsSsl();
+}
+
 QSslConfiguration remoteSslConfiguration(const QString &caFile,
                                          QString *error) {
     if (error != nullptr) {

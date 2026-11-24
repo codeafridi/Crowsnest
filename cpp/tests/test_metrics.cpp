@@ -9434,6 +9434,19 @@ int main(int argc, char *argv[]) {
 #endif
 
     {
+        // Qt resolves the TLS backend lazily and the GUI does it once on the
+        // main thread, because the worker threads that use QSslSocket at
+        // startup can race that first use and lose the backend for the life
+        // of the process.
+        const bool warm = remoteWarmTlsBackend();
+        check(warm == QSslSocket::supportsSsl(),
+              "remote: the TLS warm-up agrees with the backend the process has");
+        check(remoteWarmTlsBackend() == warm,
+              "remote: warming the TLS backend twice is stable");
+
+    }
+
+    {
         QString error;
         check(remoteIngestUrl(QStringLiteral("relay.example.com"), &error)
                       == QStringLiteral(
