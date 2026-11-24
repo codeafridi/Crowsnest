@@ -761,6 +761,14 @@ reads `not applied: <reason>`. A read-only API key answers `403 token is
 read-only` and disables the verbs with that exact reason; an ingest token
 answers `401` and the line says it can only report, so actions need a write API
 key. Turning `[remote] actions` off disables the verbs and names the switch.
+Below the incident queue is the relay's **checks** board — the probes the relay
+runs itself. Each row is name, kind, state, target, last run, latency and
+certificate days; selecting one adds its interval, labels and last error. A push
+check has no target and reads `waits for a heartbeat`. The page is read-only:
+the browser dashboard authors checks, pauses them and shows the one-time
+heartbeat link. A checks read that fails keeps the last rows and says why in the
+checks summary, so a relay that predates checks (404) does not blank the page.
+
 
 ## Advanced (optional)
 

@@ -823,7 +823,8 @@ QString DashboardPanel::consoleStyleSheet() const {
         " { color: %MUTED%; }"
         "#ddFleetFilter { color: %TEXT%; }"
         "#ddTeamSummary, #ddTeamNote, #ddTeamDetail, #ddTeamIncidentSummary,"
-        " #ddTeamIncidentDetail, #ddTeamActionStatus { color: %MUTED%; }"
+        " #ddTeamIncidentDetail, #ddTeamActionStatus,"
+        " #ddTeamChecksSummary, #ddTeamChecksDetail { color: %MUTED%; }"
         "#ddFleetShare { color: %DIM%; }"
         "#ddDeprecations { color: %MUTED%; }"
         "#ddHostInfoSummary { color: %DIM%; }"
@@ -6180,6 +6181,72 @@ QWidget *DashboardPanel::buildTeamView() {
     layout->addWidget(makeCard(QStringLiteral("the relay's queue"),
                                incidentBox, view));
 
+    // --- M177: the relay's own checks. Read-only: the browser dashboard owns
+    // authoring; this page is where "is the service up" is watched all day.
+    layout->addWidget(makeBanner(QStringLiteral("CHECKS"),
+                                 ui_theme::banner(), view));
+    m_teamChecksSummary =
+        new QLabel(teamCheckSummaryText(m_team), view);
+    m_teamChecksSummary->setObjectName(
+        QStringLiteral("ddTeamChecksSummary"));
+    m_teamChecksSummary->setFont(monoFont(10));
+    m_teamChecksSummary->setWordWrap(true);
+    m_teamChecksSummary->setMinimumWidth(1);
+    layout->addWidget(m_teamChecksSummary);
+
+    m_teamChecksTable = new QTreeWidget(view);
+    m_teamChecksTable->setObjectName(QStringLiteral("ddTeamChecksTable"));
+    m_teamChecksTable->setColumnCount(7);
+    m_teamChecksTable->setHeaderLabels(
+        {QStringLiteral("CHECK"), QStringLiteral("KIND"),
+         QStringLiteral("STATE"), QStringLiteral("TARGET"),
+         QStringLiteral("LAST RUN"), QStringLiteral("LATENCY"),
+         QStringLiteral("CERT")});
+    m_teamChecksTable->setRootIsDecorated(false);
+    m_teamChecksTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_teamChecksTable->setFocusPolicy(Qt::NoFocus);
+    m_teamChecksTable->header()->setSectionResizeMode(3, QHeaderView::Stretch);
+    for (int column = 0; column < 7; ++column) {
+        if (column != 3) {
+            m_teamChecksTable->header()->setSectionResizeMode(
+                column, QHeaderView::ResizeToContents);
+        }
+    }
+    connect(m_teamChecksTable, &QTreeWidget::currentItemChanged, this,
+            [this](QTreeWidgetItem *current, QTreeWidgetItem *) {
+                m_teamSelectedCheckId = current == nullptr
+                    ? QString()
+                    : current->data(0, Qt::UserRole).toString();
+                const TeamCheck *check = nullptr;
+                for (const TeamCheck &candidate : m_team.checks) {
+                    if (candidate.id == m_teamSelectedCheckId) {
+                        check = &candidate;
+                        break;
+                    }
+                }
+                if (m_teamChecksDetail != nullptr) {
+                    m_teamChecksDetail->setText(
+                        check == nullptr
+                            ? QStringLiteral(
+                                  "select a check for its interval, labels and "
+                                  "last error")
+                            : teamCheckDetailText(m_team, *check));
+                }
+            });
+    layout->addWidget(makeCard(QStringLiteral("the relay's probes"),
+                               m_teamChecksTable, view, false));
+
+    m_teamChecksDetail = new QLabel(
+        QStringLiteral("select a check for its interval, labels and last error"),
+        view);
+    m_teamChecksDetail->setObjectName(
+        QStringLiteral("ddTeamChecksDetail"));
+    m_teamChecksDetail->setFont(monoFont(10));
+    m_teamChecksDetail->setWordWrap(true);
+    m_teamChecksDetail->setMinimumWidth(1);
+    layout->addWidget(makeCard(QStringLiteral("selected check"),
+                               m_teamChecksDetail, view, false));
+
     auto *scroll = new QScrollArea(view);
     scroll->setObjectName(QStringLiteral("ddScroll"));
     scroll->setWidgetResizable(true);
@@ -9196,6 +9263,7 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
         }
     }
     renderTeamIncidents();
+    renderTeamChecks();
     updateTeamActions();
 }
 
@@ -9307,6 +9375,64 @@ void DashboardPanel::renderTeamIncidents() {
     m_teamIncidentDetail->setText(
         selected == nullptr ? QStringLiteral("--")
                             : teamIncidentDetailText(m_team, *selected));
+}
+
+void DashboardPanel::renderTeamChecks() {
+    if (m_teamChecksTable == nullptr) {
+        return;
+    }
+    m_teamChecksSummary->setText(teamCheckSummaryText(m_team));
+
+    const QString keep = m_teamSelectedCheckId;
+    m_teamChecksTable->blockSignals(true);
+    m_teamChecksTable->clear();
+    for (const TeamCheck &check : m_team.checks) {
+        auto *item = new QTreeWidgetItem(m_teamChecksTable);
+        item->setData(0, Qt::UserRole, check.id);
+        item->setText(0, check.name);
+        item->setText(1, check.kind);
+        const QString state = teamCheckStateText(check);
+        item->setText(2, state);
+        item->setText(3, teamCheckTargetText(check));
+        item->setText(4, teamCheckLastText(m_team, check));
+        item->setText(5, teamCheckLatencyText(check));
+        item->setText(6, teamCheckCertText(m_team, check));
+        if (!check.enabled) {
+            item->setForeground(2, QColor(ui_theme::dim()));
+        } else if (check.state == QLatin1String("down")) {
+            item->setForeground(2, QColor(ui_theme::crit()));
+        } else if (check.state == QLatin1String("up")) {
+            item->setForeground(2, QColor(ui_theme::ok()));
+        } else {
+            item->setForeground(2, QColor(ui_theme::warn()));
+        }
+        const int certDays = teamCheckCertDays(m_team, check);
+        if (certDays >= 0 && certDays <= 7) {
+            item->setForeground(6, QColor(ui_theme::crit()));
+        } else if (certDays >= 0 && certDays <= 30) {
+            item->setForeground(6, QColor(ui_theme::warn()));
+        }
+        if (!keep.isEmpty() && check.id == keep) {
+            m_teamChecksTable->setCurrentItem(item);
+        }
+    }
+    m_teamChecksTable->blockSignals(false);
+
+    const TeamCheck *selected = nullptr;
+    for (const TeamCheck &check : m_team.checks) {
+        if (check.id == m_teamSelectedCheckId) {
+            selected = &check;
+            break;
+        }
+    }
+    if (selected == nullptr) {
+        m_teamSelectedCheckId.clear();
+    }
+    m_teamChecksDetail->setText(
+        selected == nullptr
+            ? QStringLiteral(
+                  "select a check for its interval, labels and last error")
+            : teamCheckDetailText(m_team, *selected));
 }
 
 void DashboardPanel::updateTeamActions() {

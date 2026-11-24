@@ -1875,6 +1875,66 @@ int main(int argc, char *argv[]) {
         team.incidents = {cpu, silent, disk};
         team.incidentsAnswered = true;
         team.actions = true;
+        // M177: the relay's own checks, the same board the browser shows.
+        TeamCheck apiCheck;
+        apiCheck.id = QStringLiteral("c-api");
+        apiCheck.name = QStringLiteral("api prod");
+        apiCheck.kind = QStringLiteral("http");
+        apiCheck.target = QStringLiteral("https://api.example.com/health");
+        apiCheck.state = QStringLiteral("up");
+        apiCheck.enabled = true;
+        apiCheck.intervalS = 60;
+        apiCheck.lastCheckedAtMs = now - 12000;
+        apiCheck.lastLatencyMs = 12;
+        apiCheck.certExpiresAtMs = now + 20LL * 86400000;
+        apiCheck.labels = {{QStringLiteral("env"), QStringLiteral("prod")},
+                           {QStringLiteral("team"), QStringLiteral("web")}};
+        TeamCheck db;
+        db.id = QStringLiteral("c-db");
+        db.name = QStringLiteral("db primary");
+        db.kind = QStringLiteral("tcp");
+        db.target = QStringLiteral("10.0.0.4:5432");
+        db.state = QStringLiteral("up");
+        db.enabled = true;
+        db.intervalS = 30;
+        db.lastCheckedAtMs = now - 8000;
+        db.lastLatencyMs = 3;
+        TeamCheck checkout;
+        checkout.id = QStringLiteral("c-checkout");
+        checkout.name = QStringLiteral("checkout");
+        checkout.kind = QStringLiteral("tls");
+        checkout.target = QStringLiteral("shop.example.com:443");
+        checkout.state = QStringLiteral("up");
+        checkout.enabled = true;
+        checkout.intervalS = 60;
+        checkout.lastCheckedAtMs = now - 30000;
+        checkout.lastLatencyMs = 381;
+        checkout.certExpiresAtMs = now + 9LL * 86400000;
+        TeamCheck nightly;
+        nightly.id = QStringLiteral("c-nightly");
+        nightly.name = QStringLiteral("nightly backup");
+        nightly.kind = QStringLiteral("push");
+        nightly.state = QStringLiteral("down");
+        nightly.enabled = true;
+        nightly.intervalS = 60;
+        nightly.graceS = 120;
+        nightly.lastPushedAtMs = now - 9 * 60000;
+        nightly.heartbeatSet = true;
+        nightly.lastError = QStringLiteral("nightly backup missed its heartbeat");
+        nightly.labels = {{QStringLiteral("app"), QStringLiteral("backup")}};
+        TeamCheck status;
+        status.id = QStringLiteral("c-status");
+        status.name = QStringLiteral("status page");
+        status.kind = QStringLiteral("http");
+        status.target = QStringLiteral("https://example.com/");
+        status.state = QStringLiteral("down");
+        status.enabled = true;
+        status.intervalS = 60;
+        status.lastCheckedAtMs = now - 21000;
+        status.lastError = QStringLiteral("status 200 (expected 418)");
+        team.checks = {apiCheck, db, checkout, nightly, status};
+        team.checksAnswered = true;
+        team.checksAsOfMs = now;
         panel.setTeamStatus(team);
         if (auto *table = panel.findChild<QTreeWidget *>(
                 QStringLiteral("ddTeamTable"))) {
@@ -1886,6 +1946,12 @@ int main(int argc, char *argv[]) {
                 QStringLiteral("ddTeamIncidentTable"))) {
             if (queue->topLevelItemCount() > 0) {
                 queue->setCurrentItem(queue->topLevelItem(0));
+            }
+        }
+        if (auto *checks = panel.findChild<QTreeWidget *>(
+                QStringLiteral("ddTeamChecksTable"))) {
+            if (checks->topLevelItemCount() > 3) {
+                checks->setCurrentItem(checks->topLevelItem(3));
             }
         }
         app.processEvents();

@@ -2961,6 +2961,30 @@ int main(int argc, char *argv[]) {
             quiet.latest.memAvailableKb = 1024;
             quiet.latest.load1 = 9.99;
             team.machines = {here, quiet};
+            TeamCheck apiCheck;
+            apiCheck.id = QStringLiteral("c-api");
+            apiCheck.name = QStringLiteral("api prod");
+            apiCheck.kind = QStringLiteral("http");
+            apiCheck.target = QStringLiteral("https://api.example.com/");
+            apiCheck.state = QStringLiteral("up");
+            apiCheck.enabled = true;
+            apiCheck.intervalS = 60;
+            apiCheck.lastCheckedAtMs = teamNow - 30000;
+            apiCheck.lastLatencyMs = 12;
+            apiCheck.certExpiresAtMs = teamNow + 10LL * 86400000;
+            TeamCheck dbCheck;
+            dbCheck.id = QStringLiteral("c-db");
+            dbCheck.name = QStringLiteral("db");
+            dbCheck.kind = QStringLiteral("tcp");
+            dbCheck.target = QStringLiteral("10.0.0.4:5432");
+            dbCheck.state = QStringLiteral("down");
+            dbCheck.enabled = true;
+            dbCheck.intervalS = 30;
+            dbCheck.lastCheckedAtMs = teamNow - 20000;
+            dbCheck.lastError = QStringLiteral("connection refused");
+            team.checks = {apiCheck, dbCheck};
+            team.checksAnswered = true;
+            team.checksAsOfMs = teamNow;
             hud.setTeamStatus(team);
 
             auto *teamTable =
@@ -2995,6 +3019,46 @@ int main(int argc, char *argv[]) {
                       && teamSummary->text().contains(
                           QStringLiteral("1 machine(s)")),
                   "team summary states the fleet the relay reported");
+
+            auto *checksTable = hud.findChild<QTreeWidget *>(
+                QStringLiteral("ddTeamChecksTable"));
+            auto *checksSummary = hud.findChild<QLabel *>(
+                QStringLiteral("ddTeamChecksSummary"));
+            auto *checksDetail = hud.findChild<QLabel *>(
+                QStringLiteral("ddTeamChecksDetail"));
+            check(checksTable != nullptr
+                      && checksTable->topLevelItemCount() == 2
+                      && checksTable->topLevelItem(0)->text(0)
+                             == QStringLiteral("api prod")
+                      && checksTable->topLevelItem(0)->text(1)
+                             == QStringLiteral("http")
+                      && checksTable->topLevelItem(0)->text(2)
+                             == QStringLiteral("up")
+                      && checksTable->topLevelItem(0)->text(3)
+                             == QStringLiteral("https://api.example.com/")
+                      && checksTable->topLevelItem(0)->text(4)
+                             == QStringLiteral("30s ago")
+                      && checksTable->topLevelItem(0)->text(5)
+                             == QStringLiteral("12 ms")
+                      && checksTable->topLevelItem(0)->text(6)
+                             == QStringLiteral("10d"),
+                  "team checks table carries every relay field");
+            check(checksTable->topLevelItem(1)->text(2)
+                          == QStringLiteral("down")
+                      && checksTable->topLevelItem(1)->text(6)
+                             == QStringLiteral("--"),
+                  "a down check without a certificate says so");
+            check(checksSummary != nullptr
+                      && checksSummary->text().contains(
+                          QStringLiteral("2 check(s)"))
+                      && checksSummary->text().contains(
+                          QStringLiteral("1 down")),
+                  "team checks summary counts the board");
+            checksTable->setCurrentItem(checksTable->topLevelItem(1));
+            check(checksDetail != nullptr
+                      && checksDetail->text().contains(
+                          QStringLiteral("error connection refused")),
+                  "selecting a check shows its last error");
 
             // M161: labels on the relay's fleet, and a filter that narrows the
             // table without pretending the tiles are scoped too.

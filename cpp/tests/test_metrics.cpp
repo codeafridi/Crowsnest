@@ -11181,19 +11181,35 @@ int main(int argc, char *argv[]) {
         {
             QTcpServer server;
             QByteArray seen;
-            auto replied = std::make_shared<bool>(false);
             QObject::connect(&server, &QTcpServer::newConnection,
-                             [&server, &seen, replied]() {
+                             [&server, &seen]() {
                 QTcpSocket *socket = server.nextPendingConnection();
+                auto request = std::make_shared<QByteArray>();
+                auto replied = std::make_shared<bool>(false);
                 QObject::connect(socket, &QTcpSocket::readyRead,
-                                 [socket, &seen, replied]() {
-                    seen += socket->readAll();
-                    if (*replied || !seen.contains("\r\n\r\n")) {
+                                 [socket, request, replied, &seen]() {
+                    const QByteArray chunkIn = socket->readAll();
+                    seen += chunkIn;
+                    *request += chunkIn;
+                    if (*replied
+                        || !request->contains("\r\n\r\n")) {
                         return;
                     }
                     *replied = true;
-                    const QByteArray chunk = QByteArrayLiteral(
-                        "{\"schema\":1,\"asOfMs\":1760000000000,\"counts\":{},\"machines\":[]}");
+                    // The checks read is a second GET on the same credential;
+                    // answer it on its own socket so probeTeam completes.
+                    const QByteArray chunk = request->contains(
+                        "GET /api/v1/checks")
+                        ? QByteArrayLiteral(
+                              "{\"schema\":1,\"asOfMs\":1760000000000,"
+                              "\"count\":1,\"checks\":[{\"id\":\"c-1\","
+                              "\"name\":\"api\",\"kind\":\"http\","
+                              "\"target\":\"https://api.example.com/\","
+                              "\"state\":\"up\",\"enabled\":true,"
+                              "\"intervalS\":60,\"lastLatencyMs\":12}]}")
+                        : QByteArrayLiteral(
+                              "{\"schema\":1,\"asOfMs\":1760000000000,"
+                              "\"counts\":{},\"machines\":[]}");
                     QByteArray reply = QByteArrayLiteral(
                         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
                         "Connection: close\r\n\r\n");
@@ -11227,11 +11243,14 @@ int main(int argc, char *argv[]) {
             }
             worker.join();
             check(live.answered && live.machines.isEmpty()
-                      && live.error.isEmpty(),
-                  "team live: a chunked answer decodes into a fleet");
+                      && live.error.isEmpty() && live.checksAnswered
+                      && live.checks.size() == 1
+                      && live.checks.first().state == QStringLiteral("up"),
+                  "team live: a chunked answer decodes into a fleet and checks");
             check(seen.contains("/api/v1/machines?limit=1000")
+                      && seen.contains("/api/v1/checks")
                       && seen.contains("Authorization: Bearer tok-123"),
-                  "team live: the read carries the query and the bearer");
+                  "team live: both reads carry the query and the bearer");
         }
 
         // The relay streams JSON past Go's buffer, so the transport dechunks.
@@ -11259,6 +11278,98 @@ int main(int argc, char *argv[]) {
                                               RemoteIdentity{});
         check(info.lastLine.contains(QStringLiteral("the plan allows 100 machines")),
               "remote: the card carries the relay's refusal, not just the code");
+    }
+
+    // --- M177: the relay's own checks, read-only on the Team page.
+    {
+        const QByteArray checks = R"({"schema":1,"asOfMs":1760000000000,"count":4,
+          "checks":[
+            {"id":"c-1","name":"api prod","kind":"http",
+             "target":"https://api.example.com/","state":"up","enabled":true,
+             "lastCheckedAtMs":1759999970000,"lastOkAtMs":1759999970000,
+             "lastStatus":200,"lastLatencyMs":12,"intervalS":60,
+             "certExpiresAtMs":1760864000000,
+             "labels":{"env":"prod","team":"web"}},
+            {"id":"c-2","name":"db","kind":"tcp","target":"10.0.0.4:5432",
+             "state":"down","enabled":true,"failing":2,
+             "lastCheckedAtMs":1759999980000,"intervalS":30,
+             "lastError":"connection refused"},
+            {"id":"c-3","name":"nightly","kind":"push","target":"",
+             "state":"up","enabled":true,"intervalS":60,"graceS":120,
+             "lastPushedAtMs":1759999500000,"heartbeatSet":true},
+            {"id":"c-4","name":"old","kind":"http",
+             "target":"https://old.example.com/","state":"unknown",
+             "enabled":false,"intervalS":60}]})";
+        TeamStatus team;
+        team.enabled = true;
+        team.configured = true;
+        team.asOfMs = 1760000000000LL;
+        QString error;
+        check(teamParseChecksJson(checks, &team, &error),
+              "team checks: the relay's checks parse");
+        check(team.checks.size() == 4 && team.checksAnswered
+                  && team.checksAsOfMs == 1760000000000LL,
+              "team checks: every row lands and the relay clock is kept");
+        check(teamCheckStateText(team.checks.at(0)) == QStringLiteral("up")
+                  && teamCheckStateText(team.checks.at(1))
+                         == QStringLiteral("down")
+                  && teamCheckStateText(team.checks.at(3))
+                         == QStringLiteral("paused"),
+              "team checks: a disabled check reads paused, not down");
+        check(teamCheckTargetText(team.checks.at(1))
+                      == QStringLiteral("10.0.0.4:5432")
+                  && teamCheckTargetText(team.checks.at(2))
+                         == QStringLiteral("waits for a heartbeat"),
+              "team checks: a push has no target and says so");
+        check(teamCheckLastText(team, team.checks.at(0))
+                      == QStringLiteral("30s ago")
+                  && teamCheckLastText(team, team.checks.at(2))
+                         == QStringLiteral("8m ago"),
+              "team checks: last run uses the relay's clock, push included");
+        check(teamCheckLatencyText(team.checks.at(0))
+                      == QStringLiteral("12 ms")
+                  && teamCheckLatencyText(team.checks.at(1))
+                         == QStringLiteral("--"),
+              "team checks: latency is shown only when the probe measured one");
+        check(teamCheckCertDays(team, team.checks.at(0)) == 10
+                  && teamCheckCertText(team, team.checks.at(0))
+                         == QStringLiteral("10d")
+                  && teamCheckCertText(team, team.checks.at(1))
+                         == QStringLiteral("--"),
+              "team checks: certificate days use the relay clock");
+        TeamCheck expired = team.checks.at(0);
+        expired.certExpiresAtMs = 1759827200000LL;
+        check(teamCheckCertDays(team, expired) < 0
+                  && teamCheckCertText(team, expired)
+                         == QStringLiteral("expired"),
+              "team checks: an expired certificate reads expired, not a dash");
+        check(teamCheckSummaryText(team).contains(QStringLiteral("4 check(s)"))
+                  && teamCheckSummaryText(team).contains(
+                      QStringLiteral("1 down")),
+              "team checks: the summary counts the board");
+        check(teamCheckDetailText(team, team.checks.at(0))
+                      .contains(QStringLiteral("target https://api.example.com/"))
+                  && teamCheckDetailText(team, team.checks.at(0))
+                         .contains(QStringLiteral("env=prod team=web"))
+                  && teamCheckDetailText(team, team.checks.at(1))
+                         .contains(QStringLiteral("error connection refused")),
+              "team checks: the detail carries target, labels and the error");
+
+        TeamStatus newer;
+        check(!teamParseChecksJson(
+                  QByteArrayLiteral("{\"schema\":2,\"checks\":[]}"), &newer,
+                  &error)
+                  && error.contains(QStringLiteral("update Crowsnest")),
+              "team checks: a newer schema is refused with the fix named");
+        TeamStatus noRows;
+        check(!teamParseChecksJson(QByteArrayLiteral("{\"schema\":1}"),
+                                   &noRows, &error)
+                  && error.contains(QStringLiteral("no checks array")),
+              "team checks: a document without checks is refused, not empty");
+        TeamStatus unlinked;
+        check(teamCheckSummaryText(unlinked).contains(
+                  QStringLiteral("relay link is off")),
+              "team checks: an unlinked page names the switch");
     }
 
     // --- M152: the incident queue, the three verbs and their gates.

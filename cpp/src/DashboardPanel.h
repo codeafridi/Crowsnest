@@ -455,6 +455,12 @@ private:
     QLabel *m_teamIncidentDetail = nullptr;
     QLabel *m_teamActionStatus = nullptr;
     QTreeWidget *m_teamIncidentTable = nullptr;
+    // M177: the relay's own checks, read-only. The browser authors them; this
+    // page answers "are the services the relay probes up".
+    QLabel *m_teamChecksSummary = nullptr;
+    QTreeWidget *m_teamChecksTable = nullptr;
+    QLabel *m_teamChecksDetail = nullptr;
+    QString m_teamSelectedCheckId;
     QPushButton *m_teamAck = nullptr;
     QPushButton *m_teamClose = nullptr;
     QPushButton *m_teamSilence = nullptr;
@@ -465,6 +471,7 @@ private:
     QString m_teamBlocked;
 
     void renderTeamIncidents();
+    void renderTeamChecks();
     void updateTeamActions();
     const TeamIncident *teamIncidentById(const QString &id) const;
     bool teamActionsAllowed() const;

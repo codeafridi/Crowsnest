@@ -64,6 +64,51 @@ struct TeamCounts {
 };
 
 // ---------------------------------------------------------------------------
+struct TeamStatus;
+
+// M177: the relay's own checks (HTTP/TCP/TLS/push), read-only on this page.
+// The relay measures; the desktop only renders the answer, so a check cannot
+// disagree with itself between the browser and the HUD.
+// ---------------------------------------------------------------------------
+
+struct TeamCheck {
+    QString id;
+    QString name;
+    QString kind;   // http | tcp | tls | push
+    QString target;
+    QString state;  // up | down | unknown
+    bool enabled = false;
+    bool heartbeatSet = false;
+    int failing = 0;
+    int lastStatus = 0;
+    int lastLatencyMs = 0;
+    int intervalS = 0;
+    int graceS = 0;
+    qint64 lastCheckedAtMs = -1;
+    qint64 lastOkAtMs = -1;
+    qint64 lastPushedAtMs = -1;
+    qint64 certExpiresAtMs = -1;
+    QString lastError;
+    QList<QPair<QString, QString>> labels;
+
+    bool push() const { return kind == QLatin1String("push"); }
+};
+
+// The shape `GET /api/v1/checks` answers. Same schema integer as the fleet
+// read; a newer answer is refused with the fix named.
+bool teamParseChecksJson(const QByteArray &body, TeamStatus *status,
+                         QString *error);
+
+QString teamCheckSummaryText(const TeamStatus &status);
+QString teamCheckStateText(const TeamCheck &check);
+QString teamCheckTargetText(const TeamCheck &check);
+QString teamCheckLastText(const TeamStatus &status, const TeamCheck &check);
+QString teamCheckLatencyText(const TeamCheck &check);
+QString teamCheckCertText(const TeamStatus &status, const TeamCheck &check);
+QString teamCheckDetailText(const TeamStatus &status, const TeamCheck &check);
+int teamCheckCertDays(const TeamStatus &status, const TeamCheck &check);
+
+// ---------------------------------------------------------------------------
 // M152: the relay's incident work queue and the three verbs the HUD may send.
 // PagerDuty's model is the one the relay already speaks: triggered/acknowledged/
 // resolved, an acknowledgement list with who and when, and `assignments` empty
@@ -132,6 +177,14 @@ struct TeamStatus {
     bool incidentsAnswered = false;
     QString incidentsError;
     QList<TeamIncident> incidents;
+
+    // The relay's own probes (M177). `checksError` is a separate sentence so a
+    // fleet answer is still worth showing when checks are refused or an older
+    // relay does not have them.
+    bool checksAnswered = false;
+    QString checksError;
+    qint64 checksAsOfMs = -1;
+    QList<TeamCheck> checks;
 };
 
 // Parses GET /api/v1/incidents. Same schema integer as the fleet read; a newer

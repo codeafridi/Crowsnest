@@ -537,9 +537,10 @@ QString teamNoteText(const TeamStatus &status) {
         ? QStringLiteral("/api/v1/machines")
         : status.url + QStringLiteral("/api/v1/machines");
     return QStringLiteral(
-        "reading: %1 every %2s with a %3ms budget - the answer carries machine "
-        "state and the newest sample, never your process list, command lines "
-        "or environment")
+        "reading: %1, its incident queue and its checks every %2s with a %3ms "
+        "budget - the answer carries machine state, the newest sample and the "
+        "relay's own probes, never your process list, command lines or "
+        "environment")
         .arg(endpoint)
         .arg(qMax(1, status.pollMs / 1000))
         .arg(status.timeoutMs);
@@ -932,4 +933,271 @@ QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,
     body.insert(QStringLiteral("comment"),
                 QStringLiteral("muted from the HUD: %1").arg(incident.title));
     return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+
+// ---------------------------------------------------------------------------
+// M177: the relay's own checks.
+// ---------------------------------------------------------------------------
+
+bool teamParseChecksJson(const QByteArray &body, TeamStatus *status,
+                         QString *error) {
+    if (error != nullptr) {
+        error->clear();
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer is not JSON: %1")
+                         .arg(parseError.errorString());
+        }
+        return false;
+    }
+    if (!document.isObject()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer is not a checks document");
+        }
+        return false;
+    }
+    const QJsonObject root = document.object();
+    if (!schemaOk(root, error)) {
+        return false;
+    }
+    const QJsonValue rows = root.value(QStringLiteral("checks"));
+    if (!rows.isArray()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("relay answer has no checks array");
+        }
+        return false;
+    }
+    QList<TeamCheck> parsed;
+    const QJsonArray array = rows.toArray();
+    parsed.reserve(array.size());
+    for (const QJsonValue &row : array) {
+        if (!row.isObject()) {
+            if (error != nullptr) {
+                *error = QStringLiteral("a check row is not an object");
+            }
+            return false;
+        }
+        const QJsonObject object = row.toObject();
+        TeamCheck check;
+        check.id = object.value(QStringLiteral("id")).toString().trimmed();
+        if (check.id.isEmpty()) {
+            if (error != nullptr) {
+                *error = QStringLiteral("a check row has no id");
+            }
+            return false;
+        }
+        check.name = object.value(QStringLiteral("name")).toString().trimmed();
+        if (check.name.isEmpty()) {
+            check.name = check.id;
+        }
+        check.kind = object.value(QStringLiteral("kind")).toString();
+        check.target = object.value(QStringLiteral("target")).toString();
+        check.state = object.value(QStringLiteral("state")).toString();
+        if (check.state.isEmpty()) {
+            check.state = QStringLiteral("unknown");
+        }
+        check.enabled = object.value(QStringLiteral("enabled")).toBool(false);
+        check.heartbeatSet =
+            object.value(QStringLiteral("heartbeatSet")).toBool(false);
+        check.failing =
+            int(msValue(object.value(QStringLiteral("failing")), 0));
+        check.lastStatus =
+            int(msValue(object.value(QStringLiteral("lastStatus")), 0));
+        check.lastLatencyMs =
+            int(msValue(object.value(QStringLiteral("lastLatencyMs")), 0));
+        check.intervalS =
+            int(msValue(object.value(QStringLiteral("intervalS")), 0));
+        check.graceS = int(msValue(object.value(QStringLiteral("graceS")), 0));
+        check.lastCheckedAtMs =
+            msValue(object.value(QStringLiteral("lastCheckedAtMs")), -1);
+        check.lastOkAtMs =
+            msValue(object.value(QStringLiteral("lastOkAtMs")), -1);
+        check.lastPushedAtMs =
+            msValue(object.value(QStringLiteral("lastPushedAtMs")), -1);
+        check.certExpiresAtMs =
+            msValue(object.value(QStringLiteral("certExpiresAtMs")), -1);
+        check.lastError =
+            object.value(QStringLiteral("lastError")).toString();
+        const QJsonObject labels = object.value(QStringLiteral("labels")).toObject();
+        QStringList keys = labels.keys();
+        keys.sort();
+        for (const QString &key : keys) {
+            const QJsonValue value = labels.value(key);
+            if (value.isString() && !key.isEmpty()) {
+                check.labels.append({key, value.toString()});
+            }
+        }
+        parsed.append(check);
+    }
+    if (status != nullptr) {
+        status->checksAnswered = true;
+        status->checks = parsed;
+        const qint64 asOf = msValue(root.value(QStringLiteral("asOfMs")), -1);
+        status->checksAsOfMs = asOf > 0 ? asOf : status->asOfMs;
+    }
+    return true;
+}
+
+namespace {
+
+qint64 checkClockMs(const TeamStatus &status) {
+    if (status.checksAsOfMs > 0) {
+        return status.checksAsOfMs;
+    }
+    if (status.asOfMs > 0) {
+        return status.asOfMs;
+    }
+    return QDateTime::currentMSecsSinceEpoch();
+}
+
+} // namespace
+
+QString teamCheckStateText(const TeamCheck &check) {
+    if (!check.enabled) {
+        return QStringLiteral("paused");
+    }
+    return check.state.isEmpty() ? QStringLiteral("unknown") : check.state;
+}
+
+QString teamCheckTargetText(const TeamCheck &check) {
+    if (check.push()) {
+        return QStringLiteral("waits for a heartbeat");
+    }
+    return check.target.isEmpty() ? QStringLiteral("--") : check.target;
+}
+
+QString teamCheckLastText(const TeamStatus &status, const TeamCheck &check) {
+    const qint64 at = check.push() ? check.lastPushedAtMs
+                                   : check.lastCheckedAtMs;
+    if (at <= 0) {
+        return check.push() ? QStringLiteral("no push yet")
+                            : QStringLiteral("never");
+    }
+    return QStringLiteral("%1 ago")
+        .arg(timelineAgeText(qMax<qint64>(0, checkClockMs(status) - at)));
+}
+
+QString teamCheckLatencyText(const TeamCheck &check) {
+    if (check.lastLatencyMs <= 0) {
+        return QStringLiteral("--");
+    }
+    return QStringLiteral("%1 ms").arg(check.lastLatencyMs);
+}
+
+int teamCheckCertDays(const TeamStatus &status, const TeamCheck &check) {
+    if (check.certExpiresAtMs <= 0) {
+        return -1;
+    }
+    const double days =
+        double(check.certExpiresAtMs - checkClockMs(status)) / 86400000.0;
+    return int(std::ceil(days));
+}
+
+QString teamCheckCertText(const TeamStatus &status, const TeamCheck &check) {
+    if (check.certExpiresAtMs <= 0) {
+        return QStringLiteral("--");
+    }
+    const int days = teamCheckCertDays(status, check);
+    if (days <= 0) {
+        return QStringLiteral("expired");
+    }
+    return QStringLiteral("%1d").arg(days);
+}
+
+QString teamCheckSummaryText(const TeamStatus &status) {
+    if (!status.configured) {
+        return QStringLiteral(
+            "checks: the relay link is off - set [remote] enabled=true and a "
+            "token to read them");
+    }
+    if (!status.checksAnswered) {
+        if (!status.checksError.isEmpty()) {
+            return QStringLiteral("checks unavailable: %1")
+                .arg(status.checksError);
+        }
+        return QStringLiteral("the relay's checks have not answered yet");
+    }
+    int up = 0;
+    int down = 0;
+    int other = 0;
+    int certWatch = 0;
+    for (const TeamCheck &check : status.checks) {
+        if (!check.enabled) {
+            ++other;
+            continue;
+        }
+        if (check.state == QLatin1String("up")) {
+            ++up;
+        } else if (check.state == QLatin1String("down")) {
+            ++down;
+        } else {
+            ++other;
+        }
+        if (check.certExpiresAtMs > 0 && teamCheckCertDays(status, check) <= 30) {
+            ++certWatch;
+        }
+    }
+    if (status.checks.isEmpty()) {
+        return QStringLiteral(
+            "the relay has no checks yet - create HTTP, TCP, TLS or push checks "
+            "in its dashboard");
+    }
+    QStringList parts;
+    parts << QStringLiteral("%1 check(s)").arg(status.checks.size());
+    parts << QStringLiteral("%1 up").arg(up);
+    if (down > 0) {
+        parts << QStringLiteral("%1 down").arg(down);
+    }
+    if (other > 0) {
+        parts << QStringLiteral("%1 paused/unknown").arg(other);
+    }
+    if (certWatch > 0) {
+        parts << QStringLiteral("%1 certificate(s) under 30 days").arg(certWatch);
+    }
+    QString text = parts.join(QStringLiteral(", "));
+    if (!status.checksError.isEmpty()) {
+        text += QStringLiteral(" - the last refresh failed: %1")
+                    .arg(status.checksError);
+    }
+    return text;
+}
+
+QString teamCheckDetailText(const TeamStatus &status, const TeamCheck &check) {
+    QStringList parts;
+    parts << QStringLiteral("%1 [%2]").arg(check.name, check.kind);
+    parts << QStringLiteral("state %1").arg(teamCheckStateText(check));
+    parts << QStringLiteral("target %1").arg(teamCheckTargetText(check));
+    if (check.push()) {
+        parts << QStringLiteral("interval %1s + %2s grace")
+                     .arg(check.intervalS)
+                     .arg(check.graceS);
+    } else {
+        parts << QStringLiteral("interval %1s").arg(check.intervalS);
+        parts << QStringLiteral("latency %1").arg(teamCheckLatencyText(check));
+        if (check.lastStatus > 0) {
+            parts << QStringLiteral("status %1").arg(check.lastStatus);
+        }
+    }
+    parts << QStringLiteral("last %1").arg(teamCheckLastText(status, check));
+    if (check.certExpiresAtMs > 0) {
+        parts << QStringLiteral("certificate %1")
+                     .arg(teamCheckCertText(status, check));
+    }
+    if (check.push() && check.heartbeatSet) {
+        parts << QStringLiteral("heartbeat link set");
+    }
+    if (!check.labels.isEmpty()) {
+        QStringList pairs;
+        for (const QPair<QString, QString> &label : check.labels) {
+            pairs << QStringLiteral("%1=%2").arg(label.first, label.second);
+        }
+        parts << pairs.join(QLatin1Char(' '));
+    }
+    if (!check.lastError.isEmpty()) {
+        parts << QStringLiteral("error %1").arg(check.lastError);
+    }
+    return parts.join(QStringLiteral(" - "));
 }

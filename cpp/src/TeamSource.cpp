@@ -108,6 +108,22 @@ TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs) {
             status.incidentsError = queueFailure;
         }
     }
+    // The checks are a third read on the same credential. An older relay
+    // answers 404 here and the page says so; the fleet and incident rows stay.
+    const TeamFetchResult checks =
+        teamHttpGet(options, QStringLiteral("/api/v1/checks"));
+    if (checks.httpStatus == 404) {
+        status.checksError = QStringLiteral(
+            "the relay has no checks endpoint (404) - update the relay to read "
+            "its probes here");
+    } else if (!checks.ok) {
+        status.checksError = checks.error;
+    } else {
+        QString checkFailure;
+        if (!teamParseChecksJson(checks.body, &status, &checkFailure)) {
+            status.checksError = checkFailure;
+        }
+    }
     return status;
 }
 
@@ -349,10 +365,40 @@ void TeamRunner::poll() {
                 status.incidents = previous.incidents;
             }
         }
+        // M177: the relay's checks. A failed read keeps the last rows and dates
+        // them in the checks summary; it never blanks the table.
+        const TeamFetchResult checks =
+            teamHttpGet(current, QStringLiteral("/api/v1/checks"));
+        status.checksError.clear();
+        if (checks.httpStatus == 404) {
+            status.checksError = QStringLiteral(
+                "the relay has no checks endpoint (404) - update the relay to "
+                "read its probes here");
+            status.checksAnswered = previous.checksAnswered;
+            status.checks = previous.checks;
+            status.checksAsOfMs = previous.checksAsOfMs;
+        } else if (!checks.ok) {
+            status.checksError = checks.error;
+            status.checksAnswered = previous.checksAnswered;
+            status.checks = previous.checks;
+            status.checksAsOfMs = previous.checksAsOfMs;
+        } else {
+            QString checkFailure;
+            if (!teamParseChecksJson(checks.body, &status, &checkFailure)) {
+                status.checksError = checkFailure;
+                status.checksAnswered = previous.checksAnswered;
+                status.checks = previous.checks;
+                status.checksAsOfMs = previous.checksAsOfMs;
+            }
+        }
     } else {
         status.incidentsAnswered = previous.incidentsAnswered;
         status.incidents = previous.incidents;
         status.incidentsError = previous.incidentsError;
+        status.checksAnswered = previous.checksAnswered;
+        status.checks = previous.checks;
+        status.checksError = previous.checksError;
+        status.checksAsOfMs = previous.checksAsOfMs;
     }
     publish(status);
 }
