@@ -14,7 +14,7 @@ python3 site/check_links.py          # expects: 2 page(s), 0 broken
 Open `site/index.html` and `site/relay.html` at 1440 and 390 widths and check
 there is no horizontal scroll. The page is dark-only by design.
 
-Check the version strip says the release being shipped (`CROWSNEST 0.14.0` at
+Check the version strip says the release being shipped (`CROWSNEST 0.14.1` at
 the time of writing), the hero plays the live strip capture (`shots/hud-live.webm` / `.mp4`,
 poster `hud.png`, which shows PIN, CONSOLE, CLICK-THRU and HIDE), the console
 plate plays `shots/console-live.webm` / `.mp4`, and `shots/views.webp` is the
@@ -36,7 +36,7 @@ and Cloudflare Pages is a manual step.
 
 ## After uploading
 
-- Open the live URL and hard-reload; confirm the top strip says `0.14.0`.
+- Open the live URL and hard-reload; confirm the top strip says `0.14.1`.
 - Click **Releases**, **Relay**, the install tabs and the copy buttons; confirm
   `releases/latest/download/install.sh` and `SHA256SUMS` resolve.
 - Confirm the hero video plays (the strip updates about once a second) and the
