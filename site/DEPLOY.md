@@ -44,11 +44,12 @@ and Cloudflare Pages is a manual step.
   `shots/views.webp` opens to the 34-view sheet.
 - If an old image or video is still served, purge the Cloudflare cache for
   `/hud.png`, `/shots/hud-live.*`, `/shots/console-live.*`,
-  `/shots/console-live-poster.webp`, `/shots/processes-live.webp` and
-  `/shots/views.webp` (or append a cache-busting query to those references in
-  `index.html`).
-- The relay capture (`shots/relay-fleet.webp`) must show the watchroom design,
-  not the old console.
+  `/shots/console-live-poster.webp`, `/shots/processes-live.webp`,
+  `/shots/views.webp` and `/shots/relay-checks.webp` (or append a cache-busting
+  query to those references in `index.html`).
+- The relay captures (`shots/relay-fleet.webp` and `shots/relay-checks.webp`)
+  must show the watchroom design, not the old console; the checks plate shows
+  HTTP, TLS and push probes with 24 hour bars and certificate days.
 
 ## What must not ship
 

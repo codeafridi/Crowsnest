@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Relay manual. Crowsnest</title>
-    <meta name="description" content="The Crowsnest relay: what it holds, plan limits, retention, four setup steps, and the managed lifecycle for past due, cancellation and deletion. One static binary beside your own Postgres, MIT and free to self-host." />
+    <meta name="description" content="The Crowsnest relay: fleet state, incidents, delivery, on-call rota, and its own HTTP/TCP/TLS checks and push heartbeats. One static binary beside your own Postgres, MIT and free to self-host." />
     <meta name="theme-color" content="#080b0e" />
     <link rel="icon" href="logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="logo.png" />
     <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="fonts/fragment-mono.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body class="relay-page">
     <a class="skip" href="#main">Skip to content</a>
@@ -110,7 +110,33 @@
       <section class="plate">
         <div class="wrap">
           <div class="plate-head">
-            <p class="plate-no">02 / SPEC</p>
+            <p class="plate-no">02 / CHECKS</p>
+            <h2>It probes the service, not the laptop.</h2>
+            <p>A machine agent can only answer for its own host. The relay answers the other half: the service that is down for everyone, the certificate that expires tomorrow, the nightly job nobody runs an agent on.</p>
+          </div>
+          <div class="relay-checks-grid">
+            <div class="relay-checks-copy">
+              <ul class="relay-checks-list">
+                <li><strong>HTTP, TCP, TLS.</strong> Status or keyword checks, a connect, or a handshake with the leaf certificate's expiry. One failed probe is not a page; the confirmation streak decides.</li>
+                <li><strong>Push heartbeats.</strong> A secret URL for a cron job or a deploy hook. The window is the interval plus a grace; a missing window opens an incident, a ping resolves it.</li>
+                <li><strong>One incident pipeline.</strong> Checks open ordinary incidents, so routing, silences, acknowledge, close, repeats and every delivery channel are already there. Status pages can publish them as components.</li>
+              </ul>
+            </div>
+            <figure class="relay-checks-shot">
+              <div class="frame relay-frame">
+                <div class="frame-bar"><span class="frame-dot" aria-hidden="true"></span> RELAY / CHECKS <span class="frame-live">RELAY</span></div>
+                <a href="shots/relay-checks.webp" target="_blank" rel="noopener"><img src="shots/relay-checks.webp" width="1280" height="780" alt="The relay's Checks board: four probes (HTTP, TLS and a push heartbeat), two up and two down, 24 hour uptime bars, latency and certificate days." /></a>
+              </div>
+              <figcaption>A failed check opens one incident, with the probe's own error in the row.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="plate">
+        <div class="wrap">
+          <div class="plate-head">
+            <p class="plate-no">03 / SPEC</p>
             <h2>The numbers.</h2>
             <p>Every limit and window is resolved per request from one function, so the page, the API and the enforcer cannot disagree.</p>
           </div>
@@ -140,7 +166,7 @@
       <section class="plate" id="setup">
         <div class="wrap">
           <div class="plate-head">
-            <p class="plate-no">03 / SETUP</p>
+            <p class="plate-no">04 / SETUP</p>
             <h2>Four steps. The relay is yours.</h2>
             <p>Self-hosting is free and needs no managed service: one static binary, one Postgres database, and the free client on every machine you want to see. Managed hosting is not open yet.</p>
           </div>
@@ -166,7 +192,7 @@ token   = the-machine-token</pre>
       <section class="plate">
         <div class="wrap">
           <div class="plate-head">
-            <p class="plate-no">04 / LIFECYCLE</p>
+            <p class="plate-no">05 / LIFECYCLE</p>
             <h2>Past due, cancel, delete.</h2>
             <p>These are the managed plan's clocks. A relay you run yourself has no billing, no trial timer and no expiry.</p>
           </div>

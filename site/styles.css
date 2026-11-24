@@ -407,3 +407,14 @@ em { font-style: normal; color: var(--green); }
 .verify-link a { color: var(--green); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 .verify-link a:hover { color: var(--green-2); }
 @media (max-width: 720px) { .verify-cmd { font-size: 10.5px; } }
+
+/* ---- Relay checks plate ------------------------------------------------ */
+.relay-checks-grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 56px; align-items: center; }
+.relay-checks-list { margin: 0; padding: 0; list-style: none; }
+.relay-checks-list li { padding: 12px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; line-height: 1.62; }
+.relay-checks-list li:last-child { border-bottom: 1px solid var(--line); }
+.relay-checks-list strong { color: var(--text); }
+.relay-checks-shot { margin: 0; }
+@media (max-width: 960px) {
+  .relay-checks-grid { grid-template-columns: 1fr; gap: 28px; }
+}
