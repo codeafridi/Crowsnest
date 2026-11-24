@@ -52,10 +52,25 @@ set -euo pipefail
   echo ">> installing build dependencies"
   dnf -y install dnf-plugins-core epel-release >/dev/null 2>&1
   dnf config-manager --set-enabled crb >/dev/null 2>&1
-  dnf -y install gcc-c++ cmake qt6-qtbase-devel \
+  dnf -y install gcc-c++ cmake make perl tar gzip qt6-qtbase-devel \
     mesa-libGL-devel mesa-libEGL-devel glib2-devel libxkbcommon-devel \
     dbus-devel fontconfig-devel freetype-devel libX11-devel libxcb-devel \
     libicu-devel libglvnd-glx libglvnd-egl libglvnd-opengl >/dev/null 2>&1
+
+  # Qt 6.10 ships its OpenSSL backend as a plugin and has no functional
+  # backend against Rocky 9.9 OpenSSL 3.5 (the plugin loads, then Qt reports
+  # "No functional TLS backend"). Build the 3.0 LTS line and bundle that pair:
+  # the plugin is ABI-compatible with 3.0, and it is the version the distro Qt
+  # on Ubuntu/Debian links. The host OpenSSL is not used, so the bundle keeps
+  # its glibc 2.34 floor.
+  echo ">> building OpenSSL 3.0 LTS"
+  curl -fsSL https://www.openssl.org/source/openssl-3.0.18.tar.gz \
+    -o /tmp/openssl.tgz
+  tar xzf /tmp/openssl.tgz -C /tmp
+  ( cd /tmp/openssl-3.0.18
+    ./Configure --prefix=/opt/openssl --libdir=lib shared no-tests >/dev/null
+    make -j"$(nproc)" >/dev/null
+    make install_sw >/dev/null )
 
   echo ">> building"
   rm -rf /w
@@ -63,7 +78,8 @@ set -euo pipefail
   cmake --build /w -j"$(nproc)" >/dev/null
 
   echo ">> bundling Qt and dependencies"
-  rm -rf /outapp && mkdir -p /outapp/lib /outapp/plugins/platforms
+  rm -rf /outapp && mkdir -p /outapp/lib /outapp/plugins/platforms \
+    /outapp/plugins/tls
   cp /w/crowsnest /outapp/
   # M58a: stamp the bundle version (install.sh logs it; `crowsnest vers`
   # prints it) straight from the CMake project version. The sed
@@ -80,16 +96,29 @@ set -euo pipefail
   for p in "$(dirname "$QTL")"/../plugins/platforms /usr/lib64/qt6/plugins/platforms; do
     [ -d "$p" ] && cp -a "$p"/libqoffscreen.so "$p"/libqxcb.so /outapp/plugins/platforms/ 2>/dev/null || true
   done
+  # Qt 6 ships the OpenSSL backend as a plugin. Without it QSslSocket has no
+  # functional backend at all ("No TLS backend is available"), so the remote
+  # link, HTTPS synthetic checks and the certificate card silently fail in the
+  # portable bundle even though the same binary works against the distro Qt.
+  for p in "$(dirname "$QTL")"/../plugins/tls /usr/lib64/qt6/plugins/tls; do
+    [ -d "$p" ] && cp -a "$p"/libqopensslbackend.so /outapp/plugins/tls/ 2>/dev/null || true
+  done
 
   # Bundle every non-core shared library (dereferencing symlinks) until closure.
   core="libc\.so|libm\.so|libpthread|libdl\.so|librt\.so|libgcc_s|libstdc\+\+|ld-linux|libresolv|libnsl"
   for _ in 1 2 3 4 5; do
-    for t in /outapp/crowsnest /outapp/lib/*.so* /outapp/plugins/platforms/*.so; do
+    for t in /outapp/crowsnest /outapp/lib/*.so* \
+             /outapp/plugins/platforms/*.so /outapp/plugins/tls/*.so; do
       ldd "$t" 2>/dev/null | awk "{print \$3}"
     done | grep "^/" | sort -u | grep -vE "$core" | while read -r l; do
       b="$(basename "$l")"; [ -e "/outapp/lib/$b" ] || cp -L "$l" "/outapp/lib/$b" 2>/dev/null || true
     done
   done
+
+  # The closure above took the Rocky 9 libssl/libcrypto for the plugin. Replace
+  # that pair with the 3.0 build; the sonames match and the Qt plugin works.
+  cp -L /opt/openssl/lib/libssl.so.3 /opt/openssl/lib/libcrypto.so.3 \
+    /outapp/lib/
 
   printf "%s\n" \
     "#!/bin/sh" \
