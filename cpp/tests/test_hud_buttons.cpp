@@ -1800,6 +1800,34 @@ int main(int argc, char *argv[]) {
         check(qAbs(hud.windowOpacity() - 1.0) < 0.01,
               "appearance: 100% opacity is fully solid again");
 
+        // Regression: the console is built on the first MORE. Its opacity
+        // slider used to be created with the panel's 100% default while the
+        // collapsed strip already honoured the configured 50%, so opening
+        // Settings after a collapse showed the wrong value.
+        {
+            HudWindow lazy;
+            OverlayConfig configured;
+            configured.opacity = 50;
+            configured.wallpaper = QStringLiteral("ember");
+            lazy.setAppearance(QStringLiteral("#4a86c4"), configured, QString());
+            auto *more = lazy.findChild<QPushButton *>(
+                QStringLiteral("moreButton"));
+            check(more != nullptr, "appearance: the collapsed MORE exists");
+            if (more != nullptr) {
+                more->click();
+                QApplication::processEvents();
+            }
+            auto *slider = lazy.findChild<QSlider *>(
+                QStringLiteral("ddOpacitySlider"));
+            auto *value = lazy.findChild<QLabel *>(
+                QStringLiteral("ddOpacityValue"));
+            check(slider != nullptr && slider->value() == 50,
+                  "appearance: the lazily built console keeps the configured "
+                  "opacity");
+            check(value != nullptr && value->text() == QStringLiteral("50%"),
+                  "appearance: the opacity label matches the configured value");
+        }
+
         // Dragging the opacity slider must stay on the cheap path: one window
         // property per step, no full appearance change (that re-emitted every
         // step is what made the slider crawl - it rebuilt the console

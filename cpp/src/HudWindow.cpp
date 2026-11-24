@@ -422,6 +422,13 @@ DashboardPanel *HudWindow::ensureConsole() {
     publishHistory();
     publishTimeline();
     m_panel->applyTheme();
+    // The console is built lazily on the first MORE. It starts with its own
+    // defaults, so the configured strip opacity and backdrop must be handed to
+    // it now; before this call the Settings slider showed 100% while the
+    // collapsed strip was still 50% (the window property read the config, the
+    // slider read the panel default).
+    m_panel->setAppearance(ui_theme::accent(), m_overlayConfig.opacity,
+                           m_overlayConfig.wallpaper);
     applySurfaceAppearance();
     return m_panel;
 }
