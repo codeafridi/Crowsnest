@@ -2582,10 +2582,22 @@ int main(int argc, char *argv[]) {
                                                 + 2 * asgTable->sizeHintForRow(0)
                                                 + 16,
               "cloud capacity card hugs its two groups");
-        auto *toggle = hud.findChild<QToolButton *>(
-            QStringLiteral("ddDisclosure"));
+        // The Cloud page has more than one disclosure now (IaC and the cost
+        // model are folded too), so the toggle is the one in the card that
+        // holds the footprint label - not simply the first in the page.
         auto *footprint =
             hud.findChild<QLabel *>(QStringLiteral("ddCloudFootprint"));
+        QToolButton *toggle = nullptr;
+        for (QToolButton *candidate :
+             hud.findChildren<QToolButton *>(QStringLiteral("ddDisclosure"))) {
+            QWidget *card = candidate->parentWidget();
+            if (card != nullptr && footprint != nullptr
+                && card->findChild<QLabel *>(QStringLiteral("ddCloudFootprint"))
+                       == footprint) {
+                toggle = candidate;
+                break;
+            }
+        }
         check(toggle != nullptr && footprint != nullptr
                   && footprint->isHidden(),
               "the footprint card starts folded");
