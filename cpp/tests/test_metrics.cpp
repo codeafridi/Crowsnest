@@ -9465,9 +9465,11 @@ int main(int argc, char *argv[]) {
             }
             return QString();
         };
-        check(stateOf(QStringLiteral("Focus provider")) == QStringLiteral("GATED")
-                  && stateOf(QStringLiteral("Journald")) == QStringLiteral("GATED"),
+        check(stateOf(QStringLiteral("Focus provider")) == QStringLiteral("GATED"),
               "integrations: a surface this OS lacks reads GATED, not empty");
+        check(stateOf(QStringLiteral("Journald")) == QStringLiteral("READY")
+                  && stateOf(QStringLiteral("Systemd")) == QStringLiteral("READY"),
+              "integrations: a supported source with no sample yet reads READY");
         check(stateOf(QStringLiteral("Docker")) == QStringLiteral("MISSING"),
               "integrations: no engine reads MISSING");
         check(stateOf(QStringLiteral("OTLP traces")) == QStringLiteral("READY"),

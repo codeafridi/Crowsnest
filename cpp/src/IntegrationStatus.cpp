@@ -38,20 +38,24 @@ QList<IntegrationTile> buildIntegrationTiles(const IntegrationInputs &in) {
                       ? QStringLiteral("via %1").arg(in.focusProvider)
                       : gatedText(in.osName, QStringLiteral("a focused window")),
                   QStringLiteral("Processes"));
+    // Every platform this build targets has a log store (journald, OSLog,
+    // EventLog), so a missing sample reads READY, not GATED. GATED is for a
+    // surface the OS genuinely does not have.
     tiles << tile(QStringLiteral("Agent & host"), QStringLiteral("Journald"),
-                  in.journal ? QStringLiteral("LIVE") : QStringLiteral("GATED"),
+                  in.journal ? QStringLiteral("LIVE") : QStringLiteral("READY"),
                   in.journal ? QStringLiteral("%1 line(s) in the window")
                                    .arg(in.journalLines)
-                             : gatedText(in.osName, QStringLiteral("journald")),
+                             : QStringLiteral("no sample yet"),
                   QStringLiteral("Logs"));
+    // systemd, launchd and the Windows SCM are all supported; a false here is
+    // "no sample yet", never "this OS has no services".
     tiles << tile(QStringLiteral("Agent & host"), QStringLiteral("Systemd"),
                   in.services ? QStringLiteral("LIVE")
-                              : QStringLiteral("GATED"),
+                              : QStringLiteral("READY"),
                   in.services ? QStringLiteral("%1 unit(s), %2 failed")
                                     .arg(in.serviceUnits)
                                     .arg(in.serviceFailed)
-                              : gatedText(in.osName,
-                                          QStringLiteral("systemd services")),
+                              : QStringLiteral("no sample yet"),
                   QStringLiteral("Services"));
     tiles << tile(QStringLiteral("Agent & host"), QStringLiteral("Sensors"),
                   in.sensors ? QStringLiteral("LIVE") : QStringLiteral("GATED"),
