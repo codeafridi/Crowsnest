@@ -3653,6 +3653,66 @@ QWidget *DashboardPanel::buildSettingsView() {
     collectionPage->addWidget(makeCard(QStringLiteral("GENERAL"),
                                        m_settingsGeneral, view));
 
+    // Identity: one name and this machine's labels. The labels are authored
+    // text everywhere else in the config; this is the one place a person can
+    // set them without knowing the file format. The save path validates with
+    // the same rules the fleet parser uses, so the UI cannot write a line the
+    // reader would refuse.
+    auto *identityCard = new QWidget(view);
+    auto *identityLayout = new QVBoxLayout(identityCard);
+    identityLayout->setContentsMargins(0, 0, 0, 0);
+    identityLayout->setSpacing(6);
+    auto *nameCaption = new QLabel(QStringLiteral("machine name"), identityCard);
+    nameCaption->setObjectName(QStringLiteral("ddSettingsLabel"));
+    nameCaption->setFont(monoFont(9));
+    m_identityName = new QLineEdit(identityCard);
+    m_identityName->setObjectName(QStringLiteral("ddIdentityName"));
+    m_identityName->setPlaceholderText(QStringLiteral("hostname"));
+    m_identityName->setFont(monoFont(10));
+    auto *labelsCaption =
+        new QLabel(QStringLiteral("labels"), identityCard);
+    labelsCaption->setObjectName(QStringLiteral("ddSettingsLabel"));
+    labelsCaption->setFont(monoFont(9));
+    m_identityLabels = new QLineEdit(identityCard);
+    m_identityLabels->setObjectName(QStringLiteral("ddIdentityLabels"));
+    m_identityLabels->setPlaceholderText(
+        QStringLiteral("role=web env=prod team=payments"));
+    m_identityLabels->setFont(monoFont(10));
+    auto *identityHint = new QLabel(
+        QStringLiteral("one line of key=value pairs (up to 8). Used on the "
+                       "Fleet page, as the relay's name for this machine, and "
+                       "by label filters. Empty name = the hostname."),
+        identityCard);
+    identityHint->setObjectName(QStringLiteral("ddIdentityHint"));
+    identityHint->setFont(monoFont(9));
+    identityHint->setWordWrap(true);
+    identityHint->setMinimumWidth(1);
+    auto *identityRow = new QHBoxLayout;
+    identityRow->setSpacing(8);
+    auto *identitySave = new QPushButton(QStringLiteral("SAVE"), identityCard);
+    identitySave->setObjectName(QStringLiteral("ddIdentitySave"));
+    identitySave->setCursor(Qt::PointingHandCursor);
+    identitySave->setFocusPolicy(Qt::NoFocus);
+    m_identityStatus = new QLabel(identityCard);
+    m_identityStatus->setObjectName(QStringLiteral("ddIdentityStatus"));
+    m_identityStatus->setFont(monoFont(9));
+    m_identityStatus->setWordWrap(true);
+    m_identityStatus->setMinimumWidth(1);
+    identityRow->addWidget(identitySave);
+    identityRow->addWidget(m_identityStatus, 1);
+    connect(identitySave, &QPushButton::clicked, this, [this]() {
+        emit identitySaveRequested(m_identityName->text(),
+                                   m_identityLabels->text());
+    });
+    identityLayout->addWidget(nameCaption);
+    identityLayout->addWidget(m_identityName);
+    identityLayout->addWidget(labelsCaption);
+    identityLayout->addWidget(m_identityLabels);
+    identityLayout->addWidget(identityHint);
+    identityLayout->addLayout(identityRow);
+    collectionPage->addWidget(makeCard(QStringLiteral("IDENTITY"),
+                                       identityCard, view));
+
     m_settingsFocus = new QLabel(QStringLiteral("focus  checking..."), view);
     m_settingsFocus->setObjectName(QStringLiteral("ddFocusStatus"));
     m_settingsFocus->setFont(monoFont(10));
@@ -4139,6 +4199,16 @@ void DashboardPanel::applySettingsInfo() {
     if (m_settingsSoftware == nullptr) {
         return;
     }
+    // Seed the identity editors from the config once. A field the user is
+    // typing in is left alone: a tick must not reset the cursor mid-word.
+    if (m_identityName != nullptr && !m_identityName->hasFocus()
+        && !m_settings.fleetName.isEmpty()) {
+        m_identityName->setText(m_settings.fleetName);
+    }
+    if (m_identityLabels != nullptr && !m_identityLabels->hasFocus()
+        && !m_settings.fleetLabels.isEmpty()) {
+        m_identityLabels->setText(m_settings.fleetLabels);
+    }
     auto span = [](const QString &color, const QString &text) {
         return QStringLiteral("<span style=\"color:%1;\">%2</span>")
             .arg(color, text);
@@ -4605,6 +4675,16 @@ void DashboardPanel::setSettingsInfo(const SettingsInfo &info) {
     updateIntegrations();
     m_settings = info;
     applySettingsInfo();
+}
+
+void DashboardPanel::setIdentityStatus(const QString &text, bool ok) {
+    if (m_identityStatus == nullptr) {
+        return;
+    }
+    m_identityStatus->setText(text);
+    m_identityStatus->setStyleSheet(
+        QStringLiteral("color: %1;")
+            .arg(ok ? ui_theme::ok() : ui_theme::crit()));
 }
 
 void DashboardPanel::setWebhookLine(const QString &line) {

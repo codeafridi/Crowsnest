@@ -1076,6 +1076,48 @@ int main(int argc, char *argv[]) {
     }
 
     {
+        // Identity: one name writes [fleet] name and [remote] name; the labels
+        // write labels.self; an empty name removes both overrides.
+        QTemporaryDir dir;
+        const QString path = writeConfig(
+            dir, QByteArrayLiteral("[fleet]\n"
+                                   "enabled = true\n"
+                                   "peers = db=127.0.0.1:9334\n"));
+        check(saveFleetIdentity(
+                  path, QStringLiteral("hud-box"),
+                  {{QStringLiteral("role"), QStringLiteral("web")},
+                   {QStringLiteral("env"), QStringLiteral("prod")}}),
+              "identity: saveFleetIdentity writes the file");
+        QString error;
+        const Config saved = loadConfig(path, &error);
+        QString selfLine;
+        for (const QPair<QString, QString> &label : saved.fleet.labels) {
+            if (label.first == QStringLiteral("self")) {
+                selfLine = label.second;
+            }
+        }
+        check(error.isEmpty() && saved.fleet.name == QStringLiteral("hud-box")
+                  && saved.remote.name == QStringLiteral("hud-box"),
+              "identity: one name reaches [fleet] and [remote]");
+        check(selfLine == QStringLiteral("role=web env=prod"),
+              "identity: the labels reach labels.self");
+        check(saved.fleet.peers.size() == 1,
+              "identity: saving keeps the rest of [fleet]");
+        check(saveFleetIdentity(path, QString(), {}),
+              "identity: an empty identity saves");
+        const Config cleared = loadConfig(path, &error);
+        check(cleared.fleet.name.isEmpty() && cleared.remote.name.isEmpty(),
+              "identity: an empty name removes both overrides");
+        bool selfCleared = true;
+        for (const QPair<QString, QString> &label : cleared.fleet.labels) {
+            if (label.first == QStringLiteral("self")) {
+                selfCleared = false;
+            }
+        }
+        check(selfCleared, "identity: empty labels remove labels.self");
+    }
+
+    {
         QTemporaryDir dir;
         const QString path = writeConfig(
             dir, QByteArrayLiteral("[remote]\n"

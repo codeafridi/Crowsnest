@@ -1921,6 +1921,65 @@ int main(int argc, char *argv[]) {
               "appearance: a theme re-apply re-tints the accent section dot");
     }
 
+    // --- Identity: one name and this machine's labels, saved and applied ---
+    {
+        QTemporaryDir idDir;
+        const QByteArray previousConfig = qgetenv("CROWSNEST_CONFIG");
+        const QString cfgPath = idDir.filePath(QStringLiteral("config.ini"));
+        qputenv("CROWSNEST_CONFIG", cfgPath.toUtf8());
+        auto *name = hud.findChild<QLineEdit *>(QStringLiteral("ddIdentityName"));
+        auto *labels =
+            hud.findChild<QLineEdit *>(QStringLiteral("ddIdentityLabels"));
+        auto *save =
+            hud.findChild<QPushButton *>(QStringLiteral("ddIdentitySave"));
+        auto *status =
+            hud.findChild<QLabel *>(QStringLiteral("ddIdentityStatus"));
+        check(name != nullptr && labels != nullptr && save != nullptr
+                  && status != nullptr,
+              "identity: the card carries a name, labels and SAVE");
+        if (name != nullptr && labels != nullptr && save != nullptr) {
+            name->setText(QStringLiteral("hud-box"));
+            labels->setText(QStringLiteral("role=web env=prod"));
+            save->click();
+            QApplication::processEvents();
+            QString loadError;
+            const Config reloaded = loadConfig(cfgPath, &loadError);
+            QString selfLine;
+            for (const QPair<QString, QString> &label : reloaded.fleet.labels) {
+                if (label.first == QStringLiteral("self")) {
+                    selfLine = label.second;
+                }
+            }
+            check(loadError.isEmpty()
+                      && reloaded.fleet.name == QStringLiteral("hud-box"),
+                  "identity: the name is written to [fleet] name");
+            check(selfLine == QStringLiteral("role=web env=prod"),
+                  "identity: the labels are written to labels.self");
+            check(reloaded.remote.name == QStringLiteral("hud-box"),
+                  "identity: the relay name follows the same field");
+            check(status->text().contains(QStringLiteral("saved")),
+                  "identity: a save is acknowledged");
+
+            labels->setText(QStringLiteral("role web"));
+            save->click();
+            QApplication::processEvents();
+            check(status->text().contains(QStringLiteral("not saved")),
+                  "identity: a refused line says why");
+            const Config after = loadConfig(cfgPath, &loadError);
+            check(after.fleet.name == QStringLiteral("hud-box"),
+                  "identity: a refusal does not wipe the saved identity");
+
+            // Clearing the identity hands the row back to the hostname; later
+            // fleet assertions in this suite must see the authored labels
+            // again, not this block's override.
+            name->clear();
+            labels->clear();
+            save->click();
+            QApplication::processEvents();
+        }
+        qputenv("CROWSNEST_CONFIG", previousConfig);
+    }
+
     // --- M90: the Kubernetes page names the context it is describing --------
     {
         KubeSnapshot ctx = kubeSnap;

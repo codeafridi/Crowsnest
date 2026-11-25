@@ -353,6 +353,11 @@ void saveSilences(const QString &path, const QList<SilenceRule> &rules);
 void saveOverlayConfig(const QString &path, const OverlayConfig &overlay);
 // M169: remembers the Team page's grouping key (`[remote] team_group`). An
 // empty key removes the line rather than writing `team_group =`.
+// Host identity: one machine name (used by the Fleet page and as the relay's
+// display name) plus this machine's labels. Empty values remove the override
+// so the hostname takes over again.
+bool saveFleetIdentity(const QString &path, const QString &name,
+                       const QList<QPair<QString, QString>> &labels);
 bool saveRemoteTeamGroup(const QString &path, const QString &key);
 void saveThemeAccent(const QString &path, const QString &accent);
 

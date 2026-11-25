@@ -98,6 +98,8 @@ struct SettingsInfo {
     QString metricsLine;
     QString webhookLine;
     QString remoteLine;
+    QString fleetName;
+    QString fleetLabels;
     QString exportLine;
     QString historyLine;
     QString timelineLine;
@@ -179,6 +181,8 @@ public:
     void showTimeline();
 
     void setWebhookLine(const QString &line);
+    // The identity card's answer after a save or a refusal.
+    void setIdentityStatus(const QString &text, bool ok);
 
     // M99: the disclosure card. Filled from the live runner, never recomputed
     // from config - a card that says "delivered" must not say it before one.
@@ -231,6 +235,9 @@ signals:
     void cloudPageVisibleChanged(bool visible);
     // Settings -> Remote: one synthetic alert through the webhook.
     void webhookTestRequested();
+    // Settings -> Collection -> Identity: one machine name and this machine's
+    // labels. The window validates, writes the config and applies it live.
+    void identitySaveRequested(const QString &name, const QString &labelsText);
 
 private:
     void updateOverviewText(const DisplaySnapshot &snapshot);
@@ -880,6 +887,9 @@ private:
     QHash<QString, QLabel *> m_integrationEvidence;
     QLabel *m_integrationSummary = nullptr;
     QLabel *m_integrationChecklist = nullptr;
+    QLineEdit *m_identityName = nullptr;
+    QLineEdit *m_identityLabels = nullptr;
+    QLabel *m_identityStatus = nullptr;
 
     QSet<int> m_collapsedPids;
     bool m_populating = false;

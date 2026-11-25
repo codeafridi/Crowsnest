@@ -821,6 +821,12 @@ int main(int argc, char *argv[]) {
                 : QStringLiteral("disabled ([metrics] enabled=false)");
         settingsInfo.webhookLine = webhookConfigLine(config.webhook);
         settingsInfo.remoteLine = remoteSettingsLine(config.remote);
+        settingsInfo.fleetName = config.fleet.name;
+        for (const QPair<QString, QString> &label : config.fleet.labels) {
+            if (label.first == QStringLiteral("self")) {
+                settingsInfo.fleetLabels = label.second;
+            }
+        }
         settingsInfo.timelineLine =
             config.timeline.enabled
                 ? QStringLiteral("on - ring %1 events, window +-%2 s, "

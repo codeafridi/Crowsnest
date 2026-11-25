@@ -1,5 +1,7 @@
 #include "HudWindow.h"
 
+#include "Config.h"
+
 #include "FocusBridge.h"
 
 #include <QDebug>
@@ -400,6 +402,40 @@ DashboardPanel *HudWindow::ensureConsole() {
                 // the config file next to the label lines it groups by.
                 saveRemoteTeamGroup(defaultConfigPath(), key);
             });
+    connect(m_panel, &DashboardPanel::identitySaveRequested, this,
+            [this](const QString &name, const QString &labelsText) {
+                QString error;
+                const QList<QPair<QString, QString>> labels =
+                    fleetParseLabels(labelsText, &error);
+                if (!error.isEmpty()) {
+                    m_panel->setIdentityStatus(
+                        QStringLiteral("not saved: %1").arg(error), false);
+                    return;
+                }
+                const QString clean = name.trimmed();
+                if (!saveFleetIdentity(defaultConfigPath(), clean, labels)) {
+                    m_panel->setIdentityStatus(
+                        QStringLiteral("not saved: the config file could not "
+                                       "be written"),
+                        false);
+                    return;
+                }
+                // An empty name and no labels is "use the hostname again",
+                // not an override that keeps stale values alive.
+                m_identityOverride = !(clean.isEmpty() && labels.isEmpty());
+                m_identityName = clean;
+                m_identityLabels = labels;
+                m_remote.name = clean;
+                publishFleet();
+                m_panel->setIdentityStatus(
+                    labels.isEmpty()
+                        ? QStringLiteral("saved - the name applies now; no "
+                                         "labels")
+                        : QStringLiteral("saved - the name and %1 label(s) "
+                                         "apply now")
+                              .arg(labels.size()),
+                    true);
+            });
     connect(m_panel, &DashboardPanel::timelineFocusRequested, this,
             &HudWindow::focusTimeline);
     connect(m_panel, &DashboardPanel::timelineFocusCleared, this, [this]() {
@@ -486,6 +522,10 @@ void HudWindow::publishFleet() {
                 merged.lastPollMs = peer.lastAttemptMs;
             }
         }
+    }
+    if (m_identityOverride) {
+        merged.selfName = m_identityName;
+        merged.selfLabels = m_identityLabels;
     }
     const FleetPeer self = fleetSelfPeer(
         m_lastSnapshot, merged.selfName, QDateTime::currentMSecsSinceEpoch(),

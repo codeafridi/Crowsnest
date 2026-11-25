@@ -233,6 +233,12 @@ private:
     // their own cadence, so they are cached here (-1 = no reading, which the
     // wire carries as null rather than a fabricated zero).
     RemoteOptions m_remote;
+    // A name and labels saved from Settings -> Identity. Applied to the self
+    // row and the relay on the next publish, and written to the config so a
+    // restart reads the same values.
+    bool m_identityOverride = false;
+    QString m_identityName;
+    QList<QPair<QString, QString>> m_identityLabels;
     QString m_remoteVersion;
     QString m_remotePlatform;
     qint64 m_remoteLastSampleMs = -1;

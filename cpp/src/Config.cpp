@@ -1,5 +1,6 @@
 #include "Config.h"
 
+#include "FleetStatus.h"
 #include "RemoteStatus.h"
 #include "WallpaperArt.h"
 
@@ -1012,6 +1013,39 @@ bool saveRemoteTeamGroup(const QString &path, const QString &key) {
         settings.remove(QStringLiteral("team_group"));
     } else {
         settings.setValue(QStringLiteral("team_group"), key.trimmed());
+    }
+    settings.endGroup();
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+bool saveFleetIdentity(const QString &path, const QString &name,
+                       const QList<QPair<QString, QString>> &labels) {
+    if (path.isEmpty()) {
+        return false;
+    }
+    const QString trimmed = name.trimmed();
+    const QString text = fleetLabelsText(labels);
+    QSettings settings(path, QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("fleet"));
+    if (trimmed.isEmpty()) {
+        settings.remove(QStringLiteral("name"));
+    } else {
+        settings.setValue(QStringLiteral("name"), trimmed);
+    }
+    if (text.isEmpty()) {
+        settings.remove(QStringLiteral("labels.self"));
+    } else {
+        settings.setValue(QStringLiteral("labels.self"), text);
+    }
+    settings.endGroup();
+    // The relay names the machine with [remote] name; keeping the two in step
+    // is the whole point of one field.
+    settings.beginGroup(QStringLiteral("remote"));
+    if (trimmed.isEmpty()) {
+        settings.remove(QStringLiteral("name"));
+    } else {
+        settings.setValue(QStringLiteral("name"), trimmed);
     }
     settings.endGroup();
     settings.sync();
