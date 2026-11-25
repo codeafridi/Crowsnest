@@ -2609,6 +2609,36 @@ int main(int argc, char *argv[]) {
             check(footprint->isHidden(),
                   "the disclosure folds it again");
         }
+
+        // The Cloud page reads as three screens - account, spend, hygiene -
+        // not one 2,500 px column. The instances table lives on the account
+        // page, the spend summary on the spend page, the footprint on hygiene.
+        auto *cloudStack = hud.findChild<QStackedWidget *>(
+            QStringLiteral("ddCloudPages"));
+        const auto cloudTabs =
+            hud.findChildren<QPushButton *>(QStringLiteral("ddCloudTab"));
+        auto *instances = hud.findChild<QTreeWidget *>(
+            QStringLiteral("ddCloudFleet"));
+        auto *spendSummary = hud.findChild<QLabel *>(
+            QStringLiteral("ddCloudSpendSummary"));
+        check(cloudStack != nullptr && cloudTabs.size() == 3,
+              "cloud: the page carries account, spend and hygiene tabs");
+        if (cloudStack != nullptr && cloudTabs.size() == 3) {
+            check(cloudStack->currentIndex() == 0
+                      && instances != nullptr
+                      && cloudStack->widget(0)->isAncestorOf(instances),
+                  "cloud: the account tab holds the instances table");
+            cloudTabs.at(1)->click();
+            check(cloudStack->currentIndex() == 1
+                      && spendSummary != nullptr
+                      && cloudStack->widget(1)->isAncestorOf(spendSummary),
+                  "cloud: the spend tab holds the billed spend");
+            cloudTabs.at(2)->click();
+            check(cloudStack->currentIndex() == 2 && footprint != nullptr
+                      && cloudStack->widget(2)->isAncestorOf(footprint),
+                  "cloud: the hygiene tab holds the footprint");
+            cloudTabs.at(0)->click();
+        }
     }
 
     // M85: billed spend. The fixture carries a real CE-shaped fold: $452.10

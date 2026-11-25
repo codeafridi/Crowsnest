@@ -1002,13 +1002,13 @@ QString DashboardPanel::consoleStyleSheet() const {
         // inherits the surface and renders near-invisible (the M61c sweep).
         "#ddOpacityValue { color: %TEXT%; }"
         "#ddAccentSwatch { font-weight: bold; }"
-        "#ddPresetBtn, #ddHistTierHour, #ddHistTierDay"
+        "#ddPresetBtn, #ddHistTierHour, #ddHistTierDay, #ddCloudTab"
         " { color: %DIM%; background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px; padding: 3px 9px; }"
-        "#ddPresetBtn:hover, #ddHistTierHour:hover, #ddHistTierDay:hover"
-        " { color: %TEXT%; border-color: %MUTED%; }"
-        "#ddPresetBtn:checked, #ddHistTierHour:checked, #ddHistTierDay:checked"
-        " { color: %ACCENT%; border-color: %ACCENT%; }"
+        "#ddPresetBtn:hover, #ddHistTierHour:hover, #ddHistTierDay:hover,"
+        " #ddCloudTab:hover { color: %TEXT%; border-color: %MUTED%; }"
+        "#ddPresetBtn:checked, #ddHistTierHour:checked, #ddHistTierDay:checked,"
+        " #ddCloudTab:checked { color: %ACCENT%; border-color: %ACCENT%; }"
         "#ddHistTierDay:disabled { color: %MUTED%; border-color: %BORDER%; }"
         "#ddSwatch { color: %DIM%; background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px; padding: 4px 4px 2px 4px; }"
@@ -5368,11 +5368,28 @@ void DashboardPanel::applyChartEvents() {
 
 QWidget *DashboardPanel::buildCloudView() {
     auto *view = new QWidget(this);
-    auto *content = new QWidget(view);
-    content->setObjectName(QStringLiteral("ddScrollContent"));
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(12, 12, 12, 8);
-    layout->setSpacing(8);
+    // Three readings of one account: what is in it, what it costs, and what is
+    // left behind. A single 2,500 px column made the reader scroll past the
+    // spend to reach the account; each question gets its own screen.
+    auto makeCloudPage = [&view]() {
+        auto *page = new QWidget(view);
+        page->setObjectName(QStringLiteral("ddScrollContent"));
+        page->setAttribute(Qt::WA_StyledBackground, true);
+        auto *scroll = new QScrollArea(view);
+        scroll->setObjectName(QStringLiteral("ddScroll"));
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        scroll->setWidget(page);
+        auto *column = new QVBoxLayout(page);
+        column->setContentsMargins(12, 12, 12, 8);
+        column->setSpacing(8);
+        return qMakePair(scroll, column);
+    };
+    const QPair<QScrollArea *, QVBoxLayout *> accountPage = makeCloudPage();
+    const QPair<QScrollArea *, QVBoxLayout *> spendPage = makeCloudPage();
+    const QPair<QScrollArea *, QVBoxLayout *> hygienePage = makeCloudPage();
 
     // --- Instance tiles. ACCRUED is explicitly "this boot": a reboot resets
     // host uptime, so the figure is the cost of the current boot. AGE is the
@@ -5784,68 +5801,86 @@ QWidget *DashboardPanel::buildCloudView() {
     m_cloudShare->setWordWrap(true);
     m_cloudShare->setMinimumWidth(1);
 
-    // --- Reading order. What the account is (tiles), what is in it (table with
-    // the selected instance beside it), what this host is, what it costs, what
-    // the provider billed, and last what leaves the host. Side-by-side rows keep
-    // related facts together instead of stacking every card into one column.
-    layout->addLayout(tiles);
-    layout->addWidget(accountBanner);
-    layout->addLayout(fleetHead);
-    layout->addLayout(fleetTop);
-    layout->addWidget(instancesCard);
-    layout->addWidget(detailCard);
-    layout->addWidget(m_cloudFleetNote);
-    auto *hygieneRow = new QHBoxLayout;
-    hygieneRow->setSpacing(10);
-    hygieneRow->addWidget(capacityCard, 3);
-    hygieneRow->addWidget(
-        makeCard(QStringLiteral("tag coverage"), m_cloudTags, view, false), 2);
-    layout->addLayout(hygieneRow);
+    // --- ACCOUNT: what the account is, what is in it, beside this host.
+    accountPage.second->addLayout(tiles);
+    accountPage.second->addWidget(accountBanner);
+    accountPage.second->addLayout(fleetHead);
+    accountPage.second->addLayout(fleetTop);
+    accountPage.second->addWidget(instancesCard);
+    accountPage.second->addWidget(detailCard);
+    accountPage.second->addWidget(m_cloudFleetNote);
+    accountPage.second->addWidget(capacityCard);
+    accountPage.second->addWidget(identityBanner);
+    accountPage.second->addWidget(hostCard);
+    accountPage.second->addStretch(1);
 
-    layout->addWidget(identityBanner);
-    layout->addWidget(hostCard);
-
-    layout->addWidget(costBanner);
+    // --- SPEND: what this box costs, what the provider billed.
+    spendPage.second->addWidget(costBanner);
     auto *costRow = new QHBoxLayout;
     costRow->setSpacing(10);
     costRow->addWidget(costCard, 2);
     costRow->addWidget(appCard, 1);
-    layout->addLayout(costRow);
+    spendPage.second->addLayout(costRow);
     auto *costDetailRow = new QHBoxLayout;
     costDetailRow->setSpacing(10);
     costDetailRow->addWidget(appChartCard, 1);
     costDetailRow->addWidget(consumersCard, 2);
-    layout->addLayout(costDetailRow);
-
-    layout->addWidget(spendBanner);
+    spendPage.second->addLayout(costDetailRow);
+    spendPage.second->addWidget(spendBanner);
     auto *spendTop = new QHBoxLayout;
     spendTop->setSpacing(10);
     spendTop->addWidget(spendSummaryCard, 2);
     spendTop->addWidget(spendChartCard, 1);
-    layout->addLayout(spendTop);
+    spendPage.second->addLayout(spendTop);
     auto *spendTables = new QHBoxLayout;
     spendTables->setSpacing(10);
     spendTables->addWidget(spendServicesCard, 1);
     spendTables->addWidget(spendTeamsCard, 1);
-    layout->addLayout(spendTables);
-    layout->addWidget(m_cloudSpendNote);
+    spendPage.second->addLayout(spendTables);
+    spendPage.second->addWidget(m_cloudSpendNote);
+    spendPage.second->addStretch(1);
 
-    layout->addWidget(footprintCard);
-    layout->addWidget(m_cloudShare);
-    layout->addWidget(m_cloudIacSection);
+    // --- HYGIENE: what is left behind or read once.
+    hygienePage.second->addWidget(
+        makeCard(QStringLiteral("tag coverage"), m_cloudTags, view, false));
+    hygienePage.second->addWidget(footprintCard);
+    hygienePage.second->addWidget(m_cloudShare);
+    hygienePage.second->addWidget(m_cloudIacSection);
+    hygienePage.second->addStretch(1);
 
-    auto *scroll = new QScrollArea(view);
-    scroll->setObjectName(QStringLiteral("ddScroll"));
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scroll->setWidget(content);
-    content->setAttribute(Qt::WA_StyledBackground, true);
+    // --- Sub-nav: three tabs, like the Settings section list but horizontal.
+    auto *tabs = new QWidget(view);
+    auto *tabRow = new QHBoxLayout(tabs);
+    tabRow->setContentsMargins(14, 10, 14, 0);
+    tabRow->setSpacing(6);
+    auto *tabGroup = new QButtonGroup(view);
+    tabGroup->setExclusive(true);
+    auto *stack = new QStackedWidget(view);
+    stack->setObjectName(QStringLiteral("ddCloudPages"));
+    stack->addWidget(accountPage.first);
+    stack->addWidget(spendPage.first);
+    stack->addWidget(hygienePage.first);
+    const QStringList tabNames{QStringLiteral("ACCOUNT"), QStringLiteral("SPEND"),
+                               QStringLiteral("HYGIENE")};
+    for (int i = 0; i < tabNames.size(); ++i) {
+        auto *tab = new QPushButton(tabNames.at(i), tabs);
+        tab->setObjectName(QStringLiteral("ddCloudTab"));
+        tab->setCheckable(true);
+        tab->setChecked(i == 0);
+        tab->setCursor(Qt::PointingHandCursor);
+        tab->setFocusPolicy(Qt::NoFocus);
+        tabGroup->addButton(tab, i);
+        tabRow->addWidget(tab);
+    }
+    tabRow->addStretch(1);
+    connect(tabGroup, &QButtonGroup::idClicked, stack,
+            &QStackedWidget::setCurrentIndex);
+
     auto *outer = new QVBoxLayout(view);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
-    outer->addWidget(scroll);
+    outer->addWidget(tabs);
+    outer->addWidget(stack, 1);
     return view;
 }
 
