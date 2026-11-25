@@ -4,7 +4,7 @@
 
 # Crowsnest
 
-### A local first HUD that follows the app you are using, and a console with 34 views for everything the machine does.
+### A local first HUD that follows the app you are using, and a console with 35 views for everything the machine does.
 
 [![latest release](https://img.shields.io/github/v/release/codeafridi/Crowsnest)](https://github.com/codeafridi/Crowsnest/releases)
 [![license](https://img.shields.io/github/license/codeafridi/Crowsnest)](LICENSE)

@@ -25,6 +25,7 @@
 #include "IncidentStatus.h"
 #include "FimStatus.h"
 #include "FleetStatus.h"
+#include "IntegrationStatus.h"
 #include "TeamStatus.h"
 #include "RemoteStatus.h"
 
@@ -254,6 +255,7 @@ private:
     QWidget *buildEndpointsView();
     QWidget *buildSyntheticView();
     QWidget *buildInstrumentationView();
+    QWidget *buildIntegrationsView();
     QWidget *buildDatabasesView();
     QWidget *buildHistoryView();
     QWidget *buildTimelineView();
@@ -473,6 +475,9 @@ private:
     void renderTeamIncidents();
     void renderTeamChecks();
     void updateTeamActions();
+    // The Integrations page: one coverage board over the compiled-in sources.
+    // Fed by the setters below, never by a collector of its own.
+    void updateIntegrations();
     const TeamIncident *teamIncidentById(const QString &id) const;
     bool teamActionsAllowed() const;
     void armTeamClose(const TeamIncident &incident);
@@ -868,6 +873,13 @@ private:
 
     QListWidget *m_rail = nullptr;
     QStackedWidget *m_views = nullptr;
+    QLabel *m_pageTitle = nullptr;
+    QLabel *m_pageNote = nullptr;
+    IntegrationInputs m_integrationInputs;
+    QHash<QString, QLabel *> m_integrationState;
+    QHash<QString, QLabel *> m_integrationEvidence;
+    QLabel *m_integrationSummary = nullptr;
+    QLabel *m_integrationChecklist = nullptr;
 
     QSet<int> m_collapsedPids;
     bool m_populating = false;

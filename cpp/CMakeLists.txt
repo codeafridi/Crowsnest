@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(crowsnest
-    VERSION 0.14.4
+    VERSION 0.15.0
     DESCRIPTION "Crowsnest HUD (Qt 6 Widgets)"
     LANGUAGES CXX)
 
@@ -54,6 +54,8 @@ add_library(crowsnest_core STATIC
     src/ServicesStatus.h
     src/ServicesSource.cpp
     src/ServicesSource.h
+    src/IntegrationStatus.cpp
+    src/IntegrationStatus.h
     src/SyntheticStatus.cpp
     src/SyntheticStatus.h
     src/SyntheticSource.cpp

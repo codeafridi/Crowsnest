@@ -29,6 +29,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -83,6 +84,68 @@ QFont monoFont(int size, bool bold = false) {
     font.setPointSize(size);
     font.setBold(bold);
     return font;
+}
+
+// The console reads like the field manual on the site: a serif display face
+// for page titles and the figures a reader should see first, monospace for
+// labels and data, sans for prose. System families only - no bundled fonts,
+// the same rule the relay follows.
+QFont displayFont(int size, bool bold = false) {
+    QFont font;
+    font.setStyleHint(QFont::Serif);
+    font.setFamilies({QStringLiteral("Iowan Old Style"),
+                      QStringLiteral("Palatino Linotype"),
+                      QStringLiteral("Georgia"),
+                      QStringLiteral("DejaVu Serif"),
+                      QStringLiteral("Liberation Serif"),
+                      QStringLiteral("Times New Roman")});
+    font.setPointSize(size);
+    font.setWeight(bold ? QFont::DemiBold : QFont::Normal);
+    return font;
+}
+
+// One line under the page title: what question this page answers. The map is
+// deliberately short - a note that needs a sentence is a page that has not
+// decided what it is for.
+QString pageNoteText(const QString &name) {
+    static const QHash<QString, QString> notes = {
+        {QStringLiteral("Overview"), QStringLiteral("the focused app and the host under it, in one breath")},
+        {QStringLiteral("Metrics"), QStringLiteral("what the DogStatsD receiver has taken in")},
+        {QStringLiteral("Alerts"), QStringLiteral("every rule's current state and the silences over them")},
+        {QStringLiteral("Incidents"), QStringLiteral("what is open, who owns it, and how it got there")},
+        {QStringLiteral("SLO"), QStringLiteral("the availability target and the budget left")},
+        {QStringLiteral("Processes"), QStringLiteral("who is running, and what each one costs")},
+        {QStringLiteral("Memory"), QStringLiteral("the host's memory and the focused app's share")},
+        {QStringLiteral("Disks"), QStringLiteral("device throughput, queueing and the top block consumers")},
+        {QStringLiteral("GPU"), QStringLiteral("device utilisation and the clients holding it")},
+        {QStringLiteral("Sensors"), QStringLiteral("temperatures, fans, power and the battery")},
+        {QStringLiteral("Host"), QStringLiteral("the machine: platform, limits, filesystems, network")},
+        {QStringLiteral("Network"), QStringLiteral("sockets, throughput and TCP health")},
+        {QStringLiteral("Network Path"), QStringLiteral("the route to each target, hop by hop")},
+        {QStringLiteral("Containers"), QStringLiteral("the local Docker engine and its workloads")},
+        {QStringLiteral("Kubernetes"), QStringLiteral("the cluster this kubeconfig points at")},
+        {QStringLiteral("Services"), QStringLiteral("systemd units: running, failed, restarted")},
+        {QStringLiteral("Logs"), QStringLiteral("the journal, parsed and scanned for secrets")},
+        {QStringLiteral("Errors"), QStringLiteral("repeated failures grouped by shape")},
+        {QStringLiteral("Dependencies"), QStringLiteral("the libraries the focused app has loaded")},
+        {QStringLiteral("Software"), QStringLiteral("installed packages and where they came from")},
+        {QStringLiteral("Endpoints"), QStringLiteral("what this machine is listening on, and to whom")},
+        {QStringLiteral("Synthetic"), QStringLiteral("probes that leave the box and come back")},
+        {QStringLiteral("Instrumentation"), QStringLiteral("what this app already reports to, if anything")},
+        {QStringLiteral("Integrations"), QStringLiteral("every source this build can read, and what it is doing here")},
+        {QStringLiteral("Traces"), QStringLiteral("spans received over OTLP and the service map")},
+        {QStringLiteral("Profiles"), QStringLiteral("where the focused app's threads spend time")},
+        {QStringLiteral("Databases"), QStringLiteral("PostgreSQL activity on the databases it can reach")},
+        {QStringLiteral("Security"), QStringLiteral("sandbox exposure, findings, threats and file changes")},
+        {QStringLiteral("History"), QStringLiteral("the on-disk ring, rewindable")},
+        {QStringLiteral("Timeline"), QStringLiteral("what changed, in order, with the chart ticks")},
+        {QStringLiteral("Cost"), QStringLiteral("what the cluster's requests cost at your rates")},
+        {QStringLiteral("Cloud"), QStringLiteral("the account around this instance: inventory and spend")},
+        {QStringLiteral("Fleet"), QStringLiteral("the peers this machine polls")},
+        {QStringLiteral("Team"), QStringLiteral("the relay's fleet, incidents and checks")},
+        {QStringLiteral("Settings"), QStringLiteral("what is collected, and what leaves the machine")},
+    };
+    return notes.value(name);
 }
 
 QString formatRate(double bytesPerSec) {
@@ -246,7 +309,7 @@ QFrame *makeTile(const QString &caption, QLabel *value,
     value->setObjectName(value->objectName().isEmpty()
                              ? QStringLiteral("ddTileValue")
                              : value->objectName());
-    value->setFont(monoFont(30, true));
+    value->setFont(displayFont(30, true));
     value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     auto *layout = new QVBoxLayout(card);
     layout->setContentsMargins(16, 10, 16, 10);
@@ -275,7 +338,7 @@ QFrame *makeChartCard(const QString &title, QWidget *plot, QWidget *parent) {
     layout->setSpacing(2);
     auto *titleLabel = new QLabel(title, card);
     titleLabel->setObjectName(QStringLiteral("ddChartTitle"));
-    titleLabel->setFont(monoFont(12, true));
+    titleLabel->setFont(monoFont(9, true));
     layout->addWidget(titleLabel);
     layout->addWidget(plot, 1);
     return card;
@@ -313,28 +376,39 @@ void setDeltaLabel(QLabel *label, const MetricStore &store,
 
 QWidget *makeBanner(const QString &title, const QString &color,
                     QWidget *parent) {
-    auto *strip = new QFrame(parent);
-    strip->setObjectName(QStringLiteral("ddBanner"));
-    strip->setStyleSheet(
-        QStringLiteral("#ddBanner { background-color: %1; border-radius: 0;"
-                       " }")
-            .arg(color));
-    // Banners built with the accent follow a live accent change; the neutral
-    // navy and amber ones are structural and stay put.
+    // A section head, not a coloured strip. The console used to paint a
+    // full-width blue or amber block above every section - 100 of them - which
+    // is the single most generic thing a dashboard does. The colour survives
+    // only as a 6px dot, so a warning section still reads at a glance while the
+    // page keeps its whitespace.
+    auto *head = new QFrame(parent);
+    head->setObjectName(QStringLiteral("ddSection"));
+    auto *outer = new QVBoxLayout(head);
+    outer->setContentsMargins(0, 12, 0, 4);
+    outer->setSpacing(6);
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(8);
+    auto *dot = new QFrame(head);
+    dot->setObjectName(QStringLiteral("ddSectionDot"));
+    dot->setFixedSize(5, 5);
+    dot->setStyleSheet(QStringLiteral("background-color: %1; border-radius: 2px;")
+                           .arg(color));
     if (color.compare(ui_theme::accent(), Qt::CaseInsensitive) == 0) {
-        strip->setProperty("accentBanner", true);
+        head->setProperty("accentBanner", true);
     }
-    auto *layout = new QHBoxLayout(strip);
-    layout->setContentsMargins(10, 0, 10, 0);
-    auto *label = new QLabel(title, strip);
-    label->setFont(monoFont(11, true));
-    label->setStyleSheet(QStringLiteral("color: #ffffff;"));
-    label->setAlignment(Qt::AlignCenter);
-    layout->addStretch(1);
-    layout->addWidget(label);
-    layout->addStretch(1);
-    strip->setFixedHeight(26);
-    return strip;
+    auto *label = new QLabel(title, head);
+    label->setObjectName(QStringLiteral("ddSectionTitle"));
+    label->setFont(displayFont(13, true));
+    row->addWidget(dot, 0, Qt::AlignVCenter);
+    row->addWidget(label, 1);
+    outer->addLayout(row);
+    auto *rule = new QFrame(head);
+    rule->setObjectName(QStringLiteral("ddSectionRule"));
+    rule->setFixedHeight(1);
+    rule->setStyleSheet(QStringLiteral("background-color: %1;").arg(ui_theme::border()));
+    outer->addWidget(rule);
+    return head;
 }
 
 } // namespace
@@ -546,6 +620,12 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     m_rail->setObjectName(QStringLiteral("ddRail"));
     m_rail->setFixedWidth(158);
     m_rail->setFocusPolicy(Qt::NoFocus);
+    {
+        QFont railFont = monoFont(9);
+        railFont.setCapitalization(QFont::AllUppercase);
+        railFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.6);
+        m_rail->setFont(railFont);
+    }
     m_rail->addItems({QStringLiteral("Overview"), QStringLiteral("Metrics"),
                       QStringLiteral("Alerts"), QStringLiteral("Incidents"), QStringLiteral("SLO"),
                       QStringLiteral("Processes"), QStringLiteral("Memory"),
@@ -562,6 +642,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
                       QStringLiteral("Endpoints"),
                       QStringLiteral("Synthetic"),
                       QStringLiteral("Instrumentation"),
+                      QStringLiteral("Integrations"),
                       QStringLiteral("Traces"), QStringLiteral("Profiles"),
                       QStringLiteral("Databases"), QStringLiteral("Security"),
                       QStringLiteral("History"), QStringLiteral("Timeline"),
@@ -577,8 +658,35 @@ DashboardPanel::DashboardPanel(QWidget *parent)
         }
     }
 
-    m_views = new QStackedWidget(body);
+    auto *content = new QWidget(body);
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(0);
+    auto *pageHead = new QWidget(content);
+    pageHead->setObjectName(QStringLiteral("ddPageHead"));
+    pageHead->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *pageHeadLayout = new QVBoxLayout(pageHead);
+    pageHeadLayout->setContentsMargins(18, 14, 18, 8);
+    pageHeadLayout->setSpacing(2);
+    m_pageTitle = new QLabel(QStringLiteral("Overview"), pageHead);
+    m_pageTitle->setObjectName(QStringLiteral("ddPageTitle"));
+    m_pageTitle->setFont(displayFont(21));
+    m_pageNote = new QLabel(pageNoteText(QStringLiteral("Overview")), pageHead);
+    m_pageNote->setObjectName(QStringLiteral("ddPageNote"));
+    m_pageNote->setFont(monoFont(9));
+    pageHeadLayout->addWidget(m_pageTitle);
+    pageHeadLayout->addWidget(m_pageNote);
+    auto *pageRule = new QFrame(pageHead);
+    pageRule->setObjectName(QStringLiteral("ddPageRule"));
+    pageRule->setFixedHeight(1);
+    pageRule->setStyleSheet(QStringLiteral("background-color: %1;").arg(ui_theme::border()));
+    pageHeadLayout->addSpacing(6);
+    pageHeadLayout->addWidget(pageRule);
+    contentLayout->addWidget(pageHead);
+
+    m_views = new QStackedWidget(content);
     m_views->setObjectName(QStringLiteral("ddViews"));
+    contentLayout->addWidget(m_views, 1);
     m_views->addWidget(buildOverviewView());
     m_views->addWidget(buildMetricsView());
     m_views->addWidget(buildAlertsView());
@@ -602,6 +710,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     m_views->addWidget(buildEndpointsView());
     m_views->addWidget(buildSyntheticView());
     m_views->addWidget(buildInstrumentationView());
+    m_views->addWidget(buildIntegrationsView());
     m_views->addWidget(buildTracesView());
     m_views->addWidget(buildProfilesView());
     m_views->addWidget(buildDatabasesView());
@@ -616,6 +725,17 @@ DashboardPanel::DashboardPanel(QWidget *parent)
 
     connect(m_rail, &QListWidget::currentRowChanged, m_views,
             &QStackedWidget::setCurrentIndex);
+    connect(m_rail, &QListWidget::currentRowChanged, this, [this](int row) {
+        const QListWidgetItem *item = m_rail != nullptr ? m_rail->item(row)
+                                                        : nullptr;
+        const QString name = item != nullptr ? item->text() : QString();
+        if (m_pageTitle != nullptr) {
+            m_pageTitle->setText(name);
+        }
+        if (m_pageNote != nullptr) {
+            m_pageNote->setText(pageNoteText(name));
+        }
+    });
 
     // The process tree is rebuilt from the newest sample when its page is the
     // one being watched; switching to it repopulates from the stored rows
@@ -642,7 +762,7 @@ DashboardPanel::DashboardPanel(QWidget *parent)
     }
 
     bodyLayout->addWidget(m_rail);
-    bodyLayout->addWidget(m_views, 1);
+    bodyLayout->addWidget(content, 1);
     root->addWidget(body, 1);
 
     auto *footer = new QFrame(this);
@@ -683,7 +803,7 @@ QString DashboardPanel::consoleStyleSheet() const {
         "#ddPause:hover { color: %TEXT%; border-color: %MUTED%; }"
         "#ddTimechip { color: %DIM%; background-color: transparent;"
         "  border: 1px solid %BORDER%; border-radius: 2px; padding: 4px 10px; }"
-        "#ddTile { background-color: %SURFACE%; border-radius: 3px; }"
+        "#ddTile { background-color: %SURFACE%; border-radius: 0px; }"
         "#ddDelta { color: %DIM%; }"
         "#ddChartTitle { color: %TEXT%; font-size: 12px; font-weight: 600; }"
         "#ddBanner { border-radius: 0; }"
@@ -705,10 +825,13 @@ QString DashboardPanel::consoleStyleSheet() const {
         "  border-left: 3px solid %ACCENT%; }"
         "#ddViews { background-color: %BG%; }"
         "#ddViews QWidget { background-color: transparent; }"
+        "#ddPageTitle { color: %TEXT%; }"
+        "#ddPageNote { color: %MUTED%; }"
+        "#ddSectionTitle { color: %TEXT%; }"
         "#ddCard { background-color: %SURFACE%; border: 1px solid %BORDER%;"
-        "  border-radius: 3px; }"
+        "  border-radius: 0px; }"
         "#ddStat { background-color: %SURFACE%; border: 1px solid %BORDER%;"
-        "  border-radius: 3px; }"
+        "  border-radius: 0px; }"
         "#ddCardTitle { color: %MUTED%; font-size: 9px; }"
         "#ddCpu, #ddMem, #ddProcCount, #ddStatusBig, #ddHostCpu, #ddHostMem,"
         " #ddHostDisk, #ddHostNet, #ddHostLoad { color: %TEXT%; }"
@@ -934,7 +1057,8 @@ QString DashboardPanel::consoleStyleSheet() const {
         "QTreeWidget::item:hover { background-color: %HOVER%; }"
         "QHeaderView::section { background-color: transparent; color: %MUTED%;"
         "  border: none; border-bottom: 1px solid %BORDER%; padding: 4px 8px;"
-        "  font-size: 9px; font-weight: normal; }"
+        "  font-family: monospace; font-size: 9px; font-weight: normal;"
+        "  letter-spacing: 0.5px; }"
         "QScrollBar:vertical { background: transparent; width: 9px;"
         "  margin: 0; }"
         "QScrollBar::handle:vertical { background-color: %BORDER%;"
@@ -1019,10 +1143,14 @@ void DashboardPanel::applyTheme() {
         if (!widget->property("accentBanner").toBool()) {
             continue;
         }
-        widget->setStyleSheet(
-            QStringLiteral("#ddBanner { background-color: %1; border-radius: 0;"
-                           " }")
-                .arg(ui_theme::accent()));
+        // The accent lives on the section dot now; the head itself carries no
+        // fill, so a theme change only has to re-paint the dot.
+        if (auto *dot = widget->findChild<QFrame *>(
+                QStringLiteral("ddSectionDot"))) {
+            dot->setStyleSheet(
+                QStringLiteral("background-color: %1; border-radius: 2px;")
+                    .arg(ui_theme::accent()));
+        }
     }
     update();
 }
@@ -4330,6 +4458,9 @@ void DashboardPanel::copyDiagnosticsReport() {
 }
 
 void DashboardPanel::setHistoryView(const HistoryViewInfo &view) {
+    m_integrationInputs.history = view.enabled;
+    m_integrationInputs.historySamples = view.count;
+    updateIntegrations();
     const bool tierChanged = view.tier != m_historyView.tier;
     m_historyView = view;
     if (m_histSummary == nullptr) {
@@ -4469,16 +4600,23 @@ void DashboardPanel::setFocusStatus(const QString &text, bool canSetup) {
 }
 
 void DashboardPanel::setSettingsInfo(const SettingsInfo &info) {
+    m_integrationInputs.metrics =
+        info.metricsLine.contains(QStringLiteral("http"));
+    updateIntegrations();
     m_settings = info;
     applySettingsInfo();
 }
 
 void DashboardPanel::setWebhookLine(const QString &line) {
+    m_integrationInputs.webhook = line.contains(QStringLiteral("http"));
+    updateIntegrations();
     m_settings.webhookLine = line;
     applySettingsInfo();
 }
 
 void DashboardPanel::setRemoteInfo(const RemoteInfo &info) {
+    m_integrationInputs.relay = info.enabled;
+    updateIntegrations();
     m_settings.remoteLine = info.rowText;
     if (m_remoteReport != nullptr) {
         m_remoteReport->setText(remoteReportCardText(info));
@@ -6961,6 +7099,194 @@ QWidget *DashboardPanel::buildSecurityView() {
     return view;
 }
 
+
+QWidget *DashboardPanel::buildIntegrationsView() {
+    auto *view = new QWidget(this);
+    auto *scroll = new QScrollArea(view);
+    scroll->setObjectName(QStringLiteral("ddScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto *content = new QWidget;
+    content->setObjectName(QStringLiteral("ddScrollContent"));
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(12, 12, 12, 8);
+    layout->setSpacing(10);
+
+    // First run sits on top of the board: the same facts, ordered as the
+    // steps somebody actually takes on a new machine.
+    auto *setup = new QFrame(content);
+    setup->setObjectName(QStringLiteral("ddCard"));
+    auto *setupLayout = new QVBoxLayout(setup);
+    setupLayout->setContentsMargins(14, 12, 14, 12);
+    setupLayout->setSpacing(6);
+    setupLayout->addWidget(makeTitle(QStringLiteral("FIRST RUN"), setup));
+    m_integrationChecklist = new QLabel(setup);
+    m_integrationChecklist->setObjectName(QStringLiteral("ddIntegrationChecklist"));
+    m_integrationChecklist->setFont(monoFont(9));
+    m_integrationChecklist->setWordWrap(true);
+    m_integrationChecklist->setMinimumWidth(1);
+    setupLayout->addWidget(m_integrationChecklist);
+    layout->addWidget(setup);
+
+    auto *summaryCard = new QFrame(content);
+    summaryCard->setObjectName(QStringLiteral("ddCard"));
+    auto *summaryLayout = new QVBoxLayout(summaryCard);
+    summaryLayout->setContentsMargins(14, 10, 14, 10);
+    summaryLayout->setSpacing(4);
+    m_integrationSummary = new QLabel(summaryCard);
+    m_integrationSummary->setObjectName(QStringLiteral("ddIntegrationSummary"));
+    m_integrationSummary->setFont(monoFont(10));
+    m_integrationSummary->setWordWrap(true);
+    m_integrationSummary->setMinimumWidth(1);
+    summaryLayout->addWidget(m_integrationSummary);
+    auto *legend = new QLabel(
+        QStringLiteral("LIVE = data arrived · READY = enabled, nothing yet · "
+                       "OFF = switch off · MISSING = not on this machine · "
+                       "GATED = this OS has no such surface"),
+        summaryCard);
+    legend->setObjectName(QStringLiteral("ddIntegrationLegend"));
+    legend->setFont(monoFont(8));
+    legend->setWordWrap(true);
+    legend->setMinimumWidth(1);
+    summaryLayout->addWidget(legend);
+    layout->addWidget(summaryCard);
+
+    const QList<IntegrationTile> tiles =
+        buildIntegrationTiles(IntegrationInputs{});
+    QString currentGroup;
+    QVBoxLayout *groupLayout = nullptr;
+    auto *groupCard = static_cast<QFrame *>(nullptr);
+    for (const IntegrationTile &t : tiles) {
+        if (t.group != currentGroup) {
+            currentGroup = t.group;
+            layout->addWidget(makeBanner(currentGroup, ui_theme::accent(), view));
+            groupCard = new QFrame(content);
+            groupCard->setObjectName(QStringLiteral("ddCard"));
+            groupLayout = new QVBoxLayout(groupCard);
+            groupLayout->setContentsMargins(0, 0, 0, 0);
+            groupLayout->setSpacing(0);
+            layout->addWidget(groupCard);
+        }
+        if (groupLayout == nullptr) {
+            continue;
+        }
+        auto *row = new QFrame(groupCard);
+        row->setObjectName(QStringLiteral("ddIntegrationRow"));
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(14, 8, 14, 8);
+        rowLayout->setSpacing(10);
+        auto *text = new QVBoxLayout;
+        text->setSpacing(2);
+        auto *name = new QLabel(t.name, row);
+        name->setObjectName(QStringLiteral("ddIntegrationName"));
+        name->setFont(monoFont(9, true));
+        auto *evidence = new QLabel(row);
+        evidence->setObjectName(QStringLiteral("ddIntegrationEvidence"));
+        evidence->setFont(monoFont(9));
+        evidence->setMinimumWidth(1);
+        text->addWidget(name);
+        text->addWidget(evidence);
+        rowLayout->addLayout(text, 1);
+        auto *state = new QLabel(row);
+        state->setObjectName(QStringLiteral("ddIntegrationState"));
+        state->setFont(monoFont(9, true));
+        state->setFixedWidth(58);
+        state->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        rowLayout->addWidget(state);
+        if (!t.page.isEmpty()) {
+            auto *open = new QPushButton(QStringLiteral("OPEN"), row);
+            open->setObjectName(QStringLiteral("ddIntegrationOpen"));
+            open->setCursor(Qt::PointingHandCursor);
+            open->setFocusPolicy(Qt::NoFocus);
+            const QString page = t.page;
+            connect(open, &QPushButton::clicked, this, [this, page]() {
+                if (m_rail == nullptr) {
+                    return;
+                }
+                for (int i = 0; i < m_rail->count(); ++i) {
+                    if (m_rail->item(i)->text() == page) {
+                        m_rail->setCurrentRow(i);
+                        return;
+                    }
+                }
+            });
+            rowLayout->addWidget(open);
+        } else {
+            rowLayout->addSpacing(46);
+        }
+        m_integrationState.insert(t.name, state);
+        m_integrationEvidence.insert(t.name, evidence);
+        groupLayout->addWidget(row);
+        auto *rule = new QFrame(groupCard);
+        rule->setObjectName(QStringLiteral("ddIntegrationRule"));
+        rule->setFixedHeight(1);
+        rule->setStyleSheet(
+            QStringLiteral("background-color: %1;").arg(ui_theme::border()));
+        groupLayout->addWidget(rule);
+    }
+
+    layout->addStretch(1);
+    scroll->setWidget(content);
+    auto *outer = new QVBoxLayout(view);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->addWidget(scroll);
+    updateIntegrations();
+    return view;
+}
+
+void DashboardPanel::updateIntegrations() {
+    if (m_integrationSummary == nullptr) {
+        return;
+    }
+    const QList<IntegrationTile> tiles =
+        buildIntegrationTiles(m_integrationInputs);
+    for (const IntegrationTile &t : tiles) {
+        auto *state = m_integrationState.value(t.name);
+        if (state != nullptr) {
+            state->setText(t.state);
+            const QString colour =
+                t.state == QStringLiteral("LIVE") ? ui_theme::ok()
+                : t.state == QStringLiteral("READY") ? ui_theme::accent()
+                                                     : ui_theme::muted();
+            state->setStyleSheet(QStringLiteral("color: %1;").arg(colour));
+        }
+        auto *evidence = m_integrationEvidence.value(t.name);
+        if (evidence != nullptr) {
+            evidence->setText(t.evidence);
+        }
+    }
+    m_integrationSummary->setText(integrationSummaryText(tiles));
+
+    const bool anyTelemetry = m_integrationInputs.traces
+        || m_integrationInputs.statsd || m_integrationInputs.checks > 0
+        || m_integrationInputs.tlsTargets > 0;
+    const struct { const char *label; bool done; } steps[] = {
+        {"host data", m_integrationInputs.host},
+        {"focus provider", m_integrationInputs.focus},
+        {"machine labels", m_integrationInputs.labels > 0},
+        {"a telemetry source", anyTelemetry},
+        {"relay linked", m_integrationInputs.relay},
+        {"history ring", m_integrationInputs.history},
+    };
+    int done = 0;
+    QStringList rows;
+    for (const auto &step : steps) {
+        if (step.done) {
+            ++done;
+        }
+        rows << QStringLiteral("%1 %2")
+                    .arg(step.done ? QStringLiteral("x")
+                                   : QStringLiteral("."))
+                    .arg(QString::fromLatin1(step.label));
+    }
+    m_integrationChecklist->setText(
+        QStringLiteral("%1/6  %2%3")
+            .arg(done)
+            .arg(rows.join(QStringLiteral("   ")))
+            .arg(done == 6 ? QStringLiteral("   - setup complete") : QString()));
+}
+
 QWidget *DashboardPanel::buildTracesView() {
     auto *view = new QWidget(this);
     auto *content = new QWidget(view);
@@ -7120,6 +7446,16 @@ QWidget *DashboardPanel::buildSoftwareView() {
 }
 
 void DashboardPanel::setSnapshot(const DisplaySnapshot &snapshot) {
+    m_integrationInputs.host = snapshot.hostAvailable;
+    m_integrationInputs.focus = snapshot.focusAvailable;
+    m_integrationInputs.focusProvider = snapshot.focusProvider;
+    m_integrationInputs.sensors = snapshot.sensors.available;
+    m_integrationInputs.sensorChips = snapshot.sensors.chips.size();
+    m_integrationInputs.gpu = snapshot.gpu.ok && !snapshot.gpu.devices.isEmpty();
+    m_integrationInputs.gpuDevices = snapshot.gpu.devices.size();
+    m_integrationInputs.cloud = snapshot.cloud.available;
+    m_integrationInputs.cloudProvider = cloudProviderName(snapshot.cloud.identity.provider);
+    updateIntegrations();
     // M84: the console reports its own footprint. This is a two-line string
     // rebuild on a label that is usually hidden, so it costs nothing next to
     // the process tree above.
@@ -8251,6 +8587,13 @@ void DashboardPanel::populateProcessTree(const QList<ProcessRow> &rows) {
 }
 
 void DashboardPanel::setDockerSnapshot(const DockerSnapshot &snapshot) {
+    const bool engine = snapshot.state == DockerState::Ok
+        || snapshot.state == DockerState::Starting;
+    m_integrationInputs.dockerEngine = engine;
+    m_integrationInputs.dockerAvailable =
+        engine || snapshot.state != DockerState::NotInstalled;
+    m_integrationInputs.containersRunning = snapshot.runningCount;
+    updateIntegrations();
     // Container-page tiles (M63): running/issues/total; issues colored
     // red while nonzero, back to the palette text when clear.
     m_dockTileRun->setText(QString::number(snapshot.runningCount));
@@ -8334,6 +8677,9 @@ void DashboardPanel::setDockerSnapshot(const DockerSnapshot &snapshot) {
 }
 
 void DashboardPanel::setKubeSnapshot(const KubeSnapshot &snapshot) {
+    m_integrationInputs.kubeAvailable = snapshot.state == KubeState::Ok;
+    m_integrationInputs.pods = snapshot.totalPods;
+    updateIntegrations();
     const QString summary = kubeSummaryText(snapshot);
     m_kubeSummary->setText(summary.isEmpty() ? QStringLiteral("--") : summary);
     if (m_kubeContexts != nullptr) {
@@ -8621,6 +8967,10 @@ void DashboardPanel::setKubeSnapshot(const KubeSnapshot &snapshot) {
 }
 
 void DashboardPanel::setServicesSnapshot(const ServicesSnapshot &snapshot) {
+    m_integrationInputs.services = snapshot.available;
+    m_integrationInputs.serviceUnits = snapshot.units.size();
+    m_integrationInputs.serviceFailed = snapshot.failedCount;
+    updateIntegrations();
     // Services-page tiles (M61n): running/failed/units/changes; failed
     // red while > 0, honest "--" until the SCM/systemd sample lands.
     if (snapshot.available) {
@@ -8716,6 +9066,9 @@ void DashboardPanel::setServicesSnapshot(const ServicesSnapshot &snapshot) {
 }
 
 void DashboardPanel::setJournalSnapshot(const JournalSnapshot &snapshot) {
+    m_integrationInputs.journal = snapshot.available;
+    m_integrationInputs.journalLines = snapshot.entries.size();
+    updateIntegrations();
     // Logs-page tiles + volume history (M61o); honest "--" until the
     // journal sample lands, "n/a" on OSes without a journal.
     if (snapshot.available) {
@@ -8978,6 +9331,10 @@ void DashboardPanel::setAlerts(const QList<Alert> &alerts) {
 }
 
 void DashboardPanel::setFleetSnapshot(const FleetStatus &status) {
+    m_integrationInputs.fleet = !status.peers.isEmpty();
+    m_integrationInputs.peers = status.peers.size();
+    m_integrationInputs.labels = status.selfLabels.size();
+    updateIntegrations();
     m_fleet = status;
     updateFleetPanel();
 }
@@ -10661,6 +11018,10 @@ void DashboardPanel::setIncidents(const QList<Incident> &incidents) {
 }
 
 void DashboardPanel::setSyntheticSnapshot(const SyntheticSnapshot &snapshot) {
+    m_integrationInputs.synthetic = snapshot.available;
+    m_integrationInputs.checks = snapshot.results.size();
+    m_integrationInputs.checksDown = snapshot.downCount;
+    updateIntegrations();
     m_syntheticSummary->setText(syntheticSummaryText(snapshot));
     m_synthetic->setText(syntheticDetailText(snapshot));
 
@@ -10699,6 +11060,9 @@ void DashboardPanel::setSyntheticSnapshot(const SyntheticSnapshot &snapshot) {
 }
 
 void DashboardPanel::setTraceSnapshot(const TraceSnapshot &snapshot) {
+    m_integrationInputs.traces = snapshot.available;
+    m_integrationInputs.spans = snapshot.spanCount;
+    updateIntegrations();
     m_traceSummary->setText(traceSummaryText(snapshot));
     m_traceMap->setText(traceServiceMapText(snapshot));
     m_traceServices->setText(traceServicesText(snapshot));
@@ -10792,6 +11156,9 @@ void DashboardPanel::setPathSnapshot(const PathSnapshot &snapshot) {
 }
 
 void DashboardPanel::setStatsdSnapshot(const StatsdSnapshot &snapshot) {
+    m_integrationInputs.statsd = snapshot.available;
+    m_integrationInputs.series = snapshot.series.size();
+    updateIntegrations();
     m_statsdSummary->setText(statsdSummaryText(snapshot));
     m_statsd->setText(snapshot.available ? statsdDetailText(snapshot)
                                          : QStringLiteral("--"));
@@ -10888,6 +11255,9 @@ void DashboardPanel::setStatsdSnapshot(const StatsdSnapshot &snapshot) {
 }
 
 void DashboardPanel::setDbmSnapshot(const DbmSnapshot &snapshot) {
+    m_integrationInputs.dbm = snapshot.available;
+    m_integrationInputs.dbName = snapshot.database;
+    updateIntegrations();
     m_dbmSummary->setText(dbmSummaryText(snapshot));
     m_dbm->setText(dbmDetailText(snapshot));
     m_dbmStatements->setText(dbmStatementsText(snapshot));
@@ -10924,6 +11294,9 @@ void DashboardPanel::setDbmSnapshot(const DbmSnapshot &snapshot) {
 }
 
 void DashboardPanel::setTlsSnapshot(const TlsSnapshot &snapshot) {
+    m_integrationInputs.tls = snapshot.available;
+    m_integrationInputs.tlsTargets = snapshot.results.size();
+    updateIntegrations();
     m_tlsSummary->setText(tlsSummaryText(snapshot));
     m_tls->setText(tlsDetailText(snapshot));
 }

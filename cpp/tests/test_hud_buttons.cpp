@@ -629,14 +629,23 @@ int main(int argc, char *argv[]) {
     {
         auto *railForHistory =
             hud.findChild<QListWidget *>(QStringLiteral("ddRail"));
-        check(railForHistory != nullptr
-                  && railForHistory->count() > 27
-                  && railForHistory->item(27)->text()
-                         == QStringLiteral("History")
-                  && railForHistory->item(28)->text()
-                         == QStringLiteral("Timeline")
-                  && railForHistory->item(29)->text()
-                         == QStringLiteral("Cost"),
+        int historyRow = -1;
+        int timelineRow = -1;
+        int costRow = -1;
+        if (railForHistory != nullptr) {
+            for (int i = 0; i < railForHistory->count(); ++i) {
+                const QString text = railForHistory->item(i)->text();
+                if (text == QStringLiteral("History")) {
+                    historyRow = i;
+                } else if (text == QStringLiteral("Timeline")) {
+                    timelineRow = i;
+                } else if (text == QStringLiteral("Cost")) {
+                    costRow = i;
+                }
+            }
+        }
+        check(historyRow >= 0 && timelineRow == historyRow + 1
+                  && costRow == timelineRow + 1,
               "rail inserts Timeline between History and Cost");
 
         auto *histSamples =
@@ -1889,24 +1898,27 @@ int main(int argc, char *argv[]) {
                   "the debounce");
         }
 
-        // A live accent change has to reach the banners too: they are painted
-        // with the accent at build time, not through the stylesheet.
+        // A live accent change has to reach the section dots too: they are
+        // painted with the accent at build time, not through the stylesheet.
         auto *panel = hud.findChild<DashboardPanel *>();
-        QWidget *banner = nullptr;
+        QWidget *section = nullptr;
         for (QWidget *candidate : hud.findChildren<QWidget *>()) {
             if (candidate->property("accentBanner").toBool()) {
-                banner = candidate;
+                section = candidate;
                 break;
             }
         }
+        QFrame *dot = section != nullptr
+            ? section->findChild<QFrame *>(QStringLiteral("ddSectionDot"))
+            : nullptr;
         if (panel != nullptr) {
             panel->applyTheme();
         }
-        check(banner != nullptr, "appearance: accent banners are marked");
-        check(banner != nullptr
-                  && banner->styleSheet().contains(ui_theme::accent(),
-                                                   Qt::CaseInsensitive),
-              "appearance: a theme re-apply re-tints the accent banners");
+        check(dot != nullptr, "appearance: accent section heads are marked");
+        check(dot != nullptr
+                  && dot->styleSheet().contains(ui_theme::accent(),
+                                                Qt::CaseInsensitive),
+              "appearance: a theme re-apply re-tints the accent section dot");
     }
 
     // --- M90: the Kubernetes page names the context it is describing --------
@@ -2420,7 +2432,12 @@ int main(int argc, char *argv[]) {
         }
         if (rail != nullptr) {
             rail->setCurrentRow(0);
-            rail->setCurrentRow(30);
+            for (int i = 0; i < rail->count(); ++i) {
+                if (rail->item(i)->text() == QStringLiteral("Cloud")) {
+                    rail->setCurrentRow(i);
+                    break;
+                }
+            }
         }
         QObject::disconnect(refreshConn);
         QObject::disconnect(visibleConn);
@@ -2675,7 +2692,7 @@ int main(int argc, char *argv[]) {
 
         auto *rail = hud.findChild<QListWidget *>(QStringLiteral("ddRail"));
         if (rail != nullptr) {
-            constexpr int kRailCount = 34;
+            constexpr int kRailCount = 35;
             bool allPagesReachable = rail->count() == kRailCount;
             const int settingsRow = kRailCount - 1;
             allPagesReachable = allPagesReachable
@@ -2705,6 +2722,53 @@ int main(int argc, char *argv[]) {
                 && hud.findChild<QLabel *>(
                        QStringLiteral("ddTeamTileMachines"))
                        != nullptr;
+            // Integrations: the coverage board sits after Instrumentation, and
+            // its OPEN buttons navigate to the page that owns a source.
+            int integRow = -1;
+            int instrRow = -1;
+            int tracesRow = -1;
+            for (int i = 0; i < rail->count(); ++i) {
+                const QString text = rail->item(i)->text();
+                if (text == QStringLiteral("Integrations")) {
+                    integRow = i;
+                } else if (text == QStringLiteral("Instrumentation")) {
+                    instrRow = i;
+                } else if (text == QStringLiteral("Traces")) {
+                    tracesRow = i;
+                }
+            }
+            check(integRow > instrRow && tracesRow == integRow + 1,
+                  "integrations: the rail places the board after "
+                  "Instrumentation");
+            rail->setCurrentRow(integRow);
+            QApplication::processEvents();
+            const auto states = hud.findChildren<QLabel *>(
+                QStringLiteral("ddIntegrationState"));
+            auto *summary = hud.findChild<QLabel *>(
+                QStringLiteral("ddIntegrationSummary"));
+            auto *checklist = hud.findChild<QLabel *>(
+                QStringLiteral("ddIntegrationChecklist"));
+            check(states.size() == 20,
+                  "integrations: every compiled-in source has a state cell");
+            check(summary != nullptr
+                      && summary->text().contains(QStringLiteral("live")),
+                  "integrations: the summary counts the board");
+            check(checklist != nullptr
+                      && checklist->text().contains(QStringLiteral("/6")),
+                  "integrations: the first-run checklist renders");
+            const auto opens = hud.findChildren<QPushButton *>(
+                QStringLiteral("ddIntegrationOpen"));
+            check(!opens.isEmpty(),
+                  "integrations: a tile with a detail page offers OPEN");
+            if (!opens.isEmpty()) {
+                opens.first()->click();
+                QApplication::processEvents();
+                check(rail->currentItem() != nullptr
+                          && rail->currentItem()->text()
+                                 == QStringLiteral("Host"),
+                      "integrations: OPEN jumps to the owning page");
+            }
+
             rail->setCurrentRow(0);
             check(allPagesReachable,
                   "rail switches pages and Settings view carries info, with "

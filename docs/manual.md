@@ -4,7 +4,7 @@
 
 # Crowsnest manual
 
-### A local-first HUD that follows the app you're focused on — and a 34-view Datadog-style console for everything your kernel, containers and apps are doing.
+### A local-first HUD that follows the app you're focused on — and a 35-view Datadog-style console for everything your kernel, containers and apps are doing.
 
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational?style=flat-square&logo=linux&logoColor=white)](#compatibility)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?style=flat-square&logo=cplusplus&logoColor=white)](#install)
@@ -38,7 +38,7 @@ telemetry** — nothing leaves your machine unless you point a scraper at it.
   control, inotify/pid limits, scheduler run-queue state, CPU steal %.
 - **cgroup memory pressure** — peak memory, OOM events/kills, pid limits for
   the focused app's unit.
-- **34-view console**, in rail order — Overview, Metrics (DogStatsD), Alerts,
+- **35-view console**, in rail order — Overview, Metrics (DogStatsD), Alerts,
   Incidents, SLO, Processes, Memory, Disks, GPU, Sensors, Host, Network,
   Network Path, Containers, Kubernetes, Services, Logs, Errors, Dependencies,
   Software, Endpoints, Synthetic checks, Instrumentation, Traces (OTLP),

@@ -6,6 +6,7 @@
 #include "JournalStatus.h"
 #include "AlertEngine.h"
 #include "PrometheusStatus.h"
+#include "IntegrationStatus.h"
 #include "SyntheticStatus.h"
 #include "DiskStatus.h"
 #include "TcpStatus.h"
@@ -9444,6 +9445,96 @@ int main(int argc, char *argv[]) {
         check(remoteWarmTlsBackend() == warm,
               "remote: warming the TLS backend twice is stable");
 
+    }
+
+    // --- Integrations coverage board ---------------------------------------
+    {
+        IntegrationInputs empty;
+        empty.osName = QStringLiteral("linux");
+        const QList<IntegrationTile> bare = buildIntegrationTiles(empty);
+        check(bare.size() == 20,
+              "integrations: the board lists every compiled-in source");
+        check(bare.first().group == QStringLiteral("Agent & host")
+                  && bare.last().group == QStringLiteral("Cloud & fleet"),
+              "integrations: the groups are ordered agent to cloud");
+        auto stateOf = [&bare](const QString &name) {
+            for (const IntegrationTile &t : bare) {
+                if (t.name == name) {
+                    return t.state;
+                }
+            }
+            return QString();
+        };
+        check(stateOf(QStringLiteral("Focus provider")) == QStringLiteral("GATED")
+                  && stateOf(QStringLiteral("Journald")) == QStringLiteral("GATED"),
+              "integrations: a surface this OS lacks reads GATED, not empty");
+        check(stateOf(QStringLiteral("Docker")) == QStringLiteral("MISSING"),
+              "integrations: no engine reads MISSING");
+        check(stateOf(QStringLiteral("OTLP traces")) == QStringLiteral("READY"),
+              "integrations: a listener with no data reads READY");
+        check(integrationSummaryText(bare).contains(QStringLiteral("20 gated"))
+                  || integrationSummaryText(bare).contains(QStringLiteral("gated")),
+              "integrations: the summary names the gated surfaces");
+
+        IntegrationInputs live;
+        live.host = true;
+        live.focus = true;
+        live.focusProvider = QStringLiteral("gnome-pidfile");
+        live.journal = true;
+        live.journalLines = 300;
+        live.dockerAvailable = true;
+        live.dockerEngine = true;
+        live.containersRunning = 3;
+        live.kubeAvailable = true;
+        live.pods = 12;
+        live.traces = true;
+        live.spans = 40;
+        live.statsd = true;
+        live.series = 9;
+        live.checks = 2;
+        live.checksDown = 1;
+        live.tlsTargets = 2;
+        live.dbm = true;
+        live.dbName = QStringLiteral("appdb");
+        live.cloud = true;
+        live.cloudProvider = QStringLiteral("aws");
+        live.peers = 2;
+        live.relay = true;
+        live.labels = 3;
+        live.history = true;
+        live.historySamples = 3600;
+        live.webhook = true;
+        live.metrics = true;
+        const QList<IntegrationTile> full = buildIntegrationTiles(live);
+        auto liveState = [&full](const QString &name) {
+            for (const IntegrationTile &t : full) {
+                if (t.name == name) {
+                    return t.state;
+                }
+            }
+            return QString();
+        };
+        check(liveState(QStringLiteral("Docker")) == QStringLiteral("LIVE"),
+              "integrations: a running engine reads LIVE");
+        check(liveState(QStringLiteral("Kubernetes")) == QStringLiteral("LIVE"),
+              "integrations: a reachable cluster reads LIVE");
+        check(liveState(QStringLiteral("Relay link")) == QStringLiteral("LIVE"),
+              "integrations: a linked relay reads LIVE");
+        check(integrationSummaryText(full).startsWith(QStringLiteral("17 live")),
+              "integrations: the summary counts the live sources");
+        bool dockerEvidence = false;
+        for (const IntegrationTile &t : full) {
+            if (t.name == QStringLiteral("Docker")) {
+                dockerEvidence = t.evidence.contains(QStringLiteral("3 container"));
+            }
+        }
+        check(dockerEvidence, "integrations: Docker names the running count");
+
+        IntegrationInputs noFocus;
+        noFocus.host = true;
+        const QList<IntegrationTile> gated = buildIntegrationTiles(noFocus);
+        check(integrationSummaryText(gated).contains(QStringLiteral("gated")),
+              "integrations: the summary always separates gated surfaces");
     }
 
     {
