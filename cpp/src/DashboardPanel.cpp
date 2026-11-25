@@ -5612,9 +5612,10 @@ QWidget *DashboardPanel::buildCloudView() {
     iacLayout->setSpacing(8);
     iacLayout->addWidget(makeBanner(QStringLiteral("IAC DRIFT"),
                                     ui_theme::warn(), m_cloudIacSection));
-    iacLayout->addWidget(
-        makeCard(QStringLiteral("terraform state vs the account"), m_cloudIac,
-                 m_cloudIacSection));
+    iacLayout->addWidget(makeCollapsibleCard(
+        QStringLiteral("terraform state vs the account"), m_cloudIac,
+        QStringLiteral("state vs the account - open to compare"),
+        m_cloudIacSection));
 
     // --- Rate / accrual / projection, with the import date that decides how
     // much the number is worth.
@@ -5626,9 +5627,11 @@ QWidget *DashboardPanel::buildCloudView() {
 
     auto *costBanner = makeBanner(QStringLiteral("COST MODEL"),
                                   ui_theme::banner(), view);
-    auto *costCard =
-        makeCard(QStringLiteral("rate · accrual · projection"), m_cloudCost,
-                 view);
+    auto *costCard = makeCollapsibleCard(
+        QStringLiteral("rate · accrual · projection"), m_cloudCost,
+        QStringLiteral("the rate applied, this boot's accrual and the month "
+                       "projection"),
+        view);
 
     // --- Focused-app share: the instance rate split by the CPU the app
     // actually used, charged against this box's vCPU count.
