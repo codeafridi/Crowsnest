@@ -2025,6 +2025,26 @@ QWidget *DashboardPanel::buildProcessesView() {
     m_procDiskNote->setObjectName(QStringLiteral("ddProcDiskNote"));
     m_procDiskNote->setFont(monoFont(10));
     m_procDiskNote->setMinimumWidth(1);
+    // Seven columns open the table; disk, threads and fds are one press away.
+    // Eleven equal columns was the "clustered" read: the three that answer
+    // "who is using the machine" (CPU, net, RSS, ports) were lost in it.
+    auto *columns = new QPushButton(QStringLiteral("MORE COLUMNS"), procBox);
+    columns->setObjectName(QStringLiteral("ddProcColumns"));
+    columns->setCheckable(true);
+    columns->setCursor(Qt::PointingHandCursor);
+    columns->setFocusPolicy(Qt::NoFocus);
+    columns->setToolTip(QStringLiteral(
+        "show disk i/o, threads and fds columns"));
+    for (int column : {5, 6, 7, 8}) {
+        m_procs->setColumnHidden(column, true);
+    }
+    connect(columns, &QPushButton::toggled, this, [this, columns](bool more) {
+        for (int column : {5, 6, 7, 8}) {
+            m_procs->setColumnHidden(column, !more);
+        }
+        columns->setText(more ? QStringLiteral("FEWER COLUMNS")
+                              : QStringLiteral("MORE COLUMNS"));
+    });
     m_procHealthyOnly = new QCheckBox(QStringLiteral("HEALTHY ONLY"), procBox);
     m_procHealthyOnly->setObjectName(QStringLiteral("ddProcHealthy"));
     m_procHealthyOnly->setToolTip(QStringLiteral(
@@ -2041,7 +2061,12 @@ QWidget *DashboardPanel::buildProcessesView() {
     procBoxLayout->addWidget(m_procs, 1);
     procBoxLayout->addWidget(m_procNetNote);
     procBoxLayout->addWidget(m_procDiskNote);
-    procBoxLayout->addWidget(m_procHealthyOnly);
+    auto *procControls = new QHBoxLayout;
+    procControls->setSpacing(10);
+    procControls->addWidget(m_procHealthyOnly);
+    procControls->addWidget(columns);
+    procControls->addStretch(1);
+    procBoxLayout->addLayout(procControls);
     procBoxLayout->addWidget(m_procFilterNote);
     layout->addWidget(makeCard(QStringLiteral("PROCESSES"), procBox, view), 2);
 

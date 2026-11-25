@@ -1980,6 +1980,30 @@ int main(int argc, char *argv[]) {
         qputenv("CROWSNEST_CONFIG", previousConfig);
     }
 
+    // --- Processes: seven columns open, disk/threads/fds one press away ----
+    {
+        auto *procs =
+            hud.findChild<QTreeWidget *>(QStringLiteral("ddProcs"));
+        auto *columns =
+            hud.findChild<QPushButton *>(QStringLiteral("ddProcColumns"));
+        check(procs != nullptr && columns != nullptr,
+              "processes: the table carries a column toggle");
+        if (procs != nullptr && columns != nullptr) {
+            check(procs->isColumnHidden(5) && procs->isColumnHidden(6)
+                      && procs->isColumnHidden(7) && procs->isColumnHidden(8)
+                      && !procs->isColumnHidden(2),
+                  "processes: the low-priority columns start hidden");
+            columns->click();
+            QApplication::processEvents();
+            check(!procs->isColumnHidden(5) && !procs->isColumnHidden(8),
+                  "processes: MORE COLUMNS reveals disk, threads and fds");
+            columns->click();
+            QApplication::processEvents();
+            check(procs->isColumnHidden(5),
+                  "processes: the toggle folds them again");
+        }
+    }
+
     // --- M90: the Kubernetes page names the context it is describing --------
     {
         KubeSnapshot ctx = kubeSnap;
