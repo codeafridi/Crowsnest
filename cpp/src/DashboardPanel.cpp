@@ -1252,21 +1252,29 @@ QWidget *DashboardPanel::buildOverviewView() {
     m_chartDiskUtil->setUnit(QStringLiteral("Percent"));
     m_chartDiskUtil->setSeriesName(QStringLiteral("system.disk.util"));
 
-    layout->addWidget(makeBanner(QStringLiteral("I/O & NETWORK"),
-        ui_theme::warn(), view));
-    auto *ioRow = new QHBoxLayout();
+    // I/O is the third question on this page, not the first: the focused app
+    // and the host answer "is it the app or the machine". The band folds so
+    // the page opens on the two answers, and its summary still states what is
+    // inside.
+    auto *ioBody = new QWidget(view);
+    auto *ioRow = new QHBoxLayout(ioBody);
+    ioRow->setContentsMargins(0, 0, 0, 0);
     ioRow->setSpacing(10);
     ioRow->addWidget(
-        makeChartCard(QStringLiteral("Network (kB/s)"), m_chartNet, view), 1);
+        makeChartCard(QStringLiteral("Network (kB/s)"), m_chartNet, ioBody), 1);
     ioRow->addWidget(
         makeChartCard(QStringLiteral("Disk read/write (kB/s)"), m_chartDisk,
-                      view),
+                      ioBody),
         1);
     ioRow->addWidget(
         makeChartCard(QStringLiteral("Disk utilization (%)"),
-                      m_chartDiskUtil, view),
+                      m_chartDiskUtil, ioBody),
         1);
-    layout->addLayout(ioRow);
+    layout->addWidget(makeCollapsibleCard(
+        QStringLiteral("I/O & NETWORK"), ioBody,
+        QStringLiteral("network, disk read/write and device utilisation - "
+                       "open to expand"),
+        view));
 
     // --- Text insight cards carried over (Datadog text panels).
     m_hostCpu = new QLabel(QStringLiteral("--"), view);
