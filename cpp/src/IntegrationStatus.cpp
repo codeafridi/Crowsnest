@@ -100,20 +100,26 @@ QList<IntegrationTile> buildIntegrationTiles(const IntegrationInputs &in) {
                   QStringLiteral("Databases"));
 
     // --- Telemetry in ---------------------------------------------------
+    // "available" only means the receiver is up. LIVE has to mean data
+    // arrived, or a fresh idle box reads as if spans were flowing.
+    const bool tracesLive = in.traces && in.spans > 0;
     tiles << tile(QStringLiteral("Telemetry in"), QStringLiteral("OTLP traces"),
-                  in.traces ? QStringLiteral("LIVE")
-                            : QStringLiteral("READY"),
-                  in.traces ? QStringLiteral("%1 span(s) received").arg(in.spans)
-                            : QStringLiteral("listening on 127.0.0.1:4318, "
-                                             "nothing received yet"),
+                  tracesLive ? QStringLiteral("LIVE")
+                             : QStringLiteral("READY"),
+                  tracesLive
+                      ? QStringLiteral("%1 span(s) received").arg(in.spans)
+                      : QStringLiteral("listening on 127.0.0.1:4318, "
+                                       "nothing received yet"),
                   QStringLiteral("Traces"));
+    const bool statsdLive = in.statsd && in.series > 0;
     tiles << tile(QStringLiteral("Telemetry in"),
                   QStringLiteral("DogStatsD"),
-                  in.statsd ? QStringLiteral("LIVE")
-                            : QStringLiteral("READY"),
-                  in.statsd ? QStringLiteral("%1 series").arg(in.series)
-                            : QStringLiteral("listening on 127.0.0.1:8125, "
-                                             "nothing received yet"),
+                  statsdLive ? QStringLiteral("LIVE")
+                             : QStringLiteral("READY"),
+                  statsdLive
+                      ? QStringLiteral("%1 series").arg(in.series)
+                      : QStringLiteral("listening on 127.0.0.1:8125, "
+                                       "nothing received yet"),
                   QStringLiteral("Metrics"));
     tiles << tile(QStringLiteral("Telemetry in"),
                   QStringLiteral("Synthetic checks"),

@@ -7276,8 +7276,8 @@ void DashboardPanel::updateIntegrations() {
             ++done;
         }
         rows << QStringLiteral("%1 %2")
-                    .arg(step.done ? QStringLiteral("x")
-                                   : QStringLiteral("."))
+                    .arg(step.done ? QStringLiteral("✓")
+                                   : QStringLiteral("·"))
                     .arg(QString::fromLatin1(step.label));
     }
     m_integrationChecklist->setText(

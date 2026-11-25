@@ -9530,6 +9530,25 @@ int main(int argc, char *argv[]) {
         }
         check(dockerEvidence, "integrations: Docker names the running count");
 
+        // A receiver that is up but has never received anything is READY, not
+        // LIVE: "available" is the listener, not the data.
+        IntegrationInputs idleListeners;
+        idleListeners.traces = true;
+        idleListeners.statsd = true;
+        const QList<IntegrationTile> idle = buildIntegrationTiles(idleListeners);
+        auto idleState = [&idle](const QString &name) {
+            for (const IntegrationTile &t : idle) {
+                if (t.name == name) {
+                    return t.state;
+                }
+            }
+            return QString();
+        };
+        check(idleState(QStringLiteral("OTLP traces")) == QStringLiteral("READY")
+                  && idleState(QStringLiteral("DogStatsD"))
+                         == QStringLiteral("READY"),
+              "integrations: an idle listener is READY, not LIVE");
+
         IntegrationInputs noFocus;
         noFocus.host = true;
         const QList<IntegrationTile> gated = buildIntegrationTiles(noFocus);
