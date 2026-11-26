@@ -2004,6 +2004,103 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // --- My Board: pins chosen by the user, persisted and live --------------
+    {
+        QTemporaryDir boardDir;
+        const QByteArray previousConfig = qgetenv("CROWSNEST_CONFIG");
+        const QString cfgPath = boardDir.filePath(QStringLiteral("config.ini"));
+        qputenv("CROWSNEST_CONFIG", cfgPath.toUtf8());
+        auto *hint = hud.findChild<QLabel *>(QStringLiteral("ddBoardHint"));
+        auto *combo =
+            hud.findChild<QComboBox *>(QStringLiteral("ddBoardAdd"));
+        auto *add =
+            hud.findChild<QPushButton *>(QStringLiteral("ddBoardAddButton"));
+        const auto presets =
+            hud.findChildren<QPushButton *>(QStringLiteral("ddBoardPreset"));
+        check(hint != nullptr && combo != nullptr && add != nullptr
+                  && presets.size() == 3,
+              "board: the card carries a hint, a picker and three presets");
+        if (hint != nullptr && combo != nullptr && add != nullptr
+            && !presets.isEmpty()) {
+            presets.first()->click();
+            QApplication::processEvents();
+            check(hud.findChildren<QLabel *>(QStringLiteral("ddBoardValue"))
+                          .size()
+                      == 4,
+                  "board: the HOST preset pins four widgets");
+            DisplaySnapshot boardSnap;
+            boardSnap.hostAvailable = true;
+            boardSnap.hostCpuPercent = 33.3;
+            boardSnap.hostMemAvailableKb = 15ull * 1024 * 1024;
+            boardSnap.hostLoad1 = 1.5;
+            boardSnap.disksAvailable = true;
+            boardSnap.hostProcessCount = 42;
+            DiskRow disk;
+            disk.utilPercent = 7.0;
+            boardSnap.disks.append(disk);
+            hud.setSnapshot(boardSnap);
+            QApplication::processEvents();
+            QStringList texts;
+            for (QLabel *value : hud.findChildren<QLabel *>(
+                     QStringLiteral("ddBoardValue"))) {
+                texts << value->text();
+            }
+            check(texts.contains(QStringLiteral("33.3%"))
+                      && texts.contains(QStringLiteral("15.0 GB"))
+                      && texts.contains(QStringLiteral("1.50")),
+                  "board: the tiles follow the snapshot");
+            const Config savedBoard = loadConfig(cfgPath, nullptr);
+            check(savedBoard.boardWidgets.size() == 4,
+                  "board: the pins are written to [board] widgets");
+            // rebuildBoard deletes the old tiles with deleteLater (a slot must
+            // not delete the button that emitted it), so the test flushes the
+            // deferred deletes before counting.
+            auto flushDeletes = []() {
+                QCoreApplication::sendPostedEvents(nullptr,
+                                                   QEvent::DeferredDelete);
+                QApplication::processEvents();
+            };
+            const auto removes = hud.findChildren<QToolButton *>(
+                QStringLiteral("ddBoardRemove"));
+            if (!removes.isEmpty()) {
+                removes.first()->click();
+                flushDeletes();
+            }
+            check(hud.findChildren<QLabel *>(QStringLiteral("ddBoardValue"))
+                          .size()
+                      == 3,
+                  "board: remove takes one widget off");
+            combo->setCurrentIndex(0);
+            add->click();
+            flushDeletes();
+            check(hud.findChildren<QLabel *>(QStringLiteral("ddBoardValue"))
+                          .size()
+                      == 4,
+                  "board: ADD pins the picked widget");
+        }
+        qputenv("CROWSNEST_CONFIG", previousConfig);
+    }
+
+    {
+        // The board is seeded from the config on the first open: the console
+        // is built lazily, so the SettingsInfo that arrives before it must be
+        // replayed into the board as it is created.
+        HudWindow seeded;
+        SettingsInfo info;
+        info.boardWidgets = {QStringLiteral("host_cpu"),
+                             QStringLiteral("host_mem")};
+        seeded.setSettingsInfo(info);
+        if (auto *more =
+                seeded.findChild<QPushButton *>(QStringLiteral("moreButton"))) {
+            more->click();
+            QApplication::processEvents();
+        }
+        check(seeded.findChildren<QLabel *>(QStringLiteral("ddBoardValue"))
+                      .size()
+                  == 2,
+              "board: SettingsInfo seeds the pins on first open");
+    }
+
     // --- M90: the Kubernetes page names the context it is describing --------
     {
         KubeSnapshot ctx = kubeSnap;

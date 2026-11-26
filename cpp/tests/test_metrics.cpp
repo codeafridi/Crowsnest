@@ -6,6 +6,7 @@
 #include "JournalStatus.h"
 #include "AlertEngine.h"
 #include "PrometheusStatus.h"
+#include "BoardStatus.h"
 #include "IntegrationStatus.h"
 #include "SyntheticStatus.h"
 #include "DiskStatus.h"
@@ -9445,6 +9446,63 @@ int main(int argc, char *argv[]) {
         check(remoteWarmTlsBackend() == warm,
               "remote: warming the TLS backend twice is stable");
 
+    }
+
+    // --- My Board widget catalog -------------------------------------------
+    {
+        const QList<BoardWidgetInfo> catalog = boardCatalog();
+        check(catalog.size() == 13,
+              "board: the catalog lists every pinned widget");
+        QSet<QString> ids;
+        for (const BoardWidgetInfo &widget : catalog) {
+            ids.insert(widget.id);
+        }
+        check(ids.size() == catalog.size(), "board: the widget ids are unique");
+        const QStringList parsed =
+            boardParseWidgets(QStringLiteral(" host_cpu, bogus,host_cpu "
+                                             " net_rx "));
+        check(parsed == QStringList({QStringLiteral("host_cpu"),
+                                     QStringLiteral("net_rx")}),
+              "board: unknown ids and duplicates are dropped");
+        for (const QString &preset :
+             {QStringLiteral("host"), QStringLiteral("containers"),
+              QStringLiteral("web")}) {
+            const QStringList list = boardPreset(preset);
+            bool known = !list.isEmpty();
+            for (const QString &id : list) {
+                known = known && ids.contains(id);
+            }
+            check(known, "board: every preset names known widgets");
+        }
+        BoardInputs inputs;
+        inputs.appCpuValid = true;
+        inputs.appCpuPercent = 42.5;
+        inputs.appRssKb = 649216;
+        inputs.hostAvailable = true;
+        inputs.hostCpuPercent = 12.25;
+        inputs.hostMemAvailableKb = 15ull * 1024 * 1024;
+        inputs.hostLoad1 = 1.5;
+        inputs.diskAvailable = true;
+        inputs.diskUtilPercent = 7.4;
+        inputs.containersRunning = 3;
+        check(boardWidgetValue(QStringLiteral("app_cpu"), inputs)
+                  == QStringLiteral("42.5%"),
+              "board: a percentage widget carries one decimal");
+        check(boardWidgetValue(QStringLiteral("app_mem"), inputs)
+                  == QStringLiteral("634 MB"),
+              "board: memory is human-readable");
+        check(boardWidgetValue(QStringLiteral("host_mem"), inputs)
+                  == QStringLiteral("15.0 GB"),
+              "board: host memory is GB");
+        check(boardWidgetValue(QStringLiteral("containers"), inputs)
+                  == QStringLiteral("3"),
+              "board: a count widget prints the count");
+        BoardInputs empty;
+        check(boardWidgetValue(QStringLiteral("app_cpu"), empty)
+                  == QStringLiteral("--")
+                  && boardWidgetValue(QStringLiteral("containers"), empty)
+                         == QStringLiteral("--"),
+              "board: a missing reading is a dash, never a zero");
     }
 
     // --- Integrations coverage board ---------------------------------------

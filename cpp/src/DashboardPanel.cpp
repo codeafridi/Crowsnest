@@ -29,6 +29,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -1155,6 +1156,83 @@ void DashboardPanel::applyTheme() {
     update();
 }
 
+
+void DashboardPanel::applyBoard(const QStringList &ids) {
+    m_boardWidgets = ids;
+    rebuildBoard();
+    updateBoardValues();
+    emit boardChanged(ids);
+}
+
+void DashboardPanel::rebuildBoard() {
+    if (m_boardGrid == nullptr) {
+        return;
+    }
+    m_boardValues.clear();
+    while (QLayoutItem *item = m_boardGrid->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
+    }
+    int index = 0;
+    for (const QString &id : m_boardWidgets) {
+        const QString title = boardWidgetTitle(id);
+        if (title.isEmpty()) {
+            continue;
+        }
+        auto *tile = new QFrame;
+        tile->setObjectName(QStringLiteral("ddTile"));
+        auto *tileLayout = new QVBoxLayout(tile);
+        tileLayout->setContentsMargins(12, 9, 12, 10);
+        tileLayout->setSpacing(2);
+        auto *head = new QHBoxLayout;
+        head->setSpacing(4);
+        auto *caption = new QLabel(title, tile);
+        caption->setObjectName(QStringLiteral("ddCardTitle"));
+        caption->setFont(panelTitleFont());
+        head->addWidget(caption, 1);
+        auto *remove = new QToolButton(tile);
+        remove->setObjectName(QStringLiteral("ddBoardRemove"));
+        remove->setText(QString::fromUtf8("\xc3\x97"));
+        remove->setCursor(Qt::PointingHandCursor);
+        remove->setFocusPolicy(Qt::NoFocus);
+        remove->setToolTip(QStringLiteral("remove %1").arg(title));
+        connect(remove, &QToolButton::clicked, this, [this, id]() {
+            QStringList next = m_boardWidgets;
+            next.removeAll(id);
+            applyBoard(next);
+        });
+        head->addWidget(remove);
+        tileLayout->addLayout(head);
+        auto *value = new QLabel(QStringLiteral("--"), tile);
+        value->setObjectName(QStringLiteral("ddBoardValue"));
+        value->setFont(displayFont(20, true));
+        tileLayout->addWidget(value);
+        auto *note = new QLabel(tile);
+        note->setObjectName(QStringLiteral("ddBoardNote"));
+        note->setFont(monoFont(8));
+        tileLayout->addWidget(note);
+        m_boardValues.insert(id, value);
+        m_boardGrid->addWidget(tile, index / 4, index % 4);
+        ++index;
+    }
+    if (m_boardHint != nullptr) {
+        m_boardHint->setVisible(m_boardWidgets.isEmpty());
+        m_boardHint->setText(m_boardWidgets.isEmpty()
+            ? QStringLiteral("no widgets pinned - pick one and press ADD, or "
+                             "start from a preset")
+            : QStringLiteral("pinned for this machine; the choice is saved "
+                             "in [board] widgets"));
+    }
+}
+
+void DashboardPanel::updateBoardValues() {
+    for (auto it = m_boardValues.cbegin(); it != m_boardValues.cend(); ++it) {
+        it.value()->setText(boardWidgetValue(it.key(), m_boardInputs));
+    }
+}
+
 QWidget *DashboardPanel::buildOverviewView() {
     auto *view = new QWidget(this);
     auto *content = new QWidget(view);
@@ -1188,6 +1266,71 @@ QWidget *DashboardPanel::buildOverviewView() {
     tiles->addWidget(procTile, 1);
     tiles->addWidget(statusTile, 1);
     layout->addLayout(tiles);
+
+    // --- MY BOARD: the pins somebody chose, in the order they chose them.
+    // Datadog's dashboards are a grid of widgets over a query API; this is the
+    // honest local equivalent - a fixed catalog of measured values, pinned and
+    // persisted, never a query language.
+    auto *boardCard = new QFrame(view);
+    boardCard->setObjectName(QStringLiteral("ddCard"));
+    auto *boardLayout = new QVBoxLayout(boardCard);
+    boardLayout->setContentsMargins(14, 10, 14, 12);
+    boardLayout->setSpacing(8);
+    auto *boardHead = new QHBoxLayout;
+    boardHead->setSpacing(8);
+    boardHead->addWidget(makeTitle(QStringLiteral("MY BOARD"), boardCard));
+    boardHead->addStretch(1);
+    for (const QString &preset : {QStringLiteral("host"),
+                                   QStringLiteral("containers"),
+                                   QStringLiteral("web")}) {
+        auto *button = new QPushButton(preset.toUpper(), boardCard);
+        button->setObjectName(QStringLiteral("ddBoardPreset"));
+        button->setCursor(Qt::PointingHandCursor);
+        button->setFocusPolicy(Qt::NoFocus);
+        connect(button, &QPushButton::clicked, this, [this, preset]() {
+            applyBoard(boardPreset(preset));
+        });
+        boardHead->addWidget(button);
+    }
+    m_boardAdd = new QComboBox(boardCard);
+    m_boardAdd->setObjectName(QStringLiteral("ddBoardAdd"));
+    for (const BoardWidgetInfo &widget : boardCatalog()) {
+        m_boardAdd->addItem(widget.title, widget.id);
+    }
+    auto *add = new QPushButton(QStringLiteral("ADD"), boardCard);
+    add->setObjectName(QStringLiteral("ddBoardAddButton"));
+    add->setCursor(Qt::PointingHandCursor);
+    add->setFocusPolicy(Qt::NoFocus);
+    connect(add, &QPushButton::clicked, this, [this]() {
+        if (m_boardAdd == nullptr) {
+            return;
+        }
+        const QString id = m_boardAdd->currentData().toString();
+        if (id.isEmpty() || m_boardWidgets.contains(id)
+            || m_boardWidgets.size() >= 12) {
+            return;
+        }
+        QStringList next = m_boardWidgets;
+        next.append(id);
+        applyBoard(next);
+    });
+    boardHead->addWidget(m_boardAdd);
+    boardHead->addWidget(add);
+    boardLayout->addLayout(boardHead);
+    m_boardHint = new QLabel(boardCard);
+    m_boardHint->setObjectName(QStringLiteral("ddBoardHint"));
+    m_boardHint->setFont(monoFont(9));
+    m_boardHint->setWordWrap(true);
+    m_boardHint->setMinimumWidth(1);
+    boardLayout->addWidget(m_boardHint);
+    auto *boardHost = new QWidget(boardCard);
+    m_boardGrid = new QGridLayout(boardHost);
+    m_boardGrid->setContentsMargins(0, 0, 0, 0);
+    m_boardGrid->setSpacing(8);
+    boardLayout->addWidget(boardHost);
+    layout->addWidget(boardCard);
+    rebuildBoard();
+
 
     // --- Chart panels in the DD three-across grid (img1/img2).
     m_chartCpu = new TimeseriesChart(view);
@@ -4234,6 +4377,10 @@ void DashboardPanel::applySettingsInfo() {
     }
     // Seed the identity editors from the config once. A field the user is
     // typing in is left alone: a tick must not reset the cursor mid-word.
+    if (!m_boardSeeded && !m_settings.boardWidgets.isEmpty()) {
+        m_boardSeeded = true;
+        applyBoard(m_settings.boardWidgets);
+    }
     if (m_identityName != nullptr && !m_identityName->hasFocus()
         && !m_settings.fleetName.isEmpty()) {
         m_identityName->setText(m_settings.fleetName);
@@ -7597,6 +7744,29 @@ QWidget *DashboardPanel::buildSoftwareView() {
 }
 
 void DashboardPanel::setSnapshot(const DisplaySnapshot &snapshot) {
+    m_boardInputs.appCpuValid = snapshot.cpuValid;
+    m_boardInputs.appCpuPercent = snapshot.cpuPercent;
+    m_boardInputs.appRssKb = snapshot.rssKb;
+    m_boardInputs.appNetRxPerSec = snapshot.focusNetRxPerSec;
+    m_boardInputs.appNetTxPerSec = snapshot.focusNetTxPerSec;
+    m_boardInputs.hostAvailable = snapshot.hostAvailable;
+    m_boardInputs.hostCpuPercent = snapshot.hostCpuPercent;
+    m_boardInputs.hostMemAvailableKb = snapshot.hostMemAvailableKb;
+    m_boardInputs.hostLoad1 = snapshot.hostLoad1;
+    m_boardInputs.netRxPerSec = snapshot.hostNetRxPerSec;
+    m_boardInputs.netTxPerSec = snapshot.hostNetTxPerSec;
+    m_boardInputs.diskAvailable = snapshot.disksAvailable;
+    m_boardInputs.diskUtilPercent = 0.0;
+    for (const DiskRow &row : snapshot.disks) {
+        m_boardInputs.diskUtilPercent =
+            qMax(m_boardInputs.diskUtilPercent, row.utilPercent);
+    }
+    m_boardInputs.tcpAvailable = snapshot.tcpHealthAvailable;
+    m_boardInputs.tcpRetransPercent = snapshot.tcpHealth.retransPercent;
+    m_boardInputs.containersRunning = m_boardDockerRunning;
+    m_boardInputs.kubePods = m_boardKubePods;
+    m_boardInputs.processes = snapshot.hostProcessCount;
+    updateBoardValues();
     m_integrationInputs.host = snapshot.hostAvailable;
     m_integrationInputs.focus = snapshot.focusAvailable;
     m_integrationInputs.focusProvider = snapshot.focusProvider;
@@ -8738,6 +8908,9 @@ void DashboardPanel::populateProcessTree(const QList<ProcessRow> &rows) {
 }
 
 void DashboardPanel::setDockerSnapshot(const DockerSnapshot &snapshot) {
+    m_boardDockerRunning = snapshot.runningCount;
+    m_boardInputs.containersRunning = m_boardDockerRunning;
+    updateBoardValues();
     const bool engine = snapshot.state == DockerState::Ok
         || snapshot.state == DockerState::Starting;
     m_integrationInputs.dockerEngine = engine;
@@ -8828,6 +9001,9 @@ void DashboardPanel::setDockerSnapshot(const DockerSnapshot &snapshot) {
 }
 
 void DashboardPanel::setKubeSnapshot(const KubeSnapshot &snapshot) {
+    m_boardKubePods = snapshot.totalPods;
+    m_boardInputs.kubePods = m_boardKubePods;
+    updateBoardValues();
     m_integrationInputs.kubeAvailable = snapshot.state == KubeState::Ok;
     m_integrationInputs.pods = snapshot.totalPods;
     updateIntegrations();

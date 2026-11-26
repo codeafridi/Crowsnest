@@ -402,6 +402,10 @@ DashboardPanel *HudWindow::ensureConsole() {
                 // the config file next to the label lines it groups by.
                 saveRemoteTeamGroup(defaultConfigPath(), key);
             });
+    connect(m_panel, &DashboardPanel::boardChanged, this,
+            [](const QStringList &ids) {
+                saveBoardWidgets(defaultConfigPath(), ids);
+            });
     connect(m_panel, &DashboardPanel::identitySaveRequested, this,
             [this](const QString &name, const QString &labelsText) {
                 QString error;

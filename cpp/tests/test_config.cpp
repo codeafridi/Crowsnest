@@ -1076,6 +1076,42 @@ int main(int argc, char *argv[]) {
     }
 
     {
+        QTemporaryDir dir;
+        const QString path = writeConfig(
+            dir, QByteArrayLiteral("[theme]\naccent = #4a86c4\n"));
+        check(saveBoardWidgets(
+                  path, {QStringLiteral("host_cpu"), QStringLiteral("net_rx")}),
+              "board: saveBoardWidgets writes the file");
+        const Config saved = loadConfig(path, nullptr);
+        check(saved.boardWidgets
+                  == QStringList({QStringLiteral("host_cpu"),
+                                  QStringLiteral("net_rx")}),
+              "board: the pins roundtrip in order");
+        check(saveBoardWidgets(path, {}),
+              "board: an empty board saves");
+        check(loadConfig(path, nullptr).boardWidgets.isEmpty(),
+              "board: an empty board removes the line");
+        check(saveBoardWidgets(
+                  path, {QStringLiteral("bogus"), QStringLiteral("host_cpu")}),
+              "board: an unknown id is still written");
+        check(loadConfig(path, nullptr).boardWidgets
+                  == QStringList({QStringLiteral("host_cpu")}),
+              "board: the reader drops an unknown widget");
+
+        // A hand-written line with spaces parses as a QStringList in
+        // QSettings; the reader must accept both shapes.
+        QTemporaryDir handDir;
+        const QString handPath = writeConfig(
+            handDir, QByteArrayLiteral("[board]\n"
+                                       "widgets = host_cpu, host_mem, net_rx\n"));
+        check(loadConfig(handPath, nullptr).boardWidgets
+                  == QStringList({QStringLiteral("host_cpu"),
+                                  QStringLiteral("host_mem"),
+                                  QStringLiteral("net_rx")}),
+              "board: a hand-written comma list loads");
+    }
+
+    {
         // Identity: one name writes [fleet] name and [remote] name; the labels
         // write labels.self; an empty name removes both overrides.
         QTemporaryDir dir;

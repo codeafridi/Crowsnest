@@ -1,5 +1,6 @@
 #include "Config.h"
 
+#include "BoardStatus.h"
 #include "FleetStatus.h"
 #include "RemoteStatus.h"
 #include "WallpaperArt.h"
@@ -718,6 +719,18 @@ Config loadConfig(const QString &path, QString *errorMessage) {
     }
     settings.endGroup();
 
+    settings.beginGroup(QStringLiteral("board"));
+    // QSettings reads "a, b" as a QStringList and "...".toString() then gives
+    // an empty string; accept both shapes so a hand-written file works.
+    {
+        const QVariant raw = settings.value(QStringLiteral("widgets"));
+        const QString text = raw.typeId() == QMetaType::QStringList
+            ? raw.toStringList().join(QLatin1Char(','))
+            : raw.toString();
+        config.boardWidgets = boardParseWidgets(text);
+    }
+    settings.endGroup();
+
     settings.beginGroup(QStringLiteral("fleet"));
     {
         if (settings.contains(QStringLiteral("enabled"))) {
@@ -1013,6 +1026,22 @@ bool saveRemoteTeamGroup(const QString &path, const QString &key) {
         settings.remove(QStringLiteral("team_group"));
     } else {
         settings.setValue(QStringLiteral("team_group"), key.trimmed());
+    }
+    settings.endGroup();
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+bool saveBoardWidgets(const QString &path, const QStringList &ids) {
+    if (path.isEmpty()) {
+        return false;
+    }
+    QSettings settings(path, QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("board"));
+    if (ids.isEmpty()) {
+        settings.remove(QStringLiteral("widgets"));
+    } else {
+        settings.setValue(QStringLiteral("widgets"), boardWidgetsText(ids));
     }
     settings.endGroup();
     settings.sync();

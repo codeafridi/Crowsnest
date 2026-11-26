@@ -337,6 +337,8 @@ struct Config {
     DbmConfig database;
     TlsConfig tls;
     FimConfig fim;
+    // [board] widgets: the user's pins for the Overview board, in order.
+    QStringList boardWidgets;
     int focusCacheTtlMs = 1500;
     int sampleIntervalMs = 1000;
 };
@@ -356,6 +358,11 @@ void saveOverlayConfig(const QString &path, const OverlayConfig &overlay);
 // Host identity: one machine name (used by the Fleet page and as the relay's
 // display name) plus this machine's labels. Empty values remove the override
 // so the hostname takes over again.
+// The Overview board's pins, as a comma list in [board] widgets. Unknown ids
+// are dropped by the reader, so an older file cannot inject a widget the build
+// does not have.
+bool saveBoardWidgets(const QString &path, const QStringList &ids);
+
 bool saveFleetIdentity(const QString &path, const QString &name,
                        const QList<QPair<QString, QString>> &labels);
 bool saveRemoteTeamGroup(const QString &path, const QString &key);

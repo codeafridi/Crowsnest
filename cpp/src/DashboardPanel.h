@@ -25,6 +25,7 @@
 #include "IncidentStatus.h"
 #include "FimStatus.h"
 #include "FleetStatus.h"
+#include "BoardStatus.h"
 #include "IntegrationStatus.h"
 #include "TeamStatus.h"
 #include "RemoteStatus.h"
@@ -38,6 +39,7 @@ class QListWidget;
 class QStackedWidget;
 class QTreeWidget;
 class QSlider;
+class QGridLayout;
 class QTimer;
 class QPushButton;
 class QDoubleSpinBox;
@@ -100,6 +102,7 @@ struct SettingsInfo {
     QString remoteLine;
     QString fleetName;
     QString fleetLabels;
+    QStringList boardWidgets;
     QString exportLine;
     QString historyLine;
     QString timelineLine;
@@ -238,6 +241,8 @@ signals:
     // Settings -> Collection -> Identity: one machine name and this machine's
     // labels. The window validates, writes the config and applies it live.
     void identitySaveRequested(const QString &name, const QString &labelsText);
+    // My Board: the pinned widget ids, in order. The window persists them.
+    void boardChanged(const QStringList &ids);
 
 private:
     void updateOverviewText(const DisplaySnapshot &snapshot);
@@ -887,6 +892,18 @@ private:
     QHash<QString, QLabel *> m_integrationEvidence;
     QLabel *m_integrationSummary = nullptr;
     QLabel *m_integrationChecklist = nullptr;
+    void rebuildBoard();
+    void applyBoard(const QStringList &ids);
+    void updateBoardValues();
+    QStringList m_boardWidgets;
+    QGridLayout *m_boardGrid = nullptr;
+    QComboBox *m_boardAdd = nullptr;
+    QLabel *m_boardHint = nullptr;
+    QHash<QString, QLabel *> m_boardValues;
+    bool m_boardSeeded = false;
+    BoardInputs m_boardInputs;
+    int m_boardDockerRunning = -1;
+    int m_boardKubePods = -1;
     QLineEdit *m_identityName = nullptr;
     QLineEdit *m_identityLabels = nullptr;
     QLabel *m_identityStatus = nullptr;
