@@ -128,6 +128,9 @@ struct RemoteOptions {
     // [remote] token: the per-machine ingest token from the relay. Empty means
     // the relay will refuse the report, which is why the note says so.
     QString token;
+    // [remote] status_token: the public token of a workspace status page.
+    // The desktop previews that page's JSON; empty means no preview.
+    QString statusToken;
     // [remote] name: what the relay calls this machine. Empty means the
     // machine id is shown instead.
     QString name;

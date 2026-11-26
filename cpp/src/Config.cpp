@@ -775,6 +775,8 @@ Config loadConfig(const QString &path, QString *errorMessage) {
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("remote"));
+    config.remote.statusToken =
+        settings.value(QStringLiteral("status_token")).toString().trimmed();
     {
         if (settings.contains(QStringLiteral("enabled"))) {
             config.remote.enabled =

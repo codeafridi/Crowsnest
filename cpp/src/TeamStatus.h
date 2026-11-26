@@ -150,6 +150,47 @@ QByteArray teamSilenceBody(const TeamIncident &incident, const QString &actor,
 QByteArray teamLabelSilenceBody(const QString &matcher, const QString &actor,
                                 int minutes, qint64 nowMs);
 
+// A workspace status page, read through the relay's public JSON route. The
+// desktop previews what customers would see: components, their 30-day
+// coverage, the incidents that are open and the ones that resolved. The
+// token in [remote] status_token is the whole credential.
+struct TeamStatusComponent {
+    QString name;
+    QString unit;
+    QString state;
+    int up = 0;
+    int total = 0;
+    double coverage = -1.0;
+    QString coverageText;
+};
+
+struct TeamStatusIncident {
+    QString title;
+    QString severity;
+    QString component;
+    QString opened;
+    QString duration;
+    QString state;
+};
+
+struct TeamStatusPage {
+    bool configured = false;
+    bool answered = false;
+    QString error;
+    QString name;
+    QString state;
+    qint64 asOfMs = -1;
+    bool includeChecks = false;
+    QList<TeamStatusComponent> components;
+    QList<TeamStatusIncident> active;
+    QList<TeamStatusIncident> resolved;
+};
+
+bool teamParseStatusPageJson(const QByteArray &body, TeamStatusPage *page,
+                             QString *error);
+QString teamStatusPageSummaryText(const TeamStatusPage &page);
+QString teamStatusPageComponentText(const TeamStatusComponent &component);
+
 struct TeamStatus {
     // The link, read from [remote].
     bool enabled = false;

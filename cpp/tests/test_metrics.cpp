@@ -9448,6 +9448,50 @@ int main(int argc, char *argv[]) {
 
     }
 
+    // --- Status page preview -----------------------------------------------
+    {
+        TeamStatusPage page;
+        page.configured = true;
+        QString error;
+        const QByteArray body = R"({"schema":1,"name":"Acme","workspace":"acme",
+            "state":"degraded","updatedAt":"2026-11-26T10:00:00Z",
+            "includeChecks":true,
+            "components":[
+              {"name":"web","unit":"machines","state":"operational","up":3,
+               "total":3,"coverage":99.5,"coverageText":"99.5%"},
+              {"name":"api prod","unit":"probes","state":"outage","up":0,
+               "total":4,"coverage":25,"coverageText":"25%"}],
+            "activeIncidents":[
+              {"title":"api prod is down","severity":"critical",
+               "component":"api prod","opened":"2026-11-26 09:00 UTC",
+               "state":"open"}],
+            "resolvedIncidents":[
+              {"title":"web went quiet","severity":"warning","component":"web",
+               "opened":"2026-11-25 09:00 UTC","duration":"12m",
+               "state":"resolved"}]})";
+        check(teamParseStatusPageJson(body, &page, &error),
+              "status page: the public JSON parses");
+        check(error.isEmpty() && page.name == QStringLiteral("Acme")
+                  && page.state == QStringLiteral("degraded")
+                  && page.components.size() == 2 && page.active.size() == 1
+                  && page.resolved.size() == 1,
+              "status page: components and incidents are counted");
+        check(page.components.at(1).coverageText == QStringLiteral("25%")
+                  && page.components.at(1).up == 0,
+              "status page: a probe component keeps its coverage");
+        check(teamStatusPageSummaryText(page).contains(QStringLiteral("2 component"))
+                  && teamStatusPageSummaryText(page).contains(QStringLiteral("degraded")),
+              "status page: the summary names the page");
+        QByteArray newer = body;
+        newer.replace("\"schema\":1", "\"schema\":9");
+        check(!teamParseStatusPageJson(newer, &page, &error)
+                  && error.contains(QStringLiteral("newer")),
+              "status page: a newer schema is refused, never half-parsed");
+        TeamStatusPage unset;
+        check(teamStatusPageSummaryText(unset).contains(QStringLiteral("status_token")),
+              "status page: an unset token says which line to add");
+    }
+
     // --- My Board widget catalog -------------------------------------------
     {
         const QList<BoardWidgetInfo> catalog = boardCatalog();

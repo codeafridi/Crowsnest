@@ -1201,3 +1201,107 @@ QString teamCheckDetailText(const TeamStatus &status, const TeamCheck &check) {
     }
     return parts.join(QStringLiteral(" - "));
 }
+
+bool teamParseStatusPageJson(const QByteArray &body, TeamStatusPage *page,
+                             QString *error) {
+    if (error != nullptr) {
+        error->clear();
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        if (error != nullptr) {
+            *error = QStringLiteral("the status answer is not a JSON object");
+        }
+        return false;
+    }
+    const QJsonObject root = doc.object();
+    const int schema = root.value(QStringLiteral("schema")).toInt(0);
+    if (schema <= 0 || schema > 1) {
+        if (error != nullptr) {
+            *error = QStringLiteral(
+                "status schema %1 is newer than this build - update Crowsnest")
+                         .arg(schema);
+        }
+        return false;
+    }
+    page->name = root.value(QStringLiteral("name")).toString();
+    page->state = root.value(QStringLiteral("state")).toString();
+    page->includeChecks =
+        root.value(QStringLiteral("includeChecks")).toBool(false);
+    page->components.clear();
+    for (const QJsonValue &value :
+         root.value(QStringLiteral("components")).toArray()) {
+        const QJsonObject row = value.toObject();
+        TeamStatusComponent component;
+        component.name = row.value(QStringLiteral("name")).toString();
+        component.unit = row.value(QStringLiteral("unit")).toString();
+        component.state = row.value(QStringLiteral("state")).toString();
+        component.up = row.value(QStringLiteral("up")).toInt();
+        component.total = row.value(QStringLiteral("total")).toInt();
+        component.coverage =
+            row.value(QStringLiteral("coverage")).toDouble(-1.0);
+        component.coverageText =
+            row.value(QStringLiteral("coverageText")).toString();
+        if (!component.name.isEmpty()) {
+            page->components.append(component);
+        }
+    }
+    auto incidents = [](const QJsonArray &array) {
+        QList<TeamStatusIncident> rows;
+        for (const QJsonValue &value : array) {
+            const QJsonObject object = value.toObject();
+            TeamStatusIncident incident;
+            incident.title = object.value(QStringLiteral("title")).toString();
+            incident.severity =
+                object.value(QStringLiteral("severity")).toString();
+            incident.component =
+                object.value(QStringLiteral("component")).toString();
+            incident.opened = object.value(QStringLiteral("opened")).toString();
+            incident.duration =
+                object.value(QStringLiteral("duration")).toString();
+            incident.state = object.value(QStringLiteral("state")).toString();
+            if (!incident.title.isEmpty()) {
+                rows.append(incident);
+            }
+        }
+        return rows;
+    };
+    page->active = incidents(root.value(QStringLiteral("activeIncidents")).toArray());
+    page->resolved =
+        incidents(root.value(QStringLiteral("resolvedIncidents")).toArray());
+    page->answered = true;
+    return true;
+}
+
+QString teamStatusPageComponentText(const TeamStatusComponent &component) {
+    QString line = QStringLiteral("%1 - %2").arg(component.name, component.state);
+    if (component.total > 0) {
+        line += QStringLiteral(" - %1/%2 %3")
+                    .arg(component.up)
+                    .arg(component.total)
+                    .arg(component.unit.isEmpty() ? QStringLiteral("up")
+                                                   : component.unit);
+    }
+    if (!component.coverageText.isEmpty()) {
+        line += QStringLiteral(" - %1").arg(component.coverageText);
+    }
+    return line;
+}
+
+QString teamStatusPageSummaryText(const TeamStatusPage &page) {
+    if (!page.configured) {
+        return QStringLiteral(
+            "no status page - set [remote] status_token to preview one");
+    }
+    if (!page.answered) {
+        return page.error.isEmpty()
+            ? QStringLiteral("the status page has not answered yet")
+            : QStringLiteral("status page unavailable: %1").arg(page.error);
+    }
+    return QStringLiteral("%1 - %2 - %3 component(s), %4 open, %5 resolved")
+        .arg(page.name, page.state.isEmpty() ? QStringLiteral("unknown")
+                                             : page.state)
+        .arg(page.components.size())
+        .arg(page.active.size())
+        .arg(page.resolved.size());
+}
