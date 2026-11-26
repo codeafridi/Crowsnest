@@ -22,6 +22,8 @@ struct TeamOptions {
     bool actions = false;
     QString baseUrl; // normalized, no path
     QString token;
+    // Public status-page token; empty means no preview is fetched.
+    QString statusToken;
     QString caFile;
     QString selfId;   // this machine's relay id
     QString actor;    // the name an action is posted under

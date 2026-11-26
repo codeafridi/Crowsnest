@@ -1113,6 +1113,7 @@ int main(int argc, char *argv[]) {
     // credential, on a thread that exists only when the link does. A desktop
     // with [remote] enabled=false shows the switch, never a socket.
     TeamOptions teamOptions;
+    teamOptions.statusToken = config.remote.statusToken;
     teamOptions.enabled = config.remote.enabled;
     teamOptions.actions = config.remote.actions;
     teamOptions.baseUrl = config.remote.url;

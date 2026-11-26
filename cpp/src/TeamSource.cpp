@@ -124,6 +124,29 @@ TeamStatus probeTeam(const TeamOptions &options, qint64 nowMs) {
             status.checksError = checkFailure;
         }
     }
+    // The status page is optional and public. Its token is the credential;
+    // the fetch is skipped entirely when the config has none.
+    status.statusPage.configured = !options.statusToken.isEmpty();
+    if (status.statusPage.configured) {
+        const TeamFetchResult page = teamHttpGet(
+            options,
+            QStringLiteral("/api/v1/status/") + options.statusToken);
+        if (page.httpStatus == 410) {
+            status.statusPage.error = QStringLiteral(
+                "the status page is not valid, revoked or expired (410)");
+        } else if (page.httpStatus == 404) {
+            status.statusPage.error = QStringLiteral(
+                "the relay has no status endpoint (404) - update the relay");
+        } else if (!page.ok) {
+            status.statusPage.error = page.error;
+        } else {
+            QString pageFailure;
+            if (!teamParseStatusPageJson(page.body, &status.statusPage,
+                                         &pageFailure)) {
+                status.statusPage.error = pageFailure;
+            }
+        }
+    }
     return status;
 }
 

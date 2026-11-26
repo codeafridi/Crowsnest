@@ -192,6 +192,8 @@ QString teamStatusPageSummaryText(const TeamStatusPage &page);
 QString teamStatusPageComponentText(const TeamStatusComponent &component);
 
 struct TeamStatus {
+    // The workspace status page preview ([remote] status_token).
+    TeamStatusPage statusPage;
     // The link, read from [remote].
     bool enabled = false;
     bool configured = false; // enabled + a parseable url + a token

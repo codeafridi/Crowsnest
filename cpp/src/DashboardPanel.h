@@ -471,6 +471,8 @@ private:
     QTreeWidget *m_teamIncidentTable = nullptr;
     // M177: the relay's own checks, read-only. The browser authors them; this
     // page answers "are the services the relay probes up".
+    QWidget *m_teamStatusSection = nullptr;
+    QLabel *m_teamStatusPage = nullptr;
     QLabel *m_teamChecksSummary = nullptr;
     QTreeWidget *m_teamChecksTable = nullptr;
     QLabel *m_teamChecksDetail = nullptr;

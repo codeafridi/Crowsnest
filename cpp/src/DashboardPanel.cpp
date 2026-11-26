@@ -6683,6 +6683,26 @@ QWidget *DashboardPanel::buildTeamView() {
     layout->addWidget(makeCard(QStringLiteral("selected check"),
                                m_teamChecksDetail, view, false));
 
+    // --- Status page preview: what a customer would see at /status/<token>.
+    // The token is configuration; without it the section does not exist.
+    m_teamStatusSection = new QWidget(view);
+    auto *statusLayout = new QVBoxLayout(m_teamStatusSection);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(8);
+    statusLayout->addWidget(makeBanner(QStringLiteral("STATUS PAGE"),
+                                       ui_theme::accent(),
+                                       m_teamStatusSection));
+    m_teamStatusPage = new QLabel(m_teamStatusSection);
+    m_teamStatusPage->setObjectName(QStringLiteral("ddTeamStatusPage"));
+    m_teamStatusPage->setFont(monoFont(10));
+    m_teamStatusPage->setWordWrap(true);
+    m_teamStatusPage->setMinimumWidth(1);
+    statusLayout->addWidget(
+        makeCard(QStringLiteral("the customer view"), m_teamStatusPage,
+                 m_teamStatusSection));
+    m_teamStatusSection->setVisible(false);
+    layout->addWidget(m_teamStatusSection);
+
     auto *scroll = new QScrollArea(view);
     scroll->setObjectName(QStringLiteral("ddScroll"));
     scroll->setWidgetResizable(true);
@@ -9948,6 +9968,27 @@ void DashboardPanel::setTeamStatus(const TeamStatus &status) {
     }
     renderTeamIncidents();
     renderTeamChecks();
+    if (m_teamStatusSection != nullptr && m_teamStatusPage != nullptr) {
+        m_teamStatusSection->setVisible(m_team.statusPage.configured);
+        QStringList lines;
+        lines << teamStatusPageSummaryText(m_team.statusPage);
+        for (const TeamStatusComponent &component :
+             m_team.statusPage.components) {
+            lines << QStringLiteral("  ") + teamStatusPageComponentText(component);
+        }
+        for (const TeamStatusIncident &incident : m_team.statusPage.active) {
+            lines << QStringLiteral("  open - %1 (%2)")
+                         .arg(incident.title, incident.severity);
+        }
+        for (const TeamStatusIncident &incident : m_team.statusPage.resolved) {
+            lines << QStringLiteral("  resolved - %1%2")
+                         .arg(incident.title,
+                              incident.duration.isEmpty()
+                                  ? QString()
+                                  : QStringLiteral(" (%1)").arg(incident.duration));
+        }
+        m_teamStatusPage->setText(lines.join(QChar('\n')));
+    }
     updateTeamActions();
 }
 

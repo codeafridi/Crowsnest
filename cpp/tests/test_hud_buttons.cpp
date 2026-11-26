@@ -3299,7 +3299,36 @@ int main(int argc, char *argv[]) {
             team.checks = {apiCheck, dbCheck};
             team.checksAnswered = true;
             team.checksAsOfMs = teamNow;
+            team.statusPage.configured = true;
+            team.statusPage.answered = true;
+            team.statusPage.name = QStringLiteral("Acme");
+            team.statusPage.state = QStringLiteral("degraded");
+            TeamStatusComponent statusComp;
+            statusComp.name = QStringLiteral("api prod");
+            statusComp.unit = QStringLiteral("probes");
+            statusComp.state = QStringLiteral("outage");
+            statusComp.up = 0;
+            statusComp.total = 4;
+            statusComp.coverage = 25.0;
+            statusComp.coverageText = QStringLiteral("25%");
+            team.statusPage.components = {statusComp};
+            TeamStatusIncident statusInc;
+            statusInc.title = QStringLiteral("api prod is down");
+            statusInc.severity = QStringLiteral("critical");
+            statusInc.component = QStringLiteral("api prod");
+            statusInc.state = QStringLiteral("open");
+            team.statusPage.active = {statusInc};
             hud.setTeamStatus(team);
+
+            auto *statusPage =
+                hud.findChild<QLabel *>(QStringLiteral("ddTeamStatusPage"));
+            check(statusPage != nullptr
+                      && statusPage->text().contains(QStringLiteral("Acme"))
+                      && statusPage->text().contains(QStringLiteral("25%"))
+                      && statusPage->text().contains(
+                          QStringLiteral("api prod is down")),
+                  "team: the status page preview names components and "
+                  "incidents");
 
             auto *teamTable =
                 hud.findChild<QTreeWidget *>(QStringLiteral("ddTeamTable"));
