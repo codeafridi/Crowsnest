@@ -402,6 +402,14 @@ DashboardPanel *HudWindow::ensureConsole() {
                 // the config file next to the label lines it groups by.
                 saveRemoteTeamGroup(defaultConfigPath(), key);
             });
+    connect(m_panel, &DashboardPanel::onboardingDismissed, this, [this]() {
+        saveOnboardingHidden(defaultConfigPath(), true);
+    });
+    connect(m_panel, &DashboardPanel::onboardingResetRequested, this,
+            [this]() {
+                saveOnboardingHidden(defaultConfigPath(), false);
+                m_panel->setOnboardingHidden(false);
+            });
     connect(m_panel, &DashboardPanel::boardChanged, this,
             [](const QStringList &ids) {
                 saveBoardWidgets(defaultConfigPath(), ids);

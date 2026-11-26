@@ -822,6 +822,7 @@ int main(int argc, char *argv[]) {
         settingsInfo.webhookLine = webhookConfigLine(config.webhook);
         settingsInfo.remoteLine = remoteSettingsLine(config.remote);
         settingsInfo.boardWidgets = config.boardWidgets;
+        settingsInfo.onboardingHidden = config.onboardingHidden;
         settingsInfo.fleetName = config.fleet.name;
         for (const QPair<QString, QString> &label : config.fleet.labels) {
             if (label.first == QStringLiteral("self")) {

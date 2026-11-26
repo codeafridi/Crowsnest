@@ -719,6 +719,11 @@ Config loadConfig(const QString &path, QString *errorMessage) {
     }
     settings.endGroup();
 
+    settings.beginGroup(QStringLiteral("onboarding"));
+    config.onboardingHidden =
+        settings.value(QStringLiteral("hidden"), false).toBool();
+    settings.endGroup();
+
     settings.beginGroup(QStringLiteral("board"));
     // QSettings reads "a, b" as a QStringList and "...".toString() then gives
     // an empty string; accept both shapes so a hand-written file works.
@@ -1028,6 +1033,22 @@ bool saveRemoteTeamGroup(const QString &path, const QString &key) {
         settings.remove(QStringLiteral("team_group"));
     } else {
         settings.setValue(QStringLiteral("team_group"), key.trimmed());
+    }
+    settings.endGroup();
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+bool saveOnboardingHidden(const QString &path, bool hidden) {
+    if (path.isEmpty()) {
+        return false;
+    }
+    QSettings settings(path, QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("onboarding"));
+    if (hidden) {
+        settings.setValue(QStringLiteral("hidden"), true);
+    } else {
+        settings.remove(QStringLiteral("hidden"));
     }
     settings.endGroup();
     settings.sync();

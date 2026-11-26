@@ -103,6 +103,7 @@ struct SettingsInfo {
     QString fleetName;
     QString fleetLabels;
     QStringList boardWidgets;
+    bool onboardingHidden = false;
     QString exportLine;
     QString historyLine;
     QString timelineLine;
@@ -186,6 +187,7 @@ public:
     void setWebhookLine(const QString &line);
     // The identity card's answer after a save or a refusal.
     void setIdentityStatus(const QString &text, bool ok);
+    void setOnboardingHidden(bool hidden);
 
     // M99: the disclosure card. Filled from the live runner, never recomputed
     // from config - a card that says "delivered" must not say it before one.
@@ -243,6 +245,8 @@ signals:
     void identitySaveRequested(const QString &name, const QString &labelsText);
     // My Board: the pinned widget ids, in order. The window persists them.
     void boardChanged(const QStringList &ids);
+    void onboardingDismissed();
+    void onboardingResetRequested();
 
 private:
     void updateOverviewText(const DisplaySnapshot &snapshot);
@@ -471,6 +475,7 @@ private:
     QTreeWidget *m_teamIncidentTable = nullptr;
     // M177: the relay's own checks, read-only. The browser authors them; this
     // page answers "are the services the relay probes up".
+    QWidget *m_onboardingCard = nullptr;
     QWidget *m_teamStatusSection = nullptr;
     QLabel *m_teamStatusPage = nullptr;
     QLabel *m_teamChecksSummary = nullptr;

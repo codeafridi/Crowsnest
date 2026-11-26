@@ -1077,6 +1077,19 @@ int main(int argc, char *argv[]) {
 
     {
         QTemporaryDir dir;
+        const QString path = writeConfig(dir, QByteArrayLiteral(""));
+        check(saveOnboardingHidden(path, true),
+              "onboarding: a dismissal saves");
+        check(loadConfig(path, nullptr).onboardingHidden,
+              "onboarding: the dismissal loads");
+        check(saveOnboardingHidden(path, false),
+              "onboarding: showing it again saves");
+        check(!loadConfig(path, nullptr).onboardingHidden,
+              "onboarding: showing it again clears the flag");
+    }
+
+    {
+        QTemporaryDir dir;
         const QString path = writeConfig(
             dir, QByteArrayLiteral("[theme]\naccent = #4a86c4\n"));
         check(saveBoardWidgets(

@@ -2101,6 +2101,36 @@ int main(int argc, char *argv[]) {
               "board: SettingsInfo seeds the pins on first open");
     }
 
+    // --- FIRST RUN: dismiss is remembered, SHOW AGAIN brings it back --------
+    {
+        QTemporaryDir onbDir;
+        const QByteArray previousConfig = qgetenv("CROWSNEST_CONFIG");
+        const QString cfgPath = onbDir.filePath(QStringLiteral("config.ini"));
+        qputenv("CROWSNEST_CONFIG", cfgPath.toUtf8());
+        auto *dismiss =
+            hud.findChild<QPushButton *>(QStringLiteral("ddOnboardingDismiss"));
+        auto *show =
+            hud.findChild<QPushButton *>(QStringLiteral("ddOnboardingShow"));
+        check(dismiss != nullptr && show != nullptr,
+              "onboarding: the checklist can be dismissed and restored");
+        if (dismiss != nullptr && show != nullptr) {
+            QWidget *card = dismiss->parentWidget();
+            dismiss->click();
+            QApplication::processEvents();
+            check(card != nullptr && card->isHidden(),
+                  "onboarding: DISMISS hides the card");
+            check(loadConfig(cfgPath, nullptr).onboardingHidden,
+                  "onboarding: DISMISS writes [onboarding] hidden");
+            show->click();
+            QApplication::processEvents();
+            check(card != nullptr && !card->isHidden(),
+                  "onboarding: SHOW AGAIN restores the card");
+            check(!loadConfig(cfgPath, nullptr).onboardingHidden,
+                  "onboarding: SHOW AGAIN clears the flag");
+        }
+        qputenv("CROWSNEST_CONFIG", previousConfig);
+    }
+
     // --- M90: the Kubernetes page names the context it is describing --------
     {
         KubeSnapshot ctx = kubeSnap;

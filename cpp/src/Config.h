@@ -342,6 +342,8 @@ struct Config {
     FimConfig fim;
     // [board] widgets: the user's pins for the Overview board, in order.
     QStringList boardWidgets;
+    // [onboarding] hidden: the FIRST RUN checklist was dismissed.
+    bool onboardingHidden = false;
     int focusCacheTtlMs = 1500;
     int sampleIntervalMs = 1000;
 };
@@ -365,6 +367,7 @@ void saveOverlayConfig(const QString &path, const OverlayConfig &overlay);
 // are dropped by the reader, so an older file cannot inject a widget the build
 // does not have.
 bool saveBoardWidgets(const QString &path, const QStringList &ids);
+bool saveOnboardingHidden(const QString &path, bool hidden);
 
 bool saveFleetIdentity(const QString &path, const QString &name,
                        const QList<QPair<QString, QString>> &labels);

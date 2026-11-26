@@ -3889,6 +3889,33 @@ QWidget *DashboardPanel::buildSettingsView() {
     collectionPage->addWidget(makeCard(QStringLiteral("IDENTITY"),
                                        identityCard, view));
 
+    // FIRST RUN is a one-time page; this is where it comes back.
+    auto *onboardingCard = new QWidget(view);
+    auto *onboardingLayout = new QHBoxLayout(onboardingCard);
+    onboardingLayout->setContentsMargins(0, 0, 0, 0);
+    onboardingLayout->setSpacing(8);
+    auto *onboardingNote = new QLabel(
+        QStringLiteral("the Integrations page opens with a six-step first-run "
+                       "checklist; dismissing it is remembered"),
+        onboardingCard);
+    onboardingNote->setObjectName(QStringLiteral("ddOnboardingNote"));
+    onboardingNote->setFont(monoFont(9));
+    onboardingNote->setWordWrap(true);
+    onboardingNote->setMinimumWidth(1);
+    auto *showAgain =
+        new QPushButton(QStringLiteral("SHOW AGAIN"), onboardingCard);
+    showAgain->setObjectName(QStringLiteral("ddOnboardingShow"));
+    showAgain->setCursor(Qt::PointingHandCursor);
+    showAgain->setFocusPolicy(Qt::NoFocus);
+    connect(showAgain, &QPushButton::clicked, this, [this]() {
+        setOnboardingHidden(false);
+        emit onboardingResetRequested();
+    });
+    onboardingLayout->addWidget(onboardingNote, 1);
+    onboardingLayout->addWidget(showAgain);
+    collectionPage->addWidget(makeCard(QStringLiteral("FIRST RUN"),
+                                       onboardingCard, view));
+
     m_settingsFocus = new QLabel(QStringLiteral("focus  checking..."), view);
     m_settingsFocus->setObjectName(QStringLiteral("ddFocusStatus"));
     m_settingsFocus->setFont(monoFont(10));
@@ -4377,6 +4404,9 @@ void DashboardPanel::applySettingsInfo() {
     }
     // Seed the identity editors from the config once. A field the user is
     // typing in is left alone: a tick must not reset the cursor mid-word.
+    if (m_settings.onboardingHidden) {
+        setOnboardingHidden(true);
+    }
     if (!m_boardSeeded && !m_settings.boardWidgets.isEmpty()) {
         m_boardSeeded = true;
         applyBoard(m_settings.boardWidgets);
@@ -4855,6 +4885,12 @@ void DashboardPanel::setSettingsInfo(const SettingsInfo &info) {
     updateIntegrations();
     m_settings = info;
     applySettingsInfo();
+}
+
+void DashboardPanel::setOnboardingHidden(bool hidden) {
+    if (m_onboardingCard != nullptr) {
+        m_onboardingCard->setVisible(!hidden);
+    }
 }
 
 void DashboardPanel::setIdentityStatus(const QString &text, bool ok) {
@@ -7435,10 +7471,23 @@ QWidget *DashboardPanel::buildIntegrationsView() {
     // steps somebody actually takes on a new machine.
     auto *setup = new QFrame(content);
     setup->setObjectName(QStringLiteral("ddCard"));
+    m_onboardingCard = setup;
     auto *setupLayout = new QVBoxLayout(setup);
     setupLayout->setContentsMargins(14, 12, 14, 12);
     setupLayout->setSpacing(6);
-    setupLayout->addWidget(makeTitle(QStringLiteral("FIRST RUN"), setup));
+    auto *setupHead = new QHBoxLayout;
+    setupHead->setSpacing(8);
+    setupHead->addWidget(makeTitle(QStringLiteral("FIRST RUN"), setup), 1);
+    auto *dismiss = new QPushButton(QStringLiteral("DISMISS"), setup);
+    dismiss->setObjectName(QStringLiteral("ddOnboardingDismiss"));
+    dismiss->setCursor(Qt::PointingHandCursor);
+    dismiss->setFocusPolicy(Qt::NoFocus);
+    connect(dismiss, &QPushButton::clicked, this, [this]() {
+        setOnboardingHidden(true);
+        emit onboardingDismissed();
+    });
+    setupHead->addWidget(dismiss);
+    setupLayout->addLayout(setupHead);
     m_integrationChecklist = new QLabel(setup);
     m_integrationChecklist->setObjectName(QStringLiteral("ddIntegrationChecklist"));
     m_integrationChecklist->setFont(monoFont(9));
