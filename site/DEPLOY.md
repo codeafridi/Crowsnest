@@ -14,7 +14,7 @@ python3 site/check_links.py          # expects: 2 page(s), 0 broken
 Open `site/index.html` and `site/relay.html` at 1440 and 390 widths and check
 there is no horizontal scroll. The page is dark-only by design.
 
-Check the version strip says the release being shipped (`CROWSNEST 0.18.1` at
+Check the version strip says the release being shipped (`CROWSNEST 0.18.2` at
 the time of writing), the hero plays the live strip capture (`shots/hud-live.webm` / `.mp4`,
 poster `hud.png`, which shows PIN, CONSOLE, CLICK-THRU and HIDE), the console
 plate plays `shots/console-live.webm` / `.mp4`, and `shots/views.webp` is the
