@@ -2077,6 +2077,25 @@ int main(int argc, char *argv[]) {
                           .size()
                       == 4,
                   "board: ADD pins the picked widget");
+
+            // Reorder: the first tile moves down one place and the saved order
+            // follows; the first tile has no up arrow, the last no down arrow.
+            const Config beforeMove = loadConfig(cfgPath, nullptr);
+            const auto downs = hud.findChildren<QToolButton *>(
+                QStringLiteral("ddBoardDown"));
+            if (!downs.isEmpty()) {
+                downs.first()->click();
+                flushDeletes();
+            }
+            const Config afterMove = loadConfig(cfgPath, nullptr);
+            check(beforeMove.boardWidgets.size() >= 2
+                      && afterMove.boardWidgets.size()
+                             == beforeMove.boardWidgets.size()
+                      && afterMove.boardWidgets.at(0)
+                             == beforeMove.boardWidgets.at(1)
+                      && afterMove.boardWidgets.at(1)
+                             == beforeMove.boardWidgets.at(0),
+                  "board: a tile moves down and the order is saved");
         }
         qputenv("CROWSNEST_CONFIG", previousConfig);
     }

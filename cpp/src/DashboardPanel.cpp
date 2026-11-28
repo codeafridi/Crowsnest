@@ -1192,6 +1192,40 @@ void DashboardPanel::rebuildBoard() {
         caption->setObjectName(QStringLiteral("ddCardTitle"));
         caption->setFont(panelTitleFont());
         head->addWidget(caption, 1);
+        // Order is part of the choice: the first pin is what this person
+        // opens the console for, so up/down move it without a drag target.
+        auto move = [this](const QString &widgetId, int delta) {
+            const int at = m_boardWidgets.indexOf(widgetId);
+            const int to = at + delta;
+            if (at < 0 || to < 0 || to >= m_boardWidgets.size()) {
+                return;
+            }
+            QStringList next = m_boardWidgets;
+            next.move(at, to);
+            applyBoard(next);
+        };
+        if (index > 0) {
+            auto *up = new QToolButton(tile);
+            up->setObjectName(QStringLiteral("ddBoardUp"));
+            up->setText(QString::fromUtf8("\xe2\x86\x91"));
+            up->setCursor(Qt::PointingHandCursor);
+            up->setFocusPolicy(Qt::NoFocus);
+            up->setToolTip(QStringLiteral("move %1 earlier").arg(title));
+            connect(up, &QToolButton::clicked, this,
+                    [move, id]() { move(id, -1); });
+            head->addWidget(up);
+        }
+        if (index < m_boardWidgets.size() - 1) {
+            auto *down = new QToolButton(tile);
+            down->setObjectName(QStringLiteral("ddBoardDown"));
+            down->setText(QString::fromUtf8("\xe2\x86\x93"));
+            down->setCursor(Qt::PointingHandCursor);
+            down->setFocusPolicy(Qt::NoFocus);
+            down->setToolTip(QStringLiteral("move %1 later").arg(title));
+            connect(down, &QToolButton::clicked, this,
+                    [move, id]() { move(id, 1); });
+            head->addWidget(down);
+        }
         auto *remove = new QToolButton(tile);
         remove->setObjectName(QStringLiteral("ddBoardRemove"));
         remove->setText(QString::fromUtf8("\xc3\x97"));
